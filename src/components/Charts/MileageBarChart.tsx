@@ -35,8 +35,8 @@ export const MileageBarChart: React.FC<Props> = ({ weeks, unit }) => {
     <div className="chart-wrapper">
       <div className="chart-header">
         <div>
-          <h4 className="chart-title">Weekly Mileage Volume</h4>
-          <span className="text-xs text-muted">Total distance per 7-day training cycle ({unit.toUpperCase()})</span>
+          <h4 className="chart-title">Weekly Mileage</h4>
+          <span className="text-xs text-muted">Distance ({unit.toUpperCase()})</span>
         </div>
       </div>
 

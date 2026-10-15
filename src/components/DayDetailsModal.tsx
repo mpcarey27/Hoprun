@@ -52,7 +52,7 @@ export const DayDetailsModal: React.FC<Props> = ({
         <div className="modal-header">
           <div>
             <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">
-              Daily Training Log
+              Training Log
             </span>
             <h2 id="day-details-title" className="modal-title">
               {formattedFullDate}
@@ -72,13 +72,13 @@ export const DayDetailsModal: React.FC<Props> = ({
           {/* Day Totals Summary Strip */}
           <div className="day-quick-metrics mb-4">
             <div className="quick-metric">
-              <span className="metric-label">Total Volume</span>
+              <span className="metric-label">Distance</span>
               <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
                 {totalDist.toFixed(2)} {distanceUnit.toUpperCase()}
               </span>
             </div>
             <div className="quick-metric">
-              <span className="metric-label">Daily Workload</span>
+              <span className="metric-label">Workload</span>
               <span className="metric-val font-mono text-primary font-bold">
                 {totalLoad.toFixed(1)}
               </span>
@@ -109,7 +109,7 @@ export const DayDetailsModal: React.FC<Props> = ({
               <div className="text-2xl mb-2">👟</div>
               <h4 className="font-medium text-sm mb-1" style={{ color: 'var(--text-primary)' }}>Rest Day</h4>
               <p className="text-muted text-xs">
-                No runs recorded for this date. Active recovery or total rest!
+                No runs recorded for this date.
               </p>
             </div>
           ) : (
@@ -184,10 +184,10 @@ export const DayDetailsModal: React.FC<Props> = ({
 
                       <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
                         <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
-                          Workload Stress
+                          Workload
                         </span>
                         <strong className="text-base font-mono text-primary font-bold">
-                          {run.load.toFixed(1)} pts
+                          {run.load.toFixed(1)}
                         </strong>
                       </div>
                     </div>
@@ -201,7 +201,7 @@ export const DayDetailsModal: React.FC<Props> = ({
                       }}
                     >
                       <span className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                        Workout Notes & Instructions
+                        Notes
                       </span>
                       <p
                         className="text-xs font-sans"
@@ -214,7 +214,7 @@ export const DayDetailsModal: React.FC<Props> = ({
                           margin: 0,
                         }}
                       >
-                        {run.comments ? run.comments : <em className="text-muted">No notes recorded</em>}
+                        {run.comments ? run.comments : <em className="text-muted">No notes</em>}
                       </p>
                     </div>
                   </div>
@@ -241,7 +241,7 @@ export const DayDetailsModal: React.FC<Props> = ({
               onGoToLogRun(date);
             }}
           >
-            Open in Daily Logger to Edit / Add Run →
+            Log / Edit Run →
           </button>
         </div>
       </div>

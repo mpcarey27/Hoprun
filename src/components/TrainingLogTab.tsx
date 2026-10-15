@@ -161,27 +161,27 @@ export const TrainingLogTab: React.FC<Props> = ({
             className={`btn-log-mode ${logViewMode === 'calendar' ? 'active' : ''}`}
             onClick={() => setLogViewMode('calendar')}
           >
-            Calendar View
+            Calendar
           </button>
           <button
             type="button"
             className={`btn-log-mode ${logViewMode === 'week' ? 'active' : ''}`}
             onClick={() => setLogViewMode('week')}
           >
-            Week Breakdown
+            Week
           </button>
           <button
             type="button"
             className={`btn-log-mode ${logViewMode === 'table' ? 'active' : ''}`}
             onClick={() => setLogViewMode('table')}
           >
-            Table Summary
+            Table
           </button>
         </div>
 
         {logViewMode === 'calendar' && (
           <div className="flex items-center gap-2">
-            <span className="text-xxs font-mono text-muted uppercase">Month Volume:</span>
+            <span className="text-xxs font-mono text-muted uppercase">Volume:</span>
             <span className="font-mono text-xs font-bold text-white">
               {monthStats.totalDist} {distanceUnit.toUpperCase()}
             </span>
@@ -199,7 +199,7 @@ export const TrainingLogTab: React.FC<Props> = ({
               className="btn-step"
               onClick={() => onSelectWeekStart(addDays(activeWeekStartDate, -7))}
             >
-              ← Prev Week
+              ← Prev
             </button>
             <span className="font-mono text-sm font-semibold">
               {currentWeek?.startDate} — {currentWeek?.endDate}
@@ -209,7 +209,7 @@ export const TrainingLogTab: React.FC<Props> = ({
               className="btn-step"
               onClick={() => onSelectWeekStart(addDays(activeWeekStartDate, 7))}
             >
-              Next Week →
+              Next →
             </button>
           </div>
         )}
@@ -251,7 +251,7 @@ export const TrainingLogTab: React.FC<Props> = ({
                 onClick={handlePrevMonth}
                 title="Previous Month"
               >
-                ‹ Previous
+                ‹
               </button>
 
               <h2 className="big-calendar-month-title">{monthTitle}</h2>
@@ -262,7 +262,7 @@ export const TrainingLogTab: React.FC<Props> = ({
                 onClick={handleNextMonth}
                 title="Next Month"
               >
-                Next ›
+                ›
               </button>
             </div>
 
@@ -272,7 +272,7 @@ export const TrainingLogTab: React.FC<Props> = ({
                 className="btn-duration-pill active"
                 onClick={handleJumpToToday}
               >
-                Jump to Current Month
+                Today
               </button>
             </div>
           </div>

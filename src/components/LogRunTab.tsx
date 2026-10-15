@@ -316,13 +316,13 @@ export const LogRunTab: React.FC<Props> = ({
         {/* Day Quick Summary Metrics */}
         <div className="day-quick-metrics">
           <div className="quick-metric">
-            <span className="metric-label">Day Volume</span>
+            <span className="metric-label">Distance</span>
             <span className="metric-val font-mono">
               {totalDayDist.toFixed(2)} {distanceUnit.toUpperCase()}
             </span>
           </div>
           <div className="quick-metric">
-            <span className="metric-label">Day Workload</span>
+            <span className="metric-label">Workload</span>
             <span className="metric-val font-mono text-primary font-bold">
               {totalDayLoad.toFixed(1)}
             </span>
@@ -354,7 +354,7 @@ export const LogRunTab: React.FC<Props> = ({
       <div className="day-runs-container">
         <div className="day-runs-header">
           <h3 className="section-title">
-            Workouts Logged for {getDayName(selectedDate)}
+            Workouts · {getDayName(selectedDate)}
           </h3>
           <div className="flex items-center gap-2">
             {isCoach && onOpenAssignRun && (
@@ -382,12 +382,9 @@ export const LogRunTab: React.FC<Props> = ({
             <p className="text-secondary font-medium text-sm">
               No runs recorded for this date.
             </p>
-            <p className="text-muted text-xs mt-1">
-              Click "+ Add Run" to record your miles, run type, and workout notes.
-            </p>
             <button
               type="button"
-              className="btn-add-primary mt-4"
+              className="btn-add-primary mt-3"
               onClick={handleAddRun}
             >
               + Add Run
@@ -488,7 +485,7 @@ export const LogRunTab: React.FC<Props> = ({
 
                     <div className="hero-load-display">
                       <span className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                        Workload Stress
+                        Workload
                       </span>
                       <div className="hero-load-pill font-mono">
                         <span className="hero-load-val">{run.load.toFixed(1)}</span>
@@ -499,7 +496,7 @@ export const LogRunTab: React.FC<Props> = ({
                   {/* Quick-Tap Workout Category Chips */}
                   <div className="workout-chips-section mt-3">
                     <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1.5">
-                      Workout Category
+                      Run Type
                     </label>
                     <div className="workout-chips-grid">
                       {DEFAULT_RUN_TYPES.map((t) => {
@@ -529,12 +526,12 @@ export const LogRunTab: React.FC<Props> = ({
                   {/* Workout Comments / Feelings (Clean & Collapsible) */}
                   <div className="run-card-notes-section mt-3">
                     <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      Athlete Notes & Cadence Feelings
+                      Notes
                     </label>
                     <textarea
                       rows={2}
                       className="textarea-notes"
-                      placeholder="e.g. Felt smooth, HR stayed in zone 2, cadence 176, fresh legs..."
+                      placeholder="Add run notes..."
                       value={run.comments || ''}
                       onChange={(e) =>
                         handleUpdateField(run, { comments: e.target.value })

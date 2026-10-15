@@ -385,7 +385,7 @@ export const App: React.FC = () => {
                   COACH MODE
                 </span>
                 <span className="text-xs font-mono font-bold text-primary">
-                  Coach: {currentUser.name} · Athlete View:
+                  Roster
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -415,13 +415,12 @@ export const App: React.FC = () => {
                 className={`btn-filter-pill ${selectedAthleteFilter === 'all' ? 'active' : ''}`}
                 onClick={() => setSelectedAthleteFilter('all')}
               >
-                All Athletes ({workouts.length} runs)
+                All ({workouts.length})
               </button>
               {ROSTER_USERS.map((user) => {
                 const count = workouts.filter(
                   (w) => w.athleteId === user.id || w.athleteName === user.name
                 ).length;
-                const isSelf = user.id === currentUser.id;
                 return (
                   <button
                     key={user.id}
@@ -429,7 +428,7 @@ export const App: React.FC = () => {
                     className={`btn-filter-pill ${selectedAthleteFilter === user.id ? 'active' : ''}`}
                     onClick={() => setSelectedAthleteFilter(user.id)}
                   >
-                    {user.name} {isSelf ? '(You / Coach)' : '(Athlete)'} ({count})
+                    {user.name} ({count})
                   </button>
                 );
               })}

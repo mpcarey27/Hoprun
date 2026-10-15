@@ -193,7 +193,7 @@ export const Header: React.FC<Props> = ({
               onClick={onOpenPlanBuilder}
               title="Build & assign multi-week plan to athlete"
             >
-              <span className="desktop-only-text">Assign Plan & QR</span>
+              <span className="desktop-only-text">Assign Plan</span>
               <span className="mobile-only-text">Plans</span>
             </button>
           )}
@@ -242,7 +242,6 @@ export const Header: React.FC<Props> = ({
                 <div className="settings-item">
                   <div className="settings-item-label">
                     <span className="text-xs font-medium text-white">Active Mode</span>
-                    <span className="text-xxs text-muted">Toggle Athlete vs Coach tools</span>
                   </div>
                   <button
                     type="button"
@@ -257,7 +256,6 @@ export const Header: React.FC<Props> = ({
                 <div className="settings-item">
                   <div className="settings-item-label">
                     <span className="text-xs font-medium text-white">Appearance</span>
-                    <span className="text-xxs text-muted">Theme palette</span>
                   </div>
                   <div className="segmented-unit-control">
                     <button
@@ -281,7 +279,6 @@ export const Header: React.FC<Props> = ({
                 <div className="settings-item">
                   <div className="settings-item-label">
                     <span className="text-xs font-medium text-white">Distance Unit</span>
-                    <span className="text-xxs text-muted">Preferred measurement</span>
                   </div>
                   <div className="segmented-unit-control">
                     <button
@@ -305,7 +302,6 @@ export const Header: React.FC<Props> = ({
                 <div className="settings-item">
                   <div className="settings-item-label">
                     <span className="text-xs font-medium text-white">Week Starts On</span>
-                    <span className="text-xxs text-muted">7-day training window</span>
                   </div>
                   <select
                     className="settings-select"
@@ -330,7 +326,7 @@ export const Header: React.FC<Props> = ({
                     onTabChange('settings');
                   }}
                 >
-                  Configure in Settings Tab →
+                  Settings →
                 </button>
 
                 {/* Account Settings / Sign In */}
@@ -342,7 +338,7 @@ export const Header: React.FC<Props> = ({
                     onOpenAuth();
                   }}
                 >
-                  <span>Google Account & Edge Sync</span>
+                  <span>Google Account</span>
                   <span className="text-accent text-xs">→</span>
                 </button>
               </div>

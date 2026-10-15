@@ -42,8 +42,8 @@ export const WorkloadComparisonChart: React.FC<Props> = ({ weeks }) => {
     <div className="chart-wrapper">
       <div className="chart-header">
         <div>
-          <h4 className="chart-title">Acute vs Chronic Workload</h4>
-          <span className="text-xs text-muted">Weekly Stress (Acute Bars) vs 4-Week Fitness Baseline (Chronic Line)</span>
+          <h4 className="chart-title">Acute vs Chronic</h4>
+          <span className="text-xs text-muted">Weekly Load vs 4-Wk Baseline</span>
         </div>
         <div className="chart-legend">
           <span className="legend-item"><span className="legend-box acute-box"></span> Acute Workload</span>

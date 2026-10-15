@@ -264,7 +264,7 @@ export const AdminPlanModal: React.FC<Props> = ({
         <div className="modal-header">
           <div className="flex items-center gap-3">
             <div>
-              <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">Coach Level</span>
+              <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">Coach</span>
               <h2 className="modal-title">Training Plan Builder</h2>
             </div>
             {currentUser.role === 'coach' && onOpenAssignRun && (
@@ -293,10 +293,10 @@ export const AdminPlanModal: React.FC<Props> = ({
           {!isCoach && (
             <div className="inweek-banner inweek-critical mb-3">
               <p className="text-sm font-bold text-danger mb-1">
-                ⚠️ Coach Admin Access Required
+                ⚠️ Coach Access Required
               </p>
               <p className="text-xs text-secondary">
-                Only users with coach admin status (such as Coach Michael Carey) can assign training plans to other athletes. You are currently logged in as <strong>{currentUser.name}</strong> ({currentUser.role}).
+                Only coaches can assign training plans. You are currently logged in as <strong>{currentUser.name}</strong> ({currentUser.role}).
               </p>
             </div>
           )}
@@ -305,10 +305,10 @@ export const AdminPlanModal: React.FC<Props> = ({
           <div className="mb-3 p-3 rounded" style={{ backgroundColor: 'var(--bg-surface-elevated)', border: '1px solid var(--border-subtle)' }}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xxs uppercase font-mono font-bold text-accent">
-                Target Athlete for this Plan
+                Athlete
               </span>
               <span className="text-xxs font-mono text-primary font-bold">
-                Assigning to: {targetAthlete.name} ({targetAthlete.role === 'coach' ? 'Coach' : 'Athlete'})
+                For: {targetAthlete.name} ({targetAthlete.role === 'coach' ? 'Coach' : 'Athlete'})
               </span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -383,35 +383,35 @@ export const AdminPlanModal: React.FC<Props> = ({
 
           {/* Plan Duration Selector (1 Week, 2 Weeks, 3 Weeks, 4 Weeks / Month) */}
           <div className="plan-duration-strip">
-            <span className="text-xxs text-muted uppercase font-mono mr-2">Plan Duration:</span>
+            <span className="text-xxs text-muted uppercase font-mono mr-2">Duration:</span>
             <div className="duration-pills">
               <button
                 type="button"
                 className={`btn-duration-pill ${weeksCount === 1 ? 'active' : ''}`}
                 onClick={() => handleSetDurationWeeks(1)}
               >
-                1 Week (7 Days)
+                1 Week
               </button>
               <button
                 type="button"
                 className={`btn-duration-pill ${weeksCount === 2 ? 'active' : ''}`}
                 onClick={() => handleSetDurationWeeks(2)}
               >
-                2 Weeks (14 Days)
+                2 Weeks
               </button>
               <button
                 type="button"
                 className={`btn-duration-pill ${weeksCount === 3 ? 'active' : ''}`}
                 onClick={() => handleSetDurationWeeks(3)}
               >
-                3 Weeks (21 Days)
+                3 Weeks
               </button>
               <button
                 type="button"
                 className={`btn-duration-pill ${weeksCount === 4 ? 'active' : ''}`}
                 onClick={() => handleSetDurationWeeks(4)}
               >
-                4 Weeks / 1 Month (28 Days)
+                4 Weeks
               </button>
               <button
                 type="button"
@@ -427,19 +427,19 @@ export const AdminPlanModal: React.FC<Props> = ({
           {/* Multi-Week Workload Stats Summary */}
           <div className="plan-stats-strip">
             <div className="plan-stat">
-              <span className="plan-stat-label">Total Plan Volume</span>
+              <span className="plan-stat-label">Total Distance</span>
               <span className="plan-stat-val font-mono">
-                {totalPlanMiles.toFixed(1)} mi ({weeksCount} {weeksCount === 1 ? 'week' : 'weeks'})
+                {totalPlanMiles.toFixed(1)} mi ({weeksCount}w)
               </span>
             </div>
             <div className="plan-stat">
-              <span className="plan-stat-label">Total Acute Workload</span>
+              <span className="plan-stat-label">Total Workload</span>
               <span className="plan-stat-val font-mono text-primary font-bold">
                 {totalPlanAcuteLoad.toFixed(1)}
               </span>
             </div>
             <div className="plan-stat">
-              <span className="plan-stat-label">Week {activeWeekTab + 1} Acute Load</span>
+              <span className="plan-stat-label">Week {activeWeekTab + 1} Workload</span>
               <span className="plan-stat-val font-mono text-white">
                 {currentTabAcuteLoad.toFixed(1)} ({currentTabMiles.toFixed(1)} mi)
               </span>
@@ -470,10 +470,10 @@ export const AdminPlanModal: React.FC<Props> = ({
           <div className="plan-days-container">
             <div className="plan-days-header-strip">
               <span className="text-xs font-mono font-bold text-white uppercase">
-                Week {activeWeekTab + 1} Daily Prescription
+                Week {activeWeekTab + 1}
               </span>
               <span className="text-xxs text-muted font-mono">
-                Days {activeWeekTab * 7 + 1} to {activeWeekTab * 7 + 7}
+                Days {activeWeekTab * 7 + 1}–{activeWeekTab * 7 + 7}
               </span>
             </div>
 
@@ -523,7 +523,7 @@ export const AdminPlanModal: React.FC<Props> = ({
                         </div>
 
                         <span className="plan-day-load-tag font-mono text-xs text-primary">
-                          Load: {(day.targetDistance * getRunTypeMultiplier(day.runType)).toFixed(1)}
+                          Workload: {(day.targetDistance * getRunTypeMultiplier(day.runType)).toFixed(1)}
                         </span>
                       </div>
                     </div>
@@ -533,7 +533,7 @@ export const AdminPlanModal: React.FC<Props> = ({
                       <textarea
                         rows={2}
                         className="plan-day-textarea"
-                        placeholder="Workout instructions (e.g. 5x1mi tempo repeats with 90s recovery, keep heart rate in Zone 2)..."
+                        placeholder="Workout instructions..."
                         value={day.instructions}
                         onChange={(e) =>
                           handleUpdateDay(globalIdx, { instructions: e.target.value })
@@ -552,7 +552,7 @@ export const AdminPlanModal: React.FC<Props> = ({
               <div className="qr-box">
                 {qrDataUrl && <img src={qrDataUrl} alt="Plan QR Code" className="qr-image" />}
                 <p className="qr-caption font-mono">
-                  Scan with camera to load {weeksCount}-week plan on phone
+                  Scan to load plan on mobile
                 </p>
               </div>
 
@@ -565,7 +565,7 @@ export const AdminPlanModal: React.FC<Props> = ({
                 {isLocalHost && (
                   <div className="mb-2">
                     <label className="text-xxs text-secondary font-mono block mb-1">
-                      Phone Wi-Fi URL (for phones on local Wi-Fi):
+                      Phone Wi-Fi URL:
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -600,12 +600,8 @@ export const AdminPlanModal: React.FC<Props> = ({
                   className="btn-action-secondary mt-1"
                   onClick={() => onOpenAsAthlete(activePlan)}
                 >
-                  Open Athlete View On This Screen →
+                  Open Athlete View →
                 </button>
-
-                <p className="text-xxs text-muted mt-2">
-                  When the athlete confirms or edits any workout on their phone, an instant notification is dispatched to your coach dashboard.
-                </p>
               </div>
             </div>
           )}
@@ -628,7 +624,7 @@ export const AdminPlanModal: React.FC<Props> = ({
                 onClick={handleAssignPlanDirectly}
                 title={`Assign all workouts in this plan directly to ${targetAthlete.name}'s calendar`}
               >
-                Assign Plan to {targetAthlete.name} Schedule →
+                Assign Plan to {targetAthlete.name} →
               </button>
             )}
             <button
@@ -636,7 +632,7 @@ export const AdminPlanModal: React.FC<Props> = ({
               className="btn-save-plan"
               onClick={generateQrForPlan}
             >
-              Generate QR Code &amp; Send to Phone
+              Generate QR Code
             </button>
           </div>
         </div>

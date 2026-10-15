@@ -70,8 +70,8 @@ export const ACRTrendChart: React.FC<Props> = ({
     <div className="chart-wrapper">
       <div className="chart-header">
         <div>
-          <h4 className="chart-title">Acute:Chronic Workload Ratio (ACR)</h4>
-          <span className="text-xs text-muted">Sweet spot: 0.80 – 1.20 · Injury hazard threshold: &gt; 1.20</span>
+          <h4 className="chart-title">ACR Trend</h4>
+          <span className="text-xs text-muted">Optimal: 0.80–1.20 · High Risk: &gt; 1.20</span>
         </div>
         <div className="chart-legend">
           <span className="legend-item"><span className="legend-dot safe-dot"></span> 0.8 - 1.2 Optimal</span>

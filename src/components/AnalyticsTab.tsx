@@ -171,22 +171,22 @@ export const AnalyticsTab: React.FC<Props> = ({
   const viewLabels: Record<GraphViewMode, { title: string; badge: string; desc: string }> = {
     acr: {
       title: 'ACR Trend',
-      badge: '📈 ACR Ratio Trend',
-      desc: 'Acute:Chronic workload ratio, safe green corridor (0.8–1.2), & overload warnings (>1.2).',
+      badge: 'ACR Trend',
+      desc: 'Acute:Chronic workload ratio, safe green corridor (0.8–1.2), & overload warnings.',
     },
     workload: {
       title: 'Acute vs Chronic',
-      badge: '📊 Acute vs Chronic Load',
-      desc: 'Weekly acute fatigue plotted directly against rolling 4-week chronic aerobic baseline.',
+      badge: 'Acute vs Chronic',
+      desc: 'Weekly acute fatigue plotted against 4-week rolling chronic aerobic baseline.',
     },
     mileage: {
-      title: 'Total Mileage',
-      badge: '🏃 Weekly Mileage',
-      desc: 'Volume bar chart showing weekly training distance in miles/km.',
+      title: 'Weekly Mileage',
+      badge: 'Weekly Mileage',
+      desc: 'Weekly training volume in miles/km.',
     },
     all: {
-      title: 'All Graphs',
-      badge: '📑 All Graphs Suite',
+      title: 'All Charts',
+      badge: 'All Charts',
       desc: 'Simultaneous display of ACR Trend, Workload Comparison, and Mileage charts.',
     },
   };
@@ -211,9 +211,6 @@ export const AnalyticsTab: React.FC<Props> = ({
                   {activeAthleteInfo.role === 'coach' ? 'Coach' : 'Athlete'}
                 </span>
               </div>
-              <p className="text-xxs text-muted">
-                Viewing complete analytics, charts suite, and historical workload table for this athlete.
-              </p>
             </div>
           </div>
           <button
@@ -221,7 +218,7 @@ export const AnalyticsTab: React.FC<Props> = ({
             className="btn-return-team"
             onClick={() => onSelectAthleteFilter('all')}
           >
-            ← Back to All Athletes Breakdown
+            ← All Athletes
           </button>
         </div>
       )}
@@ -356,7 +353,7 @@ export const AnalyticsTab: React.FC<Props> = ({
                     onClick={() => setIsViewDropdownOpen((prev) => !prev)}
                     title="Choose graph view on display"
                   >
-                    <span>Select View: <strong>{viewLabels[selectedGraphView].title}</strong></span>
+                    <span>View: <strong>{viewLabels[selectedGraphView].title}</strong></span>
                     <span className="text-xxs ml-1">{isViewDropdownOpen ? '▲' : '▼'}</span>
                   </button>
 
@@ -402,14 +399,14 @@ export const AnalyticsTab: React.FC<Props> = ({
                     className={`btn-view-pill ${selectedGraphView === 'mileage' ? 'active' : ''}`}
                     onClick={() => setSelectedGraphView('mileage')}
                   >
-                    Total Mileage
+                    Weekly Mileage
                   </button>
                   <button
                     type="button"
                     className={`btn-view-pill ${selectedGraphView === 'all' ? 'active' : ''}`}
                     onClick={() => setSelectedGraphView('all')}
                   >
-                    All Graphs
+                    All Charts
                   </button>
                 </div>
               </div>
@@ -458,7 +455,7 @@ export const AnalyticsTab: React.FC<Props> = ({
                           )}
                         </div>
                         <span className="text-xxs text-muted">
-                          {workouts.length} total logged workouts • {aWeeks.length} active weeks in window
+                          {workouts.length} workouts · {aWeeks.length}w
                         </span>
                       </div>
                     </div>
@@ -470,7 +467,7 @@ export const AnalyticsTab: React.FC<Props> = ({
                       onClick={() => onSelectAthleteFilter(athlete.id)}
                       title={`Open full dashboard with all charts and detailed tables for ${athlete.name}`}
                     >
-                      View All Charts & Stats for {athlete.name.split(' ')[0]} →
+                      View Athlete Stats →
                     </button>
                   </div>
 
@@ -561,7 +558,7 @@ export const AnalyticsTab: React.FC<Props> = ({
           {/* Full KPI Cards */}
           <div className="kpi-grid">
             <div className="kpi-card">
-              <span className="kpi-label">Latest ACR Ratio</span>
+              <span className="kpi-label">ACR Ratio</span>
               <div className="flex items-baseline gap-2">
                 <span
                   className={`kpi-val font-mono ${
@@ -594,43 +591,37 @@ export const AnalyticsTab: React.FC<Props> = ({
                   </span>
                 )}
               </div>
-              <span className="text-xxs text-muted">
-                {latestCalculatedWeek?.weekNumber ? `Week ${latestCalculatedWeek.weekNumber}` : 'Active Cycle'}
-              </span>
             </div>
 
             <div className="kpi-card">
-              <span className="kpi-label">Current Acute Workload</span>
+              <span className="kpi-label">Acute Workload</span>
               <span className="kpi-val font-mono text-primary">
                 {currentWeek?.acuteWorkload.toFixed(1) || '0.0'}
               </span>
-              <span className="text-xxs text-muted">Current week stress score</span>
             </div>
 
             <div className="kpi-card">
-              <span className="kpi-label">4-Week Chronic Baseline</span>
+              <span className="kpi-label">Chronic Baseline</span>
               <span className="kpi-val font-mono text-warning">
                 {currentWeek?.chronicWorkload !== null ? currentWeek?.chronicWorkload?.toFixed(1) : 'Building'}
               </span>
-              <span className="text-xxs text-muted">Rolling aerobic baseline</span>
             </div>
 
             <div className="kpi-card">
-              <span className="kpi-label">Total Mileage in Window</span>
+              <span className="kpi-label">Total Distance</span>
               <span className="kpi-val font-mono text-white">
                 {displayWeeks.reduce((acc, w) => acc + (distanceUnit === 'mi' ? w.totalMiles : w.totalKm), 0).toFixed(1)}{' '}
                 <span className="text-xs font-normal text-muted">{distanceUnit.toUpperCase()}</span>
               </span>
-              <span className="text-xxs text-muted">Across {displayWeeks.length} training weeks</span>
             </div>
           </div>
 
           {/* SVG Charts: Full Suite */}
           {displayWeeks.length === 0 ? (
-            <div className="empty-feed-card">
+            <div className="empty-feed-card text-center py-6">
               <h4 className="text-secondary font-semibold text-sm">No training data logged yet</h4>
               <p className="text-muted text-xs mt-1">
-                Log your daily workouts in "1. Log Run". ACR ratio line will appear once 4 weeks of training are logged.
+                Log runs in Log Run tab. ACR appears after 4 weeks of training.
               </p>
             </div>
           ) : (
@@ -644,18 +635,18 @@ export const AnalyticsTab: React.FC<Props> = ({
           {/* Detailed Tabular Historical Breakdown */}
           {displayWeeks.length > 0 && (
             <div className="history-table-section">
-              <h3 className="section-heading">Detailed Calculations in Window</h3>
+              <h3 className="section-heading">Workload History</h3>
               <div className="table-responsive">
                 <table className="acr-table">
                   <thead>
                     <tr>
-                      <th>Week #</th>
+                      <th>Week</th>
                       <th>Date Range</th>
                       <th>Total Miles</th>
                       <th>Total KM</th>
-                      <th>Acute Workload</th>
-                      <th>Chronic (4-Wk Avg)</th>
-                      <th>ACR Ratio</th>
+                      <th>Acute</th>
+                      <th>Chronic (4-Wk)</th>
+                      <th>ACR</th>
                       <th>Status</th>
                       <th>Action</th>
                     </tr>
@@ -689,7 +680,7 @@ export const AnalyticsTab: React.FC<Props> = ({
                           </td>
                           <td>
                             {w.status === 'warning' && (
-                              <span className="badge-danger text-xs">⚠️ &gt; 1.2 Warning</span>
+                              <span className="badge-danger text-xs">⚠️ Warning</span>
                             )}
                             {w.status === 'safe' && (
                               <span className="badge-safe text-xs">✓ Optimal</span>
@@ -707,7 +698,7 @@ export const AnalyticsTab: React.FC<Props> = ({
                               className="btn-table-edit"
                               onClick={() => onSelectWeek(w.startDate)}
                             >
-                              View in Log Run →
+                              View →
                             </button>
                           </td>
                         </tr>

@@ -25,10 +25,7 @@ export const SettingsTab: React.FC<Props> = ({
     <div className="settings-tab-view animate-fade-in">
       <div className="tab-header-row">
         <div>
-          <h1 className="tab-main-title">App Settings</h1>
-          <p className="tab-subtitle">
-            Configure appearance, training schedule rules, and workload thresholds
-          </p>
+          <h1 className="tab-main-title">Settings</h1>
         </div>
       </div>
 
@@ -37,10 +34,7 @@ export const SettingsTab: React.FC<Props> = ({
         <section className="settings-card">
           <div className="settings-card-header">
             <div>
-              <h2 className="settings-card-title">Appearance & Theme</h2>
-              <p className="settings-card-desc">
-                Choose between refined slate dark mode and crisp white/dark green light mode
-              </p>
+              <h2 className="settings-card-title">Theme</h2>
             </div>
           </div>
 
@@ -64,9 +58,6 @@ export const SettingsTab: React.FC<Props> = ({
                   <span className="theme-name">Dark Mode</span>
                   {currentTheme === 'dark' && <span className="theme-check-badge">Active</span>}
                 </div>
-                <p className="theme-desc">
-                  Softer graphite & deep slate canvas, easy on the eyes during evening workouts
-                </p>
               </div>
             </button>
 
@@ -89,9 +80,6 @@ export const SettingsTab: React.FC<Props> = ({
                   <span className="theme-name">Light Mode</span>
                   {currentTheme === 'light' && <span className="theme-check-badge">Active</span>}
                 </div>
-                <p className="theme-desc">
-                  Crisp pure white background with athletic dark green accents and black typography
-                </p>
               </div>
             </button>
           </div>
@@ -101,14 +89,11 @@ export const SettingsTab: React.FC<Props> = ({
         <section className="settings-card">
           <div className="settings-card-header">
             <div>
-              <h2 className="settings-card-title">Distance & Units</h2>
-              <p className="settings-card-desc">
-                Default measurement system used across all run logs and analytics
-              </p>
+              <h2 className="settings-card-title">Distance Units</h2>
             </div>
           </div>
           <div className="settings-row-control">
-            <span className="text-secondary text-sm">Measurement System</span>
+            <span className="text-secondary text-sm">Preferred Unit</span>
             <div className="segmented-unit-control large">
               <button
                 type="button"
@@ -132,10 +117,7 @@ export const SettingsTab: React.FC<Props> = ({
         <section className="settings-card">
           <div className="settings-card-header">
             <div>
-              <h2 className="settings-card-title">Training Week Schedule</h2>
-              <p className="settings-card-desc">
-                Determines which day begins your 7-day rolling acute workload window
-              </p>
+              <h2 className="settings-card-title">Week Starts On</h2>
             </div>
           </div>
           <div className="settings-row-control">
@@ -170,16 +152,13 @@ export const SettingsTab: React.FC<Props> = ({
         <section className="settings-card">
           <div className="settings-card-header">
             <div>
-              <h2 className="settings-card-title">ACR Injury Risk Threshold</h2>
-              <p className="settings-card-desc">
-                Triggers visual warning banners when Acute:Chronic ratio projects beyond this value
-              </p>
+              <h2 className="settings-card-title">ACR Warning Threshold</h2>
             </div>
           </div>
           <div className="settings-row-control">
             <div>
-              <span className="text-secondary text-sm block">Warning Ratio</span>
-              <span className="text-muted text-xs">Dr. Tim Gabbett Sweet Spot: 0.8 – 1.30</span>
+              <span className="text-secondary text-sm block">Threshold</span>
+              <span className="text-muted text-xs">Optimal: 0.8 – 1.3</span>
             </div>
             <div className="segmented-unit-control large">
               {[1.2, 1.3, 1.4, 1.5].map((val) => (
@@ -200,20 +179,15 @@ export const SettingsTab: React.FC<Props> = ({
         <section className="settings-card">
           <div className="settings-card-header">
             <div>
-              <h2 className="settings-card-title">User Role & Account</h2>
-              <p className="settings-card-desc">
-                Toggle athlete logging vs coach multi-athlete prescription tools
-              </p>
+              <h2 className="settings-card-title">Account & Role</h2>
             </div>
           </div>
 
           <div className="settings-row-control">
             <div>
-              <span className="text-secondary text-sm block">Current Mode</span>
+              <span className="text-secondary text-sm block">Active Mode</span>
               <span className="text-muted text-xs">
-                {currentUser.role === 'coach'
-                  ? 'Coach (Can assign recurring runs & generate plans)'
-                  : 'Athlete (Self-logging & training log view)'}
+                {currentUser.role === 'coach' ? 'Coach Mode' : 'Athlete Mode'}
               </span>
             </div>
             <button
@@ -221,7 +195,7 @@ export const SettingsTab: React.FC<Props> = ({
               className="btn-settings-pill"
               onClick={onToggleRole}
             >
-              Switch to {currentUser.role === 'coach' ? 'Athlete' : 'Coach'} Mode
+              Switch to {currentUser.role === 'coach' ? 'Athlete' : 'Coach'}
             </button>
           </div>
 
@@ -237,7 +211,7 @@ export const SettingsTab: React.FC<Props> = ({
               className="btn-plan-header"
               onClick={onOpenAuth}
             >
-              Google Account & Cloudflare D1
+              Account & Sync
             </button>
           </div>
         </section>

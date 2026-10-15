@@ -274,12 +274,12 @@ export const AssignRunModal: React.FC<Props> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">
-                Coach Prescription & Assignment Center
+                Coach Center
               </span>
-              <span className="badge-safe text-xxs font-mono">COACH ADMIN</span>
+              <span className="badge-safe text-xxs font-mono">COACH</span>
             </div>
             <h2 id="assign-run-title" className="modal-title flex items-center gap-2 mt-0.5">
-              <span>{activeTab === 'assign' ? 'Assign Run to Athlete' : 'Edit Assigned Runs'}</span>
+              <span>{activeTab === 'assign' ? 'Assign Run' : 'Edit Assigned Runs'}</span>
             </h2>
           </div>
           <button
@@ -299,14 +299,14 @@ export const AssignRunModal: React.FC<Props> = ({
             className={`tab-pill ${activeTab === 'assign' ? 'tab-pill-active' : ''}`}
             onClick={() => setActiveTab('assign')}
           >
-            ➕ Assign New Runs
+            Assign Runs
           </button>
           <button
             type="button"
             className={`tab-pill ${activeTab === 'edit' ? 'tab-pill-active' : ''}`}
             onClick={() => setActiveTab('edit')}
           >
-            ✏️ Edit Previously Assigned Runs ({previouslyAssignedRuns.length})
+            Edit Assigned ({previouslyAssignedRuns.length})
           </button>
         </div>
 
@@ -323,10 +323,10 @@ export const AssignRunModal: React.FC<Props> = ({
           {!isCoach && (
             <div className="inweek-banner inweek-critical mb-4">
               <p className="text-sm font-bold text-danger mb-1">
-                ⚠️ Coach Admin Access Required
+                ⚠️ Coach Access Required
               </p>
               <p className="text-xs text-secondary">
-                Only users with coach admin status (such as Coach Michael Carey) can assign workouts to other athletes or edit prescribed plans. You are currently logged in as <strong>{currentUser.name}</strong> ({currentUser.role}).
+                Only coaches can assign workouts. You are currently logged in as <strong>{currentUser.name}</strong> ({currentUser.role}).
               </p>
             </div>
           )}
@@ -340,15 +340,12 @@ export const AssignRunModal: React.FC<Props> = ({
               <div className="assign-section mb-4 p-3 rounded" style={{ backgroundColor: 'var(--bg-surface-elevated)', border: '1px solid var(--border-subtle)' }}>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="section-label font-mono text-xs text-primary uppercase font-bold">
-                    1. Select Target Athlete for Prescription
+                    Select Athlete
                   </h3>
                   <span className="text-xxs font-mono text-accent font-bold uppercase">
-                    Prescribing For: {selectedAthlete.name} ({selectedAthlete.role === 'coach' ? 'Coach' : 'Athlete'})
+                    For: {selectedAthlete.name} ({selectedAthlete.role === 'coach' ? 'Coach' : 'Athlete'})
                   </span>
                 </div>
-                <p className="text-xs text-muted mb-2.5">
-                  Select which athlete this training schedule will be assigned to. You can assign to yourself or any athlete on the team roster.
-                </p>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {ROSTER_USERS.map((user) => {
@@ -394,14 +391,14 @@ export const AssignRunModal: React.FC<Props> = ({
               {/* Section 1: Workout Prescription */}
               <div className="assign-section">
                 <h3 className="section-label font-mono text-xs text-primary uppercase mb-2">
-                  2. Workout Prescription
+                  Workout Details
                 </h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                   {/* Distance Input with Unit Toggle */}
                   <div>
                     <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      Target Distance
+                      Distance
                     </label>
                     <div className="hero-distance-input-box">
                       <input
@@ -427,7 +424,7 @@ export const AssignRunModal: React.FC<Props> = ({
                   {/* Stress per run badge */}
                   <div>
                     <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      Workload Stress Per Run
+                      Workload
                     </label>
                     <div className="hero-load-pill font-mono flex items-center justify-between px-3 py-2">
                       <span className="text-xs text-muted">
@@ -440,7 +437,7 @@ export const AssignRunModal: React.FC<Props> = ({
 
                 {/* Run Category Selector */}
                 <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1.5">
-                  Run Category & Intensity Multiplier
+                  Run Category
                 </label>
                 <div className="workout-chips-grid mb-3">
                   {DEFAULT_RUN_TYPES.map((t) => {
@@ -466,14 +463,14 @@ export const AssignRunModal: React.FC<Props> = ({
 
                 {/* Coach Instructions */}
                 <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                  Coach Instructions & Athlete Focus Notes
+                  Notes &amp; Instructions
                 </label>
                 <textarea
                   rows={2}
                   className="textarea-notes"
                   value={instructions}
                   onChange={(e) => setInstructions(e.target.value)}
-                  placeholder={`e.g. Aerobic zone 2 run for ${selectedAthlete.name}, keep cadence smooth, negative split final 2 miles...`}
+                  placeholder={`e.g. Aerobic zone 2 run for ${selectedAthlete.name}...`}
                 />
               </div>
 
@@ -482,12 +479,12 @@ export const AssignRunModal: React.FC<Props> = ({
               {/* Section 2: Repeating Schedule Options */}
               <div className="assign-section">
                 <h3 className="section-label font-mono text-xs text-primary uppercase mb-2">
-                  3. Repeating Days & Schedule
+                  Repeating Schedule
                 </h3>
 
                 {/* Days of week selector pills */}
                 <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1.5">
-                  Repeat On (Select Multiple Days):
+                  Repeat On:
                 </label>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {DAY_LABELS.map(({ day, label, full }) => {
@@ -508,7 +505,7 @@ export const AssignRunModal: React.FC<Props> = ({
 
                 {/* Presets */}
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xxs text-muted font-mono uppercase">Quick Presets:</span>
+                  <span className="text-xxs text-muted font-mono uppercase">Presets:</span>
                   <button
                     type="button"
                     className="btn-preset-pill font-mono text-xxs"
@@ -555,7 +552,7 @@ export const AssignRunModal: React.FC<Props> = ({
 
                   <div>
                     <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      Repeat Until Date
+                      End Date
                     </label>
                     <input
                       type="date"
@@ -576,7 +573,7 @@ export const AssignRunModal: React.FC<Props> = ({
                       onChange={(e) => setIntervalWeeks(Number(e.target.value))}
                     >
                       <option value={1}>Every week</option>
-                      <option value={2}>Every 2 weeks (Bi-weekly)</option>
+                      <option value={2}>Every 2 weeks</option>
                       <option value={3}>Every 3 weeks</option>
                       <option value={4}>Every 4 weeks</option>
                     </select>
@@ -589,7 +586,7 @@ export const AssignRunModal: React.FC<Props> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                   <div>
                     <span className="font-mono text-xs text-muted uppercase block">
-                      Prescription Summary for {selectedAthlete.name}
+                      {selectedAthlete.name}
                     </span>
                     <strong className="text-sm font-mono text-primary">
                       {matchingDates.length} Runs Prescribed
@@ -597,10 +594,10 @@ export const AssignRunModal: React.FC<Props> = ({
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-mono text-muted">
-                      Total Dist: <strong className="text-primary">{totalVolumeMiles} mi</strong>
+                      Distance: <strong className="text-primary">{totalVolumeMiles} mi</strong>
                     </span>
                     <span className="text-xs font-mono text-primary font-bold">
-                      Total Stress: {totalWorkloadStress} pts
+                      Workload: {totalWorkloadStress}
                     </span>
                   </div>
                 </div>
@@ -640,7 +637,7 @@ export const AssignRunModal: React.FC<Props> = ({
               {/* Filter and Search Bar */}
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3 p-2.5 rounded bg-surface border border-subtle">
                 <div className="flex items-center gap-2">
-                  <span className="text-xxs font-mono text-muted uppercase">Filter Athlete:</span>
+                  <span className="text-xxs font-mono text-muted uppercase">Athlete:</span>
                   <select
                     className="select-field text-xs font-mono"
                     value={editAthleteFilter}
@@ -664,7 +661,7 @@ export const AssignRunModal: React.FC<Props> = ({
                   <input
                     type="text"
                     className="input-field text-xs font-mono w-full"
-                    placeholder="Search date, run type, or notes..."
+                    placeholder="Search workouts..."
                     value={editSearchQuery}
                     onChange={(e) => setEditSearchQuery(e.target.value)}
                   />
@@ -675,10 +672,7 @@ export const AssignRunModal: React.FC<Props> = ({
               {filteredAssignedRuns.length === 0 ? (
                 <div className="empty-day-box p-6 text-center">
                   <p className="text-secondary font-medium text-sm">
-                    No assigned workouts match your filter.
-                  </p>
-                  <p className="text-muted text-xs mt-1">
-                    Switch to the "Assign New Runs" tab to prescribe workouts to athletes.
+                    No assigned workouts found.
                   </p>
                 </div>
               ) : (
@@ -703,7 +697,7 @@ export const AssignRunModal: React.FC<Props> = ({
                         <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                           <div className="flex items-center gap-2">
                             <span className="badge-safe text-xxs font-mono font-bold">
-                              COACH ASSIGNED → {athleteDisplay}
+                              {athleteDisplay.toUpperCase()}
                             </span>
                             <span className="font-mono text-xs font-bold text-primary">
                               {run.workoutDate} ({getDayName(run.workoutDate)})
@@ -718,7 +712,7 @@ export const AssignRunModal: React.FC<Props> = ({
 
                           <div className="flex items-center gap-2">
                             <span className={`text-xxs font-mono font-bold px-2 py-0.5 rounded ${run.completed ? 'status-done' : 'status-plan'}`}>
-                              {run.completed ? '✓ Completed' : '⏳ Planned'}
+                              {run.completed ? 'Completed' : 'Planned'}
                             </span>
                             <button
                               type="button"
@@ -731,7 +725,7 @@ export const AssignRunModal: React.FC<Props> = ({
                                 }
                               }}
                             >
-                              {isEditing ? 'Cancel' : 'Edit Run ✏️'}
+                              {isEditing ? 'Cancel' : 'Edit'}
                             </button>
                             <button
                               type="button"
@@ -752,12 +746,12 @@ export const AssignRunModal: React.FC<Props> = ({
                                 {run.distance} {run.distanceUnit.toUpperCase()}
                               </strong>
                               <span className="text-muted ml-2">
-                                (Stress Load: {run.load.toFixed(1)} pts)
+                                (Workload: {run.load.toFixed(1)})
                               </span>
                             </div>
                             {run.comments && (
                               <p className="text-xs text-muted font-sans italic w-full mt-1">
-                                Instructions: "{run.comments}"
+                                {run.comments}
                               </p>
                             )}
                           </div>
@@ -840,7 +834,7 @@ export const AssignRunModal: React.FC<Props> = ({
 
                               <div>
                                 <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                                  Session Status
+                                  Status
                                 </label>
                                 <label className="flex items-center gap-2 mt-2 cursor-pointer">
                                   <input
@@ -849,7 +843,7 @@ export const AssignRunModal: React.FC<Props> = ({
                                     onChange={(e) => setDraftCompleted(e.target.checked)}
                                   />
                                   <span className="text-xs font-mono">
-                                    {draftCompleted ? '✓ Marked as Completed' : '⏳ Marked as Planned / Prescribed'}
+                                    {draftCompleted ? 'Completed' : 'Planned'}
                                   </span>
                                 </label>
                               </div>
@@ -857,14 +851,14 @@ export const AssignRunModal: React.FC<Props> = ({
 
                             <div className="mb-2.5">
                               <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                                Coach Notes / Instructions
+                                Notes
                               </label>
                               <textarea
                                 rows={2}
                                 className="textarea-notes text-xs"
                                 value={draftComments}
                                 onChange={(e) => setDraftComments(e.target.value)}
-                                placeholder="Instructions for athlete..."
+                                placeholder="Notes for athlete..."
                               />
                             </div>
 
@@ -881,7 +875,7 @@ export const AssignRunModal: React.FC<Props> = ({
                                 className="btn-action-primary text-xs py-1 px-3"
                                 onClick={() => handleSaveDraftRun(run)}
                               >
-                                Save Changes ✓
+                                Save Changes
                               </button>
                             </div>
                           </div>
@@ -902,7 +896,7 @@ export const AssignRunModal: React.FC<Props> = ({
             className="btn-modal-cancel"
             onClick={onClose}
           >
-            {activeTab === 'edit' ? 'Close Manager' : 'Cancel'}
+            {activeTab === 'edit' ? 'Close' : 'Cancel'}
           </button>
 
           {activeTab === 'assign' && (
@@ -912,7 +906,7 @@ export const AssignRunModal: React.FC<Props> = ({
               disabled={!isCoach || matchingDates.length === 0 || distance <= 0}
               onClick={handleAssign}
             >
-              Assign {matchingDates.length} Runs to {selectedAthlete.name} →
+              Assign {matchingDates.length} Runs →
             </button>
           )}
         </div>

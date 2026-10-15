@@ -58,17 +58,17 @@ export const WorkoutsTab: React.FC<Props> = ({
       {/* Strava-Style Top Banner / Summary */}
       <div className="strava-summary-bar">
         <div className="strava-profile-stat">
-          <span className="strava-stat-label">Total Activities</span>
+          <span className="strava-stat-label">Activities</span>
           <span className="strava-stat-val font-mono">{workouts.length}</span>
         </div>
         <div className="strava-profile-stat">
-          <span className="strava-stat-label">Total Distance</span>
+          <span className="strava-stat-label">Distance</span>
           <span className="strava-stat-val font-mono">
             {totalDistance.toFixed(1)} {distanceUnit.toUpperCase()}
           </span>
         </div>
         <div className="strava-profile-stat">
-          <span className="strava-stat-label">Total Workload Stress</span>
+          <span className="strava-stat-label">Workload</span>
           <span className="strava-stat-val font-mono text-primary font-bold">
             {totalLoad.toFixed(1)}
           </span>
@@ -83,7 +83,7 @@ export const WorkoutsTab: React.FC<Props> = ({
             className={`btn-filter-pill ${filterType === 'all' ? 'active' : ''}`}
             onClick={() => setFilterType('all')}
           >
-            All Runs ({workouts.length})
+            All ({workouts.length})
           </button>
           {DEFAULT_RUN_TYPES.map((t) => {
             const count = workouts.filter((w) => w.runType === t.id).length;
@@ -104,7 +104,7 @@ export const WorkoutsTab: React.FC<Props> = ({
         <input
           type="text"
           className="search-input font-mono text-xs"
-          placeholder="Filter notes or date..."
+          placeholder="Search workouts..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
@@ -113,11 +113,8 @@ export const WorkoutsTab: React.FC<Props> = ({
       {/* Activities Feed */}
       <div className="activity-feed">
         {filtered.length === 0 ? (
-          <div className="empty-feed-card">
-            <h4 className="text-secondary font-semibold text-sm">No recorded workouts match your view</h4>
-            <p className="text-muted text-xs mt-1">
-              Switch to "1. Log Run" to record runs on any date.
-            </p>
+          <div className="empty-feed-card text-center py-6">
+            <p className="text-secondary font-medium text-sm">No recorded workouts found.</p>
           </div>
         ) : (
           filtered.map((w) => {
@@ -167,7 +164,7 @@ export const WorkoutsTab: React.FC<Props> = ({
                       onClick={() => onEditWorkoutDate(w.workoutDate)}
                       title="Edit this day in Log Run"
                     >
-                      Edit Day →
+                      Edit →
                     </button>
                     <button
                       type="button"
@@ -191,14 +188,14 @@ export const WorkoutsTab: React.FC<Props> = ({
                   </div>
 
                   <div className="activity-stat">
-                    <span className="activity-stat-label">Workload Load</span>
+                    <span className="activity-stat-label">Workload</span>
                     <span className="activity-stat-val font-mono text-primary font-bold">
                       {w.load.toFixed(1)}
                     </span>
                   </div>
 
                   <div className="activity-stat">
-                    <span className="activity-stat-label">Session Status</span>
+                    <span className="activity-stat-label">Status</span>
                     <span
                       className={`activity-status-pill font-mono text-xs ${
                         w.completed ? 'status-done' : 'status-plan'
