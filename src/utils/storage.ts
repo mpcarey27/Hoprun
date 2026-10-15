@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   distanceUnit: 'mi',
   firstDayOfWeek: 1, // Monday
   warningThreshold: 1.2,
+  themeMode: 'dark',
 };
 
 export const DEFAULT_USER: UserProfile = {

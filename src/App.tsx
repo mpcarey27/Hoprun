@@ -8,6 +8,7 @@ import type {
   DistanceUnit,
   DayOfWeek,
   UserRole,
+  ThemeMode,
 } from './types/acr';
 import {
   loadStoredWorkouts,
@@ -34,6 +35,7 @@ import { LogRunTab } from './components/LogRunTab';
 import { WorkoutsTab } from './components/WorkoutsTab';
 import { TrainingLogTab } from './components/TrainingLogTab';
 import { AnalyticsTab } from './components/AnalyticsTab';
+import { SettingsTab } from './components/SettingsTab';
 import { InWeekWarningBanner } from './components/InWeekWarningBanner';
 import { AdminPlanModal } from './components/AdminPlanModal';
 import { PlanViewerModal } from './components/PlanViewerModal';
@@ -208,17 +210,29 @@ export const App: React.FC = () => {
     });
   };
 
+  // Synchronize active theme attribute with document root
+  useEffect(() => {
+    const theme = settings.themeMode || 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [settings.themeMode]);
+
   // Settings handlers
-  const handleUnitChange = (unit: DistanceUnit) => {
-    const updated = { ...settings, distanceUnit: unit };
+  const handleUpdateSettings = (newSettings: Partial<AppSettings>) => {
+    const updated = { ...settings, ...newSettings };
     setSettings(updated);
     saveStoredSettings(updated);
   };
 
+  const handleThemeChange = (theme: ThemeMode) => {
+    handleUpdateSettings({ themeMode: theme });
+  };
+
+  const handleUnitChange = (unit: DistanceUnit) => {
+    handleUpdateSettings({ distanceUnit: unit });
+  };
+
   const handleFirstDayChange = (day: DayOfWeek) => {
-    const updated = { ...settings, firstDayOfWeek: day };
-    setSettings(updated);
-    saveStoredSettings(updated);
+    handleUpdateSettings({ firstDayOfWeek: day });
   };
 
   // User and role handlers
@@ -309,6 +323,8 @@ export const App: React.FC = () => {
         onUnitChange={handleUnitChange}
         firstDayOfWeek={settings.firstDayOfWeek}
         onFirstDayChange={handleFirstDayChange}
+        themeMode={settings.themeMode || 'dark'}
+        onThemeChange={handleThemeChange}
         currentUser={currentUser}
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onOpenPlanBuilder={() => setIsPlanBuilderOpen(true)}
@@ -384,6 +400,17 @@ export const App: React.FC = () => {
               setActiveTab('log_run');
             }}
             warningThreshold={settings.warningThreshold}
+          />
+        )}
+
+        {/* Tab 5: Settings (Appearance / Theme Mode, Units, Schedules, ACR Thresholds) */}
+        {activeTab === 'settings' && (
+          <SettingsTab
+            settings={settings}
+            onUpdateSettings={handleUpdateSettings}
+            currentUser={currentUser}
+            onToggleRole={handleToggleRole}
+            onOpenAuth={() => setIsAuthModalOpen(true)}
           />
         )}
       </main>

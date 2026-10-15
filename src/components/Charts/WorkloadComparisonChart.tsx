@@ -67,7 +67,7 @@ export const WorkloadComparisonChart: React.FC<Props> = ({ weeks }) => {
                   y1={y}
                   x2={svgWidth - padding.right}
                   y2={y}
-                  stroke="#21262d"
+                  stroke="var(--border-subtle)"
                   strokeDasharray="2 3"
                 />
                 <text
@@ -75,7 +75,7 @@ export const WorkloadComparisonChart: React.FC<Props> = ({ weeks }) => {
                   y={y + 4}
                   textAnchor="end"
                   fontSize="9"
-                  fill="#6e7681"
+                  fill="var(--text-muted)"
                   fontFamily="monospace"
                 >
                   {Math.round(val)}
@@ -112,7 +112,8 @@ export const WorkloadComparisonChart: React.FC<Props> = ({ weeks }) => {
                   y={y - 6}
                   textAnchor="middle"
                   fontSize="9"
-                  fill="#93c5fd"
+                  fill="var(--text-primary)"
+                  fontWeight="600"
                   fontFamily="monospace"
                 >
                   {Math.round(w.acuteWorkload)}
@@ -122,7 +123,7 @@ export const WorkloadComparisonChart: React.FC<Props> = ({ weeks }) => {
                   y={padding.top + chartHeight + 18}
                   textAnchor="middle"
                   fontSize="10"
-                  fill={isHovered ? '#f0f6fc' : '#8b949e'}
+                  fill={isHovered ? 'var(--text-primary)' : 'var(--text-muted)'}
                   fontFamily="monospace"
                 >
                   W{w.weekNumber}
@@ -154,7 +155,7 @@ export const WorkloadComparisonChart: React.FC<Props> = ({ weeks }) => {
                 cy={cy}
                 r={3.5}
                 fill="#fbbf24"
-                stroke="#0e1117"
+                stroke="var(--bg-surface)"
                 strokeWidth="1.5"
               />
             );

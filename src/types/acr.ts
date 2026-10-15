@@ -97,8 +97,11 @@ export interface UserProfile {
   googleId?: string;
 }
 
+export type ThemeMode = 'dark' | 'light';
+
 export interface AppSettings {
   distanceUnit: DistanceUnit;
   firstDayOfWeek: DayOfWeek; // 1 = Monday, 0 = Sunday
   warningThreshold: number; // default 1.2
+  themeMode: ThemeMode; // 'dark' | 'light'
 }

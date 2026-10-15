@@ -4,10 +4,11 @@ import type {
   DayOfWeek,
   UserProfile,
   CoachNotification,
+  ThemeMode,
 } from '../types/acr';
 import { NotificationCenter } from './NotificationCenter';
 
-export type ActiveNavTab = 'log_run' | 'workouts' | 'training_log' | 'analytics';
+export type ActiveNavTab = 'log_run' | 'workouts' | 'training_log' | 'analytics' | 'settings';
 
 interface Props {
   activeTab: ActiveNavTab;
@@ -16,6 +17,8 @@ interface Props {
   onUnitChange: (unit: DistanceUnit) => void;
   firstDayOfWeek: DayOfWeek;
   onFirstDayChange: (day: DayOfWeek) => void;
+  themeMode: ThemeMode;
+  onThemeChange: (theme: ThemeMode) => void;
   currentUser: UserProfile;
   onOpenAuth: () => void;
   onOpenPlanBuilder: () => void;
@@ -33,6 +36,8 @@ export const Header: React.FC<Props> = ({
   onUnitChange,
   firstDayOfWeek,
   onFirstDayChange,
+  themeMode,
+  onThemeChange,
   currentUser,
   onOpenAuth,
   onOpenPlanBuilder,
@@ -75,32 +80,32 @@ export const Header: React.FC<Props> = ({
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
-              <line x1="1" y1="17" x2="5" y2="17" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" opacity="0.9" />
-              <line x1="0" y1="21" x2="4" y2="21" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
-              <line x1="2" y1="25" x2="5" y2="25" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" opacity="0.5" />
+              <line x1="1" y1="17" x2="5" y2="17" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" opacity="0.9" />
+              <line x1="0" y1="21" x2="4" y2="21" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+              <line x1="2" y1="25" x2="5" y2="25" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" opacity="0.5" />
               <path
                 d="M5 27C8 27 13 28.5 19 28.5C29 28.5 39 27.5 49 23C50 22.5 50.5 21 48 21C43 21 35 22 29 22C20 22 11 20.5 6 24C4.5 25 4.5 27 5 27Z"
-                fill="#38bdf8"
+                fill="var(--color-accent)"
               />
               <path
                 d="M7 28C11 29 17 29.5 23 29.5C33 29.5 41 28.5 49 24.5C50 26 48 27.5 45 28.5C37 30.5 23 30.5 13 30C8 30 6 28.8 7 28Z"
-                fill="#0284c7"
+                fill="var(--color-accent-hover)"
               />
               <path
                 d="M9 23C12 19 17 14.5 25 14.5C29 14.5 31 17 35 14C38 11.5 40 8.5 44 8.5C46.5 8.5 47.5 11 46 14C44.5 17 44.5 19.5 47 21.5C40 22.5 29 22.5 21 22.5C15 22.5 11 22 9 23Z"
-                fill="#f8fafc"
+                fill="var(--text-primary)"
               />
               <path
                 d="M44 8.5C40 8.5 38 11.5 35 14C31 17 29 14.5 25 14.5C22 14.5 19 16 16 18.5L19 21.5C23 18.5 27 17.5 31 17.5C35 17.5 38 15 40 13L44 8.5Z"
-                fill="#64748b"
+                fill="var(--text-muted)"
               />
               <path
                 d="M18 21.5C25 20 33 18.5 41 15.5C38 18 33 20.5 25 22C21 22.5 19 22 18 21.5Z"
-                fill="#38bdf8"
+                fill="var(--color-accent)"
               />
-              <line x1="27" y1="14" x2="32" y2="17" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" />
-              <line x1="30" y1="12" x2="35" y2="15" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" />
-              <line x1="34" y1="10" x2="39" y2="13" stroke="#38bdf8" strokeWidth="1.8" strokeLinecap="round" />
+              <line x1="27" y1="14" x2="32" y2="17" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
+              <line x1="30" y1="12" x2="35" y2="15" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
+              <line x1="34" y1="10" x2="39" y2="13" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
             <span className="brand-logo-text">ACR</span>
           </div>
@@ -140,6 +145,13 @@ export const Header: React.FC<Props> = ({
           >
             Analytics
           </button>
+          <button
+            type="button"
+            className={`tab-pill ${activeTab === 'settings' ? 'tab-pill-active' : ''}`}
+            onClick={() => onTabChange('settings')}
+          >
+            Settings
+          </button>
         </nav>
 
         {/* Mobile View Dropdown Navigation */}
@@ -154,6 +166,7 @@ export const Header: React.FC<Props> = ({
             <option value="workouts">Workouts</option>
             <option value="training_log">Training Log</option>
             <option value="analytics">Analytics</option>
+            <option value="settings">Settings</option>
           </select>
         </div>
 
@@ -238,6 +251,30 @@ export const Header: React.FC<Props> = ({
                   </button>
                 </div>
 
+                {/* Theme Mode Switcher */}
+                <div className="settings-item">
+                  <div className="settings-item-label">
+                    <span className="text-xs font-medium text-white">Appearance</span>
+                    <span className="text-xxs text-muted">Theme palette</span>
+                  </div>
+                  <div className="segmented-unit-control">
+                    <button
+                      type="button"
+                      className={`seg-btn ${themeMode === 'dark' ? 'active' : ''}`}
+                      onClick={() => onThemeChange('dark')}
+                    >
+                      DARK
+                    </button>
+                    <button
+                      type="button"
+                      className={`seg-btn ${themeMode === 'light' ? 'active' : ''}`}
+                      onClick={() => onThemeChange('light')}
+                    >
+                      LIGHT
+                    </button>
+                  </div>
+                </div>
+
                 {/* Distance Units Switcher */}
                 <div className="settings-item">
                   <div className="settings-item-label">
@@ -280,6 +317,19 @@ export const Header: React.FC<Props> = ({
                 </div>
 
                 <div className="settings-divider" />
+
+                {/* Open Full Settings Tab */}
+                <button
+                  type="button"
+                  className="btn-settings-pill full-width"
+                  style={{ width: '100%', marginBottom: '0.5rem', textAlign: 'center' }}
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    onTabChange('settings');
+                  }}
+                >
+                  Configure in Settings Tab →
+                </button>
 
                 {/* Account Settings / Sign In */}
                 <button

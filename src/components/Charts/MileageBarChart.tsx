@@ -56,7 +56,7 @@ export const MileageBarChart: React.FC<Props> = ({ weeks, unit }) => {
                   y1={y}
                   x2={svgWidth - padding.right}
                   y2={y}
-                  stroke="#21262d"
+                  stroke="var(--border-subtle)"
                   strokeDasharray="2 3"
                 />
                 <text
@@ -64,7 +64,7 @@ export const MileageBarChart: React.FC<Props> = ({ weeks, unit }) => {
                   y={y + 4}
                   textAnchor="end"
                   fontSize="9"
-                  fill="#6e7681"
+                  fill="var(--text-muted)"
                   fontFamily="monospace"
                 >
                   {Math.round(val)}
@@ -94,15 +94,16 @@ export const MileageBarChart: React.FC<Props> = ({ weeks, unit }) => {
                   width={barWidth}
                   height={Math.max(2, height)}
                   rx="3"
-                  fill={isHovered ? '#34d399' : '#10b981'}
-                  opacity={isHovered ? 1 : 0.8}
+                  fill={isHovered ? 'var(--color-success, #10b981)' : 'var(--color-accent)'}
+                  opacity={isHovered ? 1 : 0.85}
                 />
                 <text
                   x={getX(i)}
                   y={y - 5}
                   textAnchor="middle"
                   fontSize="9"
-                  fill="#6ee7b7"
+                  fill="var(--text-primary)"
+                  fontWeight="600"
                   fontFamily="monospace"
                 >
                   {val.toFixed(1)}
@@ -112,7 +113,7 @@ export const MileageBarChart: React.FC<Props> = ({ weeks, unit }) => {
                   y={padding.top + chartHeight + 16}
                   textAnchor="middle"
                   fontSize="10"
-                  fill={isHovered ? '#f0f6fc' : '#8b949e'}
+                  fill={isHovered ? 'var(--text-primary)' : 'var(--text-muted)'}
                   fontFamily="monospace"
                 >
                   W{w.weekNumber}

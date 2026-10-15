@@ -90,7 +90,7 @@ export const ACRTrendChart: React.FC<Props> = ({
             y1={getY(0.5)}
             x2={svgWidth - padding.right}
             y2={getY(0.5)}
-            stroke="#21262d"
+            stroke="var(--border-subtle)"
             strokeDasharray="3 3"
           />
           <line
@@ -98,7 +98,7 @@ export const ACRTrendChart: React.FC<Props> = ({
             y1={getY(1.0)}
             x2={svgWidth - padding.right}
             y2={getY(1.0)}
-            stroke="#30363d"
+            stroke="var(--border-muted)"
             strokeDasharray="4 4"
           />
           <line
@@ -106,7 +106,7 @@ export const ACRTrendChart: React.FC<Props> = ({
             y1={getY(1.5)}
             x2={svgWidth - padding.right}
             y2={getY(1.5)}
-            stroke="#21262d"
+            stroke="var(--border-subtle)"
             strokeDasharray="3 3"
           />
 
@@ -223,8 +223,8 @@ export const ACRTrendChart: React.FC<Props> = ({
                   cx={cx}
                   cy={cy}
                   r={isHovered ? 6 : 4.5}
-                  fill={isExceeded ? '#ef4444' : '#38bdf8'}
-                  stroke="#0e1117"
+                  fill={isExceeded ? '#ef4444' : 'var(--color-accent)'}
+                  stroke="var(--bg-app)"
                   strokeWidth="2"
                 />
                 {/* Value text above dot */}
@@ -234,7 +234,7 @@ export const ACRTrendChart: React.FC<Props> = ({
                   textAnchor="middle"
                   fontSize="10"
                   fontFamily="monospace"
-                  fill={isExceeded ? '#ef4444' : '#e6edf3'}
+                  fill={isExceeded ? '#ef4444' : 'var(--text-primary)'}
                   fontWeight={isExceeded || isHovered ? 'bold' : 'normal'}
                 >
                   {d.acr!.toFixed(2)}
@@ -245,7 +245,7 @@ export const ACRTrendChart: React.FC<Props> = ({
                   y={padding.top + chartHeight + 20}
                   textAnchor="middle"
                   fontSize="11"
-                  fill={isHovered ? '#f0f6fc' : '#8b949e'}
+                  fill={isHovered ? 'var(--text-primary)' : 'var(--text-muted)'}
                   fontFamily="monospace"
                 >
                   {d.label}
@@ -255,10 +255,10 @@ export const ACRTrendChart: React.FC<Props> = ({
           })}
 
           {/* Y Axis markings */}
-          <text x={padding.left - 8} y={getY(0.0) + 4} textAnchor="end" fontSize="10" fill="#6e7681" fontFamily="monospace">0.0</text>
+          <text x={padding.left - 8} y={getY(0.0) + 4} textAnchor="end" fontSize="10" fill="var(--text-muted)" fontFamily="monospace">0.0</text>
           <text x={padding.left - 8} y={getY(0.8) + 4} textAnchor="end" fontSize="10" fill="#10b981" fontFamily="monospace">0.8</text>
           <text x={padding.left - 8} y={getY(1.2) + 4} textAnchor="end" fontSize="10" fill="#ef4444" fontFamily="monospace">1.2</text>
-          <text x={padding.left - 8} y={getY(1.6) + 4} textAnchor="end" fontSize="10" fill="#6e7681" fontFamily="monospace">1.6</text>
+          <text x={padding.left - 8} y={getY(1.6) + 4} textAnchor="end" fontSize="10" fill="var(--text-muted)" fontFamily="monospace">1.6</text>
         </svg>
       </div>
 

@@ -73,7 +73,7 @@ export const DayDetailsModal: React.FC<Props> = ({
           <div className="day-quick-metrics mb-4">
             <div className="quick-metric">
               <span className="metric-label">Total Volume</span>
-              <span className="metric-val font-mono text-white">
+              <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
                 {totalDist.toFixed(2)} {distanceUnit.toUpperCase()}
               </span>
             </div>
@@ -85,7 +85,7 @@ export const DayDetailsModal: React.FC<Props> = ({
             </div>
             <div className="quick-metric">
               <span className="metric-label">Activities</span>
-              <span className="metric-val font-mono text-white">
+              <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
                 {runs.length} {runs.length === 1 ? 'Run' : 'Runs'}
               </span>
             </div>
@@ -107,7 +107,7 @@ export const DayDetailsModal: React.FC<Props> = ({
           {runs.length === 0 ? (
             <div className="empty-day-box py-8 text-center">
               <div className="text-2xl mb-2">👟</div>
-              <h4 className="text-white font-medium text-sm mb-1">Rest Day</h4>
+              <h4 className="font-medium text-sm mb-1" style={{ color: 'var(--text-primary)' }}>Rest Day</h4>
               <p className="text-muted text-xs">
                 No runs recorded for this date. Active recovery or total rest!
               </p>
@@ -124,14 +124,17 @@ export const DayDetailsModal: React.FC<Props> = ({
                     className="day-run-detail-card"
                     style={{
                       borderLeft: `4px solid ${color}`,
-                      backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                      backgroundColor: 'var(--bg-surface-elevated)',
                       padding: '1rem',
                       borderRadius: '8px',
-                      border: `1px solid rgba(255, 255, 255, 0.08)`,
+                      border: `1px solid var(--border-subtle)`,
                       borderLeftColor: color,
                     }}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-white/5">
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2"
+                      style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                    >
                       <div className="flex items-center gap-2">
                         <span className="run-badge-tag font-mono text-xs font-bold">
                           Run #{idx + 1}
@@ -165,16 +168,16 @@ export const DayDetailsModal: React.FC<Props> = ({
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div className="bg-white/5 p-2 rounded">
+                      <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
                         <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                           Distance
                         </span>
-                        <strong className="text-base font-mono text-white">
+                        <strong className="text-base font-mono" style={{ color: 'var(--text-primary)' }}>
                           {run.distance} {run.distanceUnit.toUpperCase()}
                         </strong>
                       </div>
 
-                      <div className="bg-white/5 p-2 rounded">
+                      <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
                         <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                           Workload Stress
                         </span>
@@ -185,13 +188,20 @@ export const DayDetailsModal: React.FC<Props> = ({
                     </div>
 
                     {/* Athlete / Coach Notes with Wrapped Text */}
-                    <div className="day-run-notes-box bg-black/30 p-2.5 rounded border border-white/5">
+                    <div
+                      className="day-run-notes-box p-2.5 rounded"
+                      style={{
+                        backgroundColor: 'var(--bg-surface-subtle)',
+                        border: '1px solid var(--border-subtle)',
+                      }}
+                    >
                       <span className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
                         Workout Notes & Instructions
                       </span>
                       <p
-                        className="text-xs text-slate-200 font-sans"
+                        className="text-xs font-sans"
                         style={{
+                          color: 'var(--text-secondary)',
                           whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word',
                           overflowWrap: 'anywhere',
