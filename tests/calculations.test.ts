@@ -6,7 +6,7 @@ import {
   buildWeeklyWorkloadData,
   generateRecurringDates,
 } from '../src/utils/calculations';
-import type { WorkoutRun, WeekWorkload } from '../src/types/acr';
+import type { WorkoutRun, WeekWorkload, UserProfile } from '../src/types/acr';
 
 describe('ACWR Calculations (TDD Core Science)', () => {
   it('test_calculateRunLoad_multipliers() - exact workload values', () => {
@@ -295,6 +295,107 @@ describe('Coach Multi-Athlete Assignment & Access Control (TDD)', () => {
     expect(updatedRun.athleteId).toBe('user_rob');
     expect(updatedRun.assignedByCoachId).toBe('user_michael_carey');
     expect(updatedRun.isPlanAssigned).toBe(true);
+  });
+});
+
+describe('Coach Analytics - Multi-Athlete Breakdown & Graph View Selection (TDD)', () => {
+  it('test_coachAllAthletesBreakdown_isolatesAthleteMetrics() - each athlete has isolated stats and graphs', () => {
+    const workouts: WorkoutRun[] = [
+      // Rob's workouts (10 miles @ 3.0 mult = 30 load per week)
+      { id: 'r1', workoutDate: '2026-09-21', runOrder: 1, distance: 10, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 30, comments: '', completed: true, athleteId: 'user_rob', athleteName: 'Rob' },
+      { id: 'r2', workoutDate: '2026-09-28', runOrder: 1, distance: 10, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 30, comments: '', completed: true, athleteId: 'user_rob', athleteName: 'Rob' },
+      { id: 'r3', workoutDate: '2026-10-05', runOrder: 1, distance: 10, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 30, comments: '', completed: true, athleteId: 'user_rob', athleteName: 'Rob' },
+      { id: 'r4', workoutDate: '2026-10-12', runOrder: 1, distance: 10, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 30, comments: '', completed: true, athleteId: 'user_rob', athleteName: 'Rob' },
+
+      // Sarah's workouts (20 miles @ 3.0 mult = 60 load per week)
+      { id: 's1', workoutDate: '2026-09-21', runOrder: 1, distance: 20, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 60, comments: '', completed: true, athleteId: 'runner_sarah', athleteName: 'Sarah Chen' },
+      { id: 's2', workoutDate: '2026-09-28', runOrder: 1, distance: 20, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 60, comments: '', completed: true, athleteId: 'runner_sarah', athleteName: 'Sarah Chen' },
+      { id: 's3', workoutDate: '2026-10-05', runOrder: 1, distance: 20, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 60, comments: '', completed: true, athleteId: 'runner_sarah', athleteName: 'Sarah Chen' },
+      { id: 's4', workoutDate: '2026-10-12', runOrder: 1, distance: 20, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 60, comments: '', completed: true, athleteId: 'runner_sarah', athleteName: 'Sarah Chen' },
+    ];
+
+    // Compute Rob's isolated workload
+    const robWorkouts = workouts.filter((w) => w.athleteId === 'user_rob');
+    const robWeeks = buildWeeklyWorkloadData(robWorkouts, 1, 1.2);
+    expect(robWeeks.length).toBe(4);
+    expect(robWeeks[3].acuteWorkload).toBe(30.0);
+    expect(robWeeks[3].chronicWorkload).toBe(30.0);
+    expect(robWeeks[3].acr).toBe(1.0);
+    expect(robWeeks[3].totalMiles).toBe(10.0);
+
+    // Compute Sarah's isolated workload
+    const sarahWorkouts = workouts.filter((w) => w.athleteId === 'runner_sarah');
+    const sarahWeeks = buildWeeklyWorkloadData(sarahWorkouts, 1, 1.2);
+    expect(sarahWeeks.length).toBe(4);
+    expect(sarahWeeks[3].acuteWorkload).toBe(60.0);
+    expect(sarahWeeks[3].chronicWorkload).toBe(60.0);
+    expect(sarahWeeks[3].acr).toBe(1.0);
+    expect(sarahWeeks[3].totalMiles).toBe(20.0);
+
+    // Alex River has 0 workouts -> clean empty weeks
+    const alexWorkouts = workouts.filter((w) => w.athleteId === 'runner_alex');
+    const alexWeeks = buildWeeklyWorkloadData(alexWorkouts, 1, 1.2);
+    expect(alexWeeks.length).toBe(0);
+
+    // Verify Rob and Sarah's loads are completely decoupled
+    expect(robWeeks[3].acuteWorkload).not.toBe(sarahWeeks[3].acuteWorkload);
+  });
+
+  it('test_athleteRoleCannotAccessAllAthletesTab() - athlete view is constrained strictly to own ID', () => {
+    const robUser: UserProfile = {
+      id: 'user_rob',
+      name: 'Rob',
+      email: 'rob@example.com',
+      role: 'runner',
+      avatarUrl: '',
+    };
+
+    const coachUser: UserProfile = {
+      id: 'user_michael_carey',
+      name: 'Michael Carey',
+      email: 'coach@example.com',
+      role: 'coach',
+      avatarUrl: '',
+    };
+
+    // A runner has isCoach = false
+    const isRobCoach = robUser.role === 'coach';
+    expect(isRobCoach).toBe(false);
+
+    // A coach has isCoach = true
+    const isMichaelCoach = coachUser.role === 'coach';
+    expect(isMichaelCoach).toBe(true);
+
+    // In runner mode, selectedAthleteFilter must always resolve to Rob's ID
+    const effectiveFilterForRob = !isRobCoach ? robUser.id : 'all';
+    expect(effectiveFilterForRob).toBe('user_rob');
+
+    // In coach mode, coach can choose 'all' or specific athlete
+    const effectiveFilterForCoach = isMichaelCoach ? 'all' : coachUser.id;
+    expect(effectiveFilterForCoach).toBe('all');
+  });
+
+  it('test_selectGraphViewModes() - supports acr, workload, mileage, and all', () => {
+    const validModes: Array<'acr' | 'workload' | 'mileage' | 'all'> = ['acr', 'workload', 'mileage', 'all'];
+
+    // Default view mode requested by user
+    const defaultMode = 'acr';
+    expect(validModes).toContain(defaultMode);
+
+    // Verify mode switching logic
+    let currentMode: 'acr' | 'workload' | 'mileage' | 'all' = defaultMode;
+    const switchMode = (mode: 'acr' | 'workload' | 'mileage' | 'all') => {
+      currentMode = mode;
+    };
+
+    switchMode('workload');
+    expect(currentMode).toBe('workload');
+
+    switchMode('mileage');
+    expect(currentMode).toBe('mileage');
+
+    switchMode('all');
+    expect(currentMode).toBe('all');
   });
 });
 

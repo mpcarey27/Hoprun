@@ -501,6 +501,13 @@ export const App: React.FC = () => {
               setActiveTab('log_run');
             }}
             warningThreshold={settings.warningThreshold}
+            currentUser={currentUser}
+            allWorkouts={workouts}
+            selectedAthleteFilter={selectedAthleteFilter}
+            onSelectAthleteFilter={setSelectedAthleteFilter}
+            firstDayOfWeek={settings.firstDayOfWeek}
+            activeWeekStartDate={activeWeekStartDate}
+            onOpenAssignRun={() => setIsAssignRunOpen(true)}
           />
         )}
 
