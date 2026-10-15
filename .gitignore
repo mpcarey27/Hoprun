@@ -27,3 +27,4 @@ dist-ssr
 .serena/
 graphify-out/
 .chrome_tmp/
+.wrangler/

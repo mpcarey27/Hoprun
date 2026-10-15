@@ -6,4 +6,4 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "acr_running_db"
-database_id = "local-db-acr"
+database_id = "01fb2ca5-2fbf-4d2a-aaac-692d54b551e1"
