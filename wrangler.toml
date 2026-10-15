@@ -1,0 +1,9 @@
+name = "acr-run-tracker"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "dist"
+
+# Cloudflare Free Tier D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "acr_running_db"
+database_id = "local-db-acr"
