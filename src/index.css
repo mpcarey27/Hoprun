@@ -580,7 +580,7 @@ body {
   width: 20px;
   height: 20px;
   background-color: var(--color-accent);
-  color: #000;
+  color: var(--btn-accent-text);
   border-radius: 50%;
   font-size: 0.75rem;
   font-weight: 700;
@@ -960,7 +960,7 @@ body {
 .btn-add-primary {
   background-color: var(--color-accent);
   border: none;
-  color: #000;
+  color: var(--btn-accent-text);
   font-size: 0.8rem;
   font-weight: 700;
   padding: 0.4rem 0.85rem;
@@ -1121,7 +1121,7 @@ body {
 
 .btn-unit-pill:hover {
   background-color: var(--color-accent);
-  color: #000;
+  color: var(--btn-accent-text);
 }
 
 .hero-load-display {
@@ -1383,7 +1383,7 @@ body {
 
 .btn-filter-pill.active {
   background-color: var(--color-accent);
-  color: #000;
+  color: var(--btn-accent-text);
   font-weight: 700;
   border-color: var(--color-accent);
 }
@@ -2010,7 +2010,7 @@ body {
 .btn-save-plan {
   background-color: var(--color-accent);
   border: none;
-  color: #000;
+  color: var(--btn-accent-text);
   font-size: 0.82rem;
   font-weight: 700;
   padding: 0.48rem 0.95rem;
@@ -2073,7 +2073,7 @@ body {
 
 .btn-duration-pill.active {
   background-color: var(--color-accent);
-  color: #000;
+  color: var(--btn-accent-text);
   border-color: var(--color-accent);
 }
 
@@ -2278,7 +2278,7 @@ body {
 
 .btn-action-primary {
   background-color: var(--color-accent);
-  color: #000;
+  color: var(--btn-accent-text);
   border: none;
   font-size: 0.8rem;
   font-weight: 700;
@@ -2346,7 +2346,7 @@ body {
 
 .btn-confirm-day {
   background-color: var(--color-success);
-  color: #000;
+  color: #ffffff;
   border: none;
   font-size: 0.8rem;
   font-weight: 700;
@@ -2472,7 +2472,7 @@ body {
   height: 40px;
   border-radius: 50%;
   background-color: var(--color-accent);
-  color: #000;
+  color: var(--btn-accent-text);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2535,7 +2535,7 @@ body {
 
 .btn-save-client-id {
   background-color: var(--color-accent);
-  color: #000;
+  color: var(--btn-accent-text);
   border: none;
   font-size: 0.75rem;
   font-weight: 700;
@@ -3482,5 +3482,120 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.15s ease-out;
 }
+
+/* ==========================================================================
+   Light Mode — High Specificity Green Background White Text Enforcement
+   "In light mode change all text with green backgrounds to white text"
+   ========================================================================== */
+
+/* Buttons, Active Pills, Navigation Tabs, and Badges with Green Backgrounds */
+[data-theme="light"] .tab-pill-active,
+[data-theme="light"] .tab-pill-active *,
+[data-theme="light"] .seg-btn.active,
+[data-theme="light"] .seg-btn.active *,
+[data-theme="light"] .btn-unit-opt.active,
+[data-theme="light"] .btn-unit-opt.active *,
+[data-theme="light"] .btn-add-primary,
+[data-theme="light"] .btn-add-primary *,
+[data-theme="light"] .btn-save-plan,
+[data-theme="light"] .btn-save-plan *,
+[data-theme="light"] .btn-duration-pill.active,
+[data-theme="light"] .btn-duration-pill.active *,
+[data-theme="light"] .btn-action-primary,
+[data-theme="light"] .btn-action-primary *,
+[data-theme="light"] .btn-confirm-day,
+[data-theme="light"] .btn-confirm-day *,
+[data-theme="light"] .btn-save-client-id,
+[data-theme="light"] .btn-save-client-id *,
+[data-theme="light"] .user-icon-circle,
+[data-theme="light"] .user-icon-circle *,
+[data-theme="light"] .user-avatar-circle,
+[data-theme="light"] .user-avatar-circle *,
+[data-theme="light"] .user-avatar-initial,
+[data-theme="light"] .btn-filter-pill.active,
+[data-theme="light"] .btn-filter-pill.active *,
+[data-theme="light"] .btn-unit-pill:hover,
+[data-theme="light"] .btn-unit-pill:hover *,
+[data-theme="light"] .calendar-day-btn.active,
+[data-theme="light"] .calendar-day-btn.active *,
+[data-theme="light"] .calendar-day-btn.today.active,
+[data-theme="light"] .calendar-day-btn.today.active *,
+[data-theme="light"] .big-calendar-today-pill,
+[data-theme="light"] .big-calendar-today-pill *,
+[data-theme="light"] .theme-check-badge,
+[data-theme="light"] .theme-check-badge *,
+[data-theme="light"] .btn-day-picker-pill.active,
+[data-theme="light"] .btn-day-picker-pill.active *,
+[data-theme="light"] .btn-assign-run,
+[data-theme="light"] .btn-assign-run *,
+[data-theme="light"] .btn-assign-run-header:hover,
+[data-theme="light"] .btn-assign-run-header:hover *,
+[data-theme="light"] .btn-assign-run-admin:hover,
+[data-theme="light"] .btn-assign-run-admin:hover * {
+  color: #ffffff !important;
+}
+
+/* Light Mode Solid Green Badges & Indicators with White Text */
+[data-theme="light"] .badge-safe,
+[data-theme="light"] .badge-success,
+[data-theme="light"] .status-done,
+[data-theme="light"] .ribbon-badge,
+[data-theme="light"] .week-summary-acr-badge.safe {
+  background-color: #15803d !important;
+  color: #ffffff !important;
+  border-color: #166534 !important;
+  font-weight: 700;
+}
+
+[data-theme="light"] .badge-safe *,
+[data-theme="light"] .badge-success *,
+[data-theme="light"] .status-done *,
+[data-theme="light"] .ribbon-badge *,
+[data-theme="light"] .week-summary-acr-badge.safe * {
+  color: #ffffff !important;
+}
+
+/* Assign Run Button in Light Mode (Athletic Forest Green Gradient with White Text) */
+[data-theme="light"] .btn-assign-run {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%) !important;
+  border: 1px solid #15803d !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 4px rgba(21, 128, 61, 0.25) !important;
+}
+
+[data-theme="light"] .btn-assign-run:hover {
+  background: linear-gradient(135deg, #166534 0%, #14532d 100%) !important;
+  border-color: #14532d !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 10px rgba(21, 128, 61, 0.4) !important;
+}
+
+/* Universal Light Mode Selector for Any Element With Green Backgrounds */
+[data-theme="light"] [style*="background: #15803d"],
+[data-theme="light"] [style*="background: rgb(21, 128, 61)"],
+[data-theme="light"] [style*="background-color: #15803d"],
+[data-theme="light"] [style*="background-color: rgb(21, 128, 61)"],
+[data-theme="light"] [style*="background-color: var(--color-accent)"],
+[data-theme="light"] [style*="background: var(--color-accent)"],
+[data-theme="light"] [style*="background-color: var(--color-success)"],
+[data-theme="light"] [style*="background: var(--color-success)"],
+[data-theme="light"] [style*="background: #10b981"],
+[data-theme="light"] [style*="background-color: #10b981"] {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] [style*="background: #15803d"] *,
+[data-theme="light"] [style*="background: rgb(21, 128, 61)"] *,
+[data-theme="light"] [style*="background-color: #15803d"] *,
+[data-theme="light"] [style*="background-color: rgb(21, 128, 61)"] *,
+[data-theme="light"] [style*="background-color: var(--color-accent)"] *,
+[data-theme="light"] [style*="background: var(--color-accent)"] *,
+[data-theme="light"] [style*="background-color: var(--color-success)"] *,
+[data-theme="light"] [style*="background: var(--color-success)"] *,
+[data-theme="light"] [style*="background: #10b981"] *,
+[data-theme="light"] [style*="background-color: #10b981"] * {
+  color: #ffffff !important;
+}
+
 
 

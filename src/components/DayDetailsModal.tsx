@@ -159,8 +159,8 @@ export const DayDetailsModal: React.FC<Props> = ({
                       <span
                         className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${
                           run.completed
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+                            ? 'status-done'
+                            : 'status-plan'
                         }`}
                       >
                         {run.completed ? '✓ Completed' : '⏳ Planned'}
