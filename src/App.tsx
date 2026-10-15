@@ -21,6 +21,7 @@ import {
   saveStoredSettings,
   loadStoredUser,
   saveStoredUser,
+  ROSTER_USERS,
 } from './utils/storage';
 import {
   buildWeeklyWorkloadData,
@@ -111,10 +112,33 @@ export const App: React.FC = () => {
     parseUrlPlan();
   }, [plans]);
 
-  // Recalculate weeks workload data
+  // Coach Athlete Roster Filter ('all' or specific athlete id)
+  const [selectedAthleteFilter, setSelectedAthleteFilter] = useState<string>('all');
+
+  // Compute visible workouts based on role and athlete filter
+  const visibleWorkouts = useMemo(() => {
+    if (currentUser.role === 'runner') {
+      // Athlete (e.g. Rob) only has access to their own workouts
+      return workouts.filter(
+        (w) =>
+          w.athleteId === currentUser.id ||
+          w.athleteName === currentUser.name ||
+          (!w.athleteId && !w.isPlanAssigned)
+      );
+    }
+    // Coach Admin (Michael Carey) can view all athletes or focus on an individual athlete
+    if (selectedAthleteFilter === 'all') {
+      return workouts;
+    }
+    return workouts.filter(
+      (w) => w.athleteId === selectedAthleteFilter || w.athleteName === selectedAthleteFilter
+    );
+  }, [workouts, currentUser, selectedAthleteFilter]);
+
+  // Recalculate weeks workload data based on visible workouts
   const weeks = useMemo(() => {
-    return buildWeeklyWorkloadData(workouts, settings.firstDayOfWeek, settings.warningThreshold);
-  }, [workouts, settings.firstDayOfWeek, settings.warningThreshold]);
+    return buildWeeklyWorkloadData(visibleWorkouts, settings.firstDayOfWeek, settings.warningThreshold);
+  }, [visibleWorkouts, settings.firstDayOfWeek, settings.warningThreshold]);
 
   // Current active week in the workload calculations
   const currentWeek = useMemo(() => {
@@ -125,10 +149,10 @@ export const App: React.FC = () => {
 
   // Runs logged on the currently selected date
   const runsForSelectedDate = useMemo(() => {
-    return workouts
+    return visibleWorkouts
       .filter((w) => w.workoutDate === selectedDate)
       .sort((a, b) => a.runOrder - b.runOrder);
-  }, [workouts, selectedDate]);
+  }, [visibleWorkouts, selectedDate]);
 
   // In-week mid-week warning and prediction
   const inWeekPrediction = useMemo(() => {
@@ -154,14 +178,30 @@ export const App: React.FC = () => {
 
   // Handlers for workouts
   const handleSaveRun = (run: WorkoutRun) => {
+    // Ensure athlete identity is preserved or assigned
+    const targetRun: WorkoutRun = { ...run };
+    if (!targetRun.athleteId) {
+      if (currentUser.role === 'runner') {
+        targetRun.athleteId = currentUser.id;
+        targetRun.athleteName = currentUser.name;
+      } else if (selectedAthleteFilter !== 'all') {
+        const matched = ROSTER_USERS.find((u) => u.id === selectedAthleteFilter);
+        targetRun.athleteId = selectedAthleteFilter;
+        targetRun.athleteName = matched?.name || 'Athlete';
+      } else {
+        targetRun.athleteId = currentUser.id;
+        targetRun.athleteName = currentUser.name;
+      }
+    }
+
     setWorkouts((prev) => {
-      const existingIdx = prev.findIndex((r) => r.id === run.id);
+      const existingIdx = prev.findIndex((r) => r.id === targetRun.id);
       let updated: WorkoutRun[];
       if (existingIdx >= 0) {
         updated = [...prev];
-        updated[existingIdx] = run;
+        updated[existingIdx] = targetRun;
       } else {
-        updated = [...prev, run];
+        updated = [...prev, targetRun];
       }
       saveStoredWorkouts(updated);
       return updated;
@@ -336,6 +376,67 @@ export const App: React.FC = () => {
       />
 
       <main className="main-content">
+        {/* Coach Admin Athlete Roster Bar (Only visible in Coach Mode) */}
+        {currentUser.role === 'coach' && (
+          <div className="mb-4 p-3 rounded bg-surface border border-subtle">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="badge-safe font-mono text-xxs font-bold">
+                  COACH MODE
+                </span>
+                <span className="text-xs font-mono font-bold text-primary">
+                  Coach: {currentUser.name} · Athlete View:
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn-assign-run text-xs py-1 px-3"
+                  onClick={() => setIsAssignRunOpen(true)}
+                  title="Prescribe runs to an athlete"
+                >
+                  + Assign Run
+                </button>
+                <button
+                  type="button"
+                  className="btn-action-secondary text-xs py-1 px-3"
+                  onClick={() => setIsPlanBuilderOpen(true)}
+                  title="Assign training plan to an athlete"
+                >
+                  + Assign Plan
+                </button>
+              </div>
+            </div>
+
+            {/* Roster Filter Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={`btn-filter-pill ${selectedAthleteFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setSelectedAthleteFilter('all')}
+              >
+                All Athletes ({workouts.length} runs)
+              </button>
+              {ROSTER_USERS.map((user) => {
+                const count = workouts.filter(
+                  (w) => w.athleteId === user.id || w.athleteName === user.name
+                ).length;
+                const isSelf = user.id === currentUser.id;
+                return (
+                  <button
+                    key={user.id}
+                    type="button"
+                    className={`btn-filter-pill ${selectedAthleteFilter === user.id ? 'active' : ''}`}
+                    onClick={() => setSelectedAthleteFilter(user.id)}
+                  >
+                    {user.name} {isSelf ? '(You / Coach)' : '(Athlete)'} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Prominent In-Week Exceedance / Prediction Warning Banner */}
         <InWeekWarningBanner
           prediction={inWeekPrediction}
@@ -361,7 +462,7 @@ export const App: React.FC = () => {
         {/* Tab 2: Workouts (Strava-Inspired Activity Feed) */}
         {activeTab === 'workouts' && (
           <WorkoutsTab
-            workouts={workouts}
+            workouts={visibleWorkouts}
             distanceUnit={settings.distanceUnit}
             onEditWorkoutDate={(date) => {
               setSelectedDate(date);
@@ -385,7 +486,7 @@ export const App: React.FC = () => {
             }}
             distanceUnit={settings.distanceUnit}
             warningThreshold={settings.warningThreshold}
-            workouts={workouts}
+            workouts={visibleWorkouts}
           />
         )}
 
@@ -425,6 +526,7 @@ export const App: React.FC = () => {
         distanceUnit={settings.distanceUnit}
         onOpenAsAthlete={handleOpenAsAthlete}
         onOpenAssignRun={() => setIsAssignRunOpen(true)}
+        onAssignRuns={handleAssignRuns}
       />
 
       {/* Coach Assign Run Modal */}
@@ -435,6 +537,9 @@ export const App: React.FC = () => {
         distanceUnit={settings.distanceUnit}
         onAssignRuns={handleAssignRuns}
         activeDate={selectedDate}
+        allWorkouts={workouts}
+        onUpdateRun={handleSaveRun}
+        onDeleteRun={handleDeleteRun}
       />
 
       {/* Athlete Plan Viewer Modal (Triggered by QR Code Scan) */}

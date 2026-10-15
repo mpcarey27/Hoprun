@@ -5,10 +5,12 @@ import type {
   PlanDayItem,
   DistanceUnit,
   UserProfile,
+  WorkoutRun,
 } from '../types/acr';
 import {
   DEFAULT_RUN_TYPES,
   getRunTypeMultiplier,
+  calculateRunLoad,
   formatDate,
   addDays,
   convertDistance,
@@ -18,6 +20,7 @@ import {
   getPlanWeeksCount,
   getPlanWeekChunk,
 } from '../utils/planShare';
+import { ROSTER_USERS } from '../utils/storage';
 
 interface Props {
   isOpen: boolean;
@@ -28,6 +31,7 @@ interface Props {
   distanceUnit: DistanceUnit;
   onOpenAsAthlete: (plan: TrainingPlan) => void;
   onOpenAssignRun?: () => void;
+  onAssignRuns?: (newRuns: WorkoutRun[], notificationText: string) => void;
 }
 
 export const AdminPlanModal: React.FC<Props> = ({
@@ -39,7 +43,22 @@ export const AdminPlanModal: React.FC<Props> = ({
   distanceUnit,
   onOpenAsAthlete,
   onOpenAssignRun,
+  onAssignRuns,
 }) => {
+  const isCoach = currentUser.role === 'coach';
+
+  // Target Athlete Selection State
+  const [targetAthleteId, setTargetAthleteId] = useState<string>(() => {
+    const rob = ROSTER_USERS.find((u) => u.name.toLowerCase().includes('rob'));
+    return rob ? rob.id : currentUser.id;
+  });
+
+  const targetAthlete = useMemo(() => {
+    return ROSTER_USERS.find((u) => u.id === targetAthleteId) || currentUser;
+  }, [targetAthleteId, currentUser]);
+
+  const [assignDirectSuccess, setAssignDirectSuccess] = useState<string>('');
+
   // Plan duration in weeks (1, 2, 3, 4, etc.)
   const [weeksCount, setWeeksCount] = useState<number>(() => {
     return plans[0]?.weeksCount || (plans[0]?.days ? getPlanWeeksCount(plans[0].days) : 1);
@@ -191,6 +210,52 @@ export const AdminPlanModal: React.FC<Props> = ({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const handleAssignPlanDirectly = () => {
+    if (!onAssignRuns) return;
+    const plannedDays = activePlan.days.filter((d) => d.targetDistance > 0);
+    if (plannedDays.length === 0) {
+      alert('Please configure at least one day with distance > 0 in the plan before assigning.');
+      return;
+    }
+
+    const baseTime = Date.now();
+    const newRuns: WorkoutRun[] = plannedDays.map((dayItem, idx) => {
+      const dateStr = addDays(activePlan.startDate, dayItem.dayIndex);
+      const mult = getRunTypeMultiplier(dayItem.runType);
+      const load = calculateRunLoad(dayItem.targetDistance, dayItem.distanceUnit, mult);
+      return {
+        id: `run_plan_${activePlan.id}_${dayItem.dayIndex}_${baseTime}_${idx}`,
+        workoutDate: dateStr,
+        runOrder: 1,
+        distance: dayItem.targetDistance,
+        distanceUnit: dayItem.distanceUnit,
+        runType: dayItem.runType,
+        multiplier: mult,
+        load,
+        comments: dayItem.instructions ? `${dayItem.instructions} (${activePlan.title})` : `Prescribed from ${activePlan.title} by Coach ${currentUser.name || 'Michael Carey'}`,
+        completed: false,
+        isPlanAssigned: true,
+        planId: activePlan.id,
+        planDayIndex: dayItem.dayIndex,
+        athleteId: targetAthlete.id,
+        athleteName: targetAthlete.name,
+        assignedByCoachId: currentUser.id,
+        assignedByCoachName: currentUser.name,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    const notifMsg = `Coach ${currentUser.name || 'Michael Carey'} assigned ${activePlan.title} (${newRuns.length} workouts) directly to ${targetAthlete.name}'s schedule starting ${activePlan.startDate}`;
+    onAssignRuns(newRuns, notifMsg);
+    onSavePlan({
+      ...activePlan,
+      athleteId: targetAthlete.id,
+      athleteName: targetAthlete.name,
+    });
+    setAssignDirectSuccess(`✓ Successfully assigned "${activePlan.title}" (${newRuns.length} workouts) directly to ${targetAthlete.name}!`);
+    setTimeout(() => setAssignDirectSuccess(''), 3500);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -217,6 +282,76 @@ export const AdminPlanModal: React.FC<Props> = ({
         </div>
 
         <div className="modal-body">
+          {assignDirectSuccess && (
+            <div className="inweek-ribbon inweek-ribbon-optimal mb-3">
+              <span className="font-mono text-sm font-bold text-success">
+                {assignDirectSuccess}
+              </span>
+            </div>
+          )}
+
+          {!isCoach && (
+            <div className="inweek-banner inweek-critical mb-3">
+              <p className="text-sm font-bold text-danger mb-1">
+                ⚠️ Coach Admin Access Required
+              </p>
+              <p className="text-xs text-secondary">
+                Only users with coach admin status (such as Coach Michael Carey) can assign training plans to other athletes. You are currently logged in as <strong>{currentUser.name}</strong> ({currentUser.role}).
+              </p>
+            </div>
+          )}
+
+          {/* Target Athlete Selection for the Training Plan */}
+          <div className="mb-3 p-3 rounded" style={{ backgroundColor: 'var(--bg-surface-elevated)', border: '1px solid var(--border-subtle)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xxs uppercase font-mono font-bold text-accent">
+                Target Athlete for this Plan
+              </span>
+              <span className="text-xxs font-mono text-primary font-bold">
+                Assigning to: {targetAthlete.name} ({targetAthlete.role === 'coach' ? 'Coach' : 'Athlete'})
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {ROSTER_USERS.map((user) => {
+                const isSelected = targetAthleteId === user.id;
+                const isSelf = user.id === currentUser.id;
+                return (
+                  <button
+                    key={user.id}
+                    type="button"
+                    className={`p-2 rounded text-left transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-accent text-white font-bold'
+                        : 'bg-surface hover:border-accent text-primary'
+                    }`}
+                    style={{
+                      border: isSelected ? '1.5px solid var(--color-accent)' : '1px solid var(--border-subtle)',
+                    }}
+                    onClick={() => setTargetAthleteId(user.id)}
+                  >
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span
+                        className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-xxs"
+                        style={{
+                          backgroundColor: isSelected ? '#ffffff' : 'var(--color-accent)',
+                          color: isSelected ? '#15803d' : '#ffffff',
+                        }}
+                      >
+                        {user.name.charAt(0)}
+                      </span>
+                      <span className="text-xs font-bold truncate">
+                        {user.name} {isSelf ? '(You)' : ''}
+                      </span>
+                    </div>
+                    <span className="text-xxs font-mono block opacity-80 uppercase">
+                      {user.role === 'coach' ? 'Coach' : 'Athlete'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Plan Meta Inputs */}
           <div className="plan-meta-row">
             <div className="plan-meta-field flex-1">
@@ -476,7 +611,7 @@ export const AdminPlanModal: React.FC<Props> = ({
           )}
         </div>
 
-        <div className="modal-footer">
+        <div className="modal-footer flex items-center justify-between">
           <button
             type="button"
             className="btn-modal-cancel"
@@ -484,13 +619,26 @@ export const AdminPlanModal: React.FC<Props> = ({
           >
             Close
           </button>
-          <button
-            type="button"
-            className="btn-save-plan"
-            onClick={generateQrForPlan}
-          >
-            Generate QR Code & Send to Phone
-          </button>
+          
+          <div className="flex items-center gap-2">
+            {isCoach && onAssignRuns && (
+              <button
+                type="button"
+                className="btn-action-primary"
+                onClick={handleAssignPlanDirectly}
+                title={`Assign all workouts in this plan directly to ${targetAthlete.name}'s calendar`}
+              >
+                Assign Plan to {targetAthlete.name} Schedule →
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-save-plan"
+              onClick={generateQrForPlan}
+            >
+              Generate QR Code &amp; Send to Phone
+            </button>
+          </div>
         </div>
       </div>
     </div>

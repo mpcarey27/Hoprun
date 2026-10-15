@@ -413,6 +413,16 @@ export const LogRunTab: React.FC<Props> = ({
                       >
                         {run.runType.replace('_', ' ').toUpperCase()}
                       </span>
+                      {run.athleteName && (
+                        <span className="badge-safe text-xxs font-mono">
+                          ATHLETE: {run.athleteName.toUpperCase()}
+                        </span>
+                      )}
+                      {run.isPlanAssigned && (
+                        <span className="badge-safe text-xxs font-mono">
+                          COACH ASSIGNED
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">

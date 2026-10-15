@@ -148,6 +148,16 @@ export const WorkoutsTab: React.FC<Props> = ({
                     >
                       {w.runType.replace('_', ' ').toUpperCase()} (×{w.multiplier})
                     </span>
+                    {w.athleteName && (
+                      <span className="badge-safe text-xxs font-mono ml-2">
+                        ATHLETE: {w.athleteName.toUpperCase()}
+                      </span>
+                    )}
+                    {w.isPlanAssigned && (
+                      <span className="badge-safe text-xxs font-mono ml-1.5">
+                        COACH ASSIGNED
+                      </span>
+                    )}
                   </div>
 
                   <div className="activity-actions">

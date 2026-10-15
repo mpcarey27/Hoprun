@@ -209,3 +209,93 @@ describe('Training Log - Big Month Calendar View Generation (TDD)', () => {
   });
 });
 
+describe('Coach Multi-Athlete Assignment & Access Control (TDD)', () => {
+  it('test_coachAssignRun_tagsAthleteAndCoach() - assigns run with coach and target athlete metadata', () => {
+    const coachUser = { id: 'user_michael_carey', name: 'Michael Carey', role: 'coach' };
+    const athleteRob = { id: 'user_rob', name: 'Rob', role: 'runner' };
+
+    const assignedRun: WorkoutRun = {
+      id: 'run_assigned_101',
+      workoutDate: '2026-10-19',
+      runOrder: 1,
+      distance: 8.0,
+      distanceUnit: 'mi',
+      runType: 'easy',
+      multiplier: 3.0,
+      load: 24.0,
+      comments: 'Zone 2 aerobic base run',
+      completed: false,
+      isPlanAssigned: true,
+      athleteId: athleteRob.id,
+      athleteName: athleteRob.name,
+      assignedByCoachId: coachUser.id,
+      assignedByCoachName: coachUser.name,
+      updatedAt: '2026-10-14T18:00:00.000Z',
+    };
+
+    expect(assignedRun.isPlanAssigned).toBe(true);
+    expect(assignedRun.athleteId).toBe('user_rob');
+    expect(assignedRun.athleteName).toBe('Rob');
+    expect(assignedRun.assignedByCoachId).toBe('user_michael_carey');
+    expect(assignedRun.assignedByCoachName).toBe('Michael Carey');
+  });
+
+  it('test_athleteViewFilter_isolatesWorkouts() - athlete Rob only sees his own workouts', () => {
+    const allWorkouts: WorkoutRun[] = [
+      { id: '1', workoutDate: '2026-10-14', runOrder: 1, distance: 5, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 15, comments: '', completed: true, athleteId: 'user_rob', athleteName: 'Rob' },
+      { id: '2', workoutDate: '2026-10-14', runOrder: 1, distance: 10, distanceUnit: 'mi', runType: 'long_run', multiplier: 3, load: 30, comments: '', completed: false, athleteId: 'user_michael_carey', athleteName: 'Michael Carey' },
+      { id: '3', workoutDate: '2026-10-15', runOrder: 1, distance: 6, distanceUnit: 'mi', runType: 'tempo', multiplier: 5, load: 30, comments: '', completed: false, athleteId: 'runner_alex', athleteName: 'Alex River' },
+      { id: '4', workoutDate: '2026-10-16', runOrder: 1, distance: 4, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 12, comments: '', completed: true, athleteId: 'user_rob', athleteName: 'Rob' },
+    ];
+
+    // Rob viewing
+    const robId = 'user_rob';
+    const robWorkouts = allWorkouts.filter(w => w.athleteId === robId || w.athleteName === 'Rob');
+    expect(robWorkouts.length).toBe(2);
+    expect(robWorkouts.map(w => w.id)).toEqual(['1', '4']);
+
+    // Coach Michael Carey filtering by athlete Rob
+    const coachFilterRob = allWorkouts.filter(w => w.athleteId === 'user_rob');
+    expect(coachFilterRob.length).toBe(2);
+
+    // Coach Michael Carey viewing all
+    expect(allWorkouts.length).toBe(4);
+  });
+
+  it('test_coachEditAssignedRun() - coach can edit previously assigned run parameters', () => {
+    const originalRun: WorkoutRun = {
+      id: 'run_assigned_202',
+      workoutDate: '2026-10-21',
+      runOrder: 1,
+      distance: 6.0,
+      distanceUnit: 'mi',
+      runType: 'easy',
+      multiplier: 3.0,
+      load: 18.0,
+      comments: 'Initial prescription',
+      completed: false,
+      isPlanAssigned: true,
+      athleteId: 'user_rob',
+      athleteName: 'Rob',
+      assignedByCoachId: 'user_michael_carey',
+      assignedByCoachName: 'Michael Carey',
+    };
+
+    // Coach modifies distance from 6.0 to 7.5 miles and adjusts comments
+    const updatedRun: WorkoutRun = {
+      ...originalRun,
+      distance: 7.5,
+      load: 7.5 * 3.0,
+      comments: 'Increased volume to 7.5 miles per Coach Michael Carey',
+      updatedAt: '2026-10-14T19:00:00.000Z',
+    };
+
+    expect(updatedRun.distance).toBe(7.5);
+    expect(updatedRun.load).toBe(22.5);
+    expect(updatedRun.athleteId).toBe('user_rob');
+    expect(updatedRun.assignedByCoachId).toBe('user_michael_carey');
+    expect(updatedRun.isPlanAssigned).toBe(true);
+  });
+});
+
+

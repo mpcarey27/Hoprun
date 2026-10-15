@@ -149,6 +149,11 @@ export const DayDetailsModal: React.FC<Props> = ({
                         >
                           {run.runType.replace('_', ' ').toUpperCase()} (×{mult})
                         </span>
+                        {run.athleteName && (
+                          <span className="badge-safe text-xxs font-mono">
+                            ATHLETE: {run.athleteName.toUpperCase()}
+                          </span>
+                        )}
                         {run.isPlanAssigned && (
                           <span className="badge-safe text-xxs font-mono">
                             COACH ASSIGNED

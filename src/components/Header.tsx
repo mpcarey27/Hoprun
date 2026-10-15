@@ -185,16 +185,18 @@ export const Header: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Plan Builder (Accessible to all / Coach) */}
-          <button
-            type="button"
-            className="btn-plan-header"
-            onClick={onOpenPlanBuilder}
-            title="Create multi-week plan & generate mobile QR code"
-          >
-            <span className="desktop-only-text">Plan Builder & QR</span>
-            <span className="mobile-only-text">Plans</span>
-          </button>
+          {/* Plan Builder (Coach Admin Only) */}
+          {currentUser.role === 'coach' && (
+            <button
+              type="button"
+              className="btn-plan-header"
+              onClick={onOpenPlanBuilder}
+              title="Build & assign multi-week plan to athlete"
+            >
+              <span className="desktop-only-text">Assign Plan & QR</span>
+              <span className="mobile-only-text">Plans</span>
+            </button>
+          )}
 
           {/* Coach Notifications Bell */}
           <NotificationCenter

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import type { UserProfile } from '../types/acr';
 
+import { ROSTER_USERS } from '../utils/storage';
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -24,29 +26,7 @@ export const GoogleAuthModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const mockUsers: UserProfile[] = [
-    {
-      id: 'user_coach_1',
-      email: 'caleb.coach@gmail.com',
-      name: 'Coach Caleb',
-      role: 'coach',
-      avatarUrl: '',
-    },
-    {
-      id: 'runner_alex',
-      email: 'alex.river@gmail.com',
-      name: 'Alex River (Runner)',
-      role: 'runner',
-      avatarUrl: '',
-    },
-    {
-      id: 'runner_sarah',
-      email: 'sarah.run@gmail.com',
-      name: 'Sarah Chen (Runner)',
-      role: 'runner',
-      avatarUrl: '',
-    },
-  ];
+  const mockUsers: UserProfile[] = ROSTER_USERS;
 
   const handleSaveClientId = () => {
     localStorage.setItem(STORAGE_KEY_CLIENT_ID, googleClientId.trim());

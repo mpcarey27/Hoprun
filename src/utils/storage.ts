@@ -21,13 +21,38 @@ export const DEFAULT_SETTINGS: AppSettings = {
   themeMode: 'dark',
 };
 
-export const DEFAULT_USER: UserProfile = {
-  id: 'user_default_1',
-  email: 'runner@example.com',
-  name: 'Runner',
-  role: 'runner',
-  avatarUrl: '',
-};
+export const ROSTER_USERS: UserProfile[] = [
+  {
+    id: 'user_michael_carey',
+    email: 'michael.carey@coach.com',
+    name: 'Michael Carey',
+    role: 'coach',
+    avatarUrl: '',
+  },
+  {
+    id: 'user_rob',
+    email: 'rob.athlete@example.com',
+    name: 'Rob',
+    role: 'runner',
+    avatarUrl: '',
+  },
+  {
+    id: 'runner_alex',
+    email: 'alex.river@example.com',
+    name: 'Alex River',
+    role: 'runner',
+    avatarUrl: '',
+  },
+  {
+    id: 'runner_sarah',
+    email: 'sarah.chen@example.com',
+    name: 'Sarah Chen',
+    role: 'runner',
+    avatarUrl: '',
+  },
+];
+
+export const DEFAULT_USER: UserProfile = ROSTER_USERS[0];
 
 export function loadStoredWorkouts(): WorkoutRun[] {
   try {
@@ -108,7 +133,13 @@ export function saveStoredSettings(settings: AppSettings): void {
 export function loadStoredUser(): UserProfile {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.USER);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed: UserProfile = JSON.parse(raw);
+      if (parsed.id === 'user_default_1' || parsed.name === 'Runner') {
+        return DEFAULT_USER;
+      }
+      return parsed;
+    }
   } catch (e) {
     console.error('Error loading user:', e);
   }

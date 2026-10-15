@@ -26,6 +26,10 @@ export interface WorkoutRun {
   planId?: string;
   planDayIndex?: number;
   updatedAt?: string;
+  athleteId?: string;
+  athleteName?: string;
+  assignedByCoachId?: string;
+  assignedByCoachName?: string;
 }
 
 export interface DayWorkload {
@@ -66,6 +70,8 @@ export interface TrainingPlan {
   title: string;
   coachId: string;
   coachName: string;
+  athleteId?: string;
+  athleteName?: string;
   startDate: string; // YYYY-MM-DD
   weeksCount?: number; // 1, 2, 3, 4, etc.
   days: PlanDayItem[];
