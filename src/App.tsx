@@ -42,6 +42,8 @@ import { AdminPlanModal } from './components/AdminPlanModal';
 import { PlanViewerModal } from './components/PlanViewerModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { AssignRunModal } from './components/AssignRunModal';
+import { QuickLogModal } from './components/QuickLogModal';
+import { AssignedRunsModal } from './components/AssignedRunsModal';
 
 export const App: React.FC = () => {
   // Core state
@@ -68,6 +70,8 @@ export const App: React.FC = () => {
   const [activeViewPlan, setActiveViewPlan] = useState<TrainingPlan | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAssignRunOpen, setIsAssignRunOpen] = useState(false);
+  const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
+  const [isAssignedRunsOpen, setIsAssignedRunsOpen] = useState(false);
 
   // Check URL parameters on mount for QR code scanned plans
   useEffect(() => {
@@ -250,6 +254,50 @@ export const App: React.FC = () => {
     });
   };
 
+  // Athlete checking off assigned run as completed with coach notification
+  const handleAthleteToggleComplete = (run: WorkoutRun, completed: boolean) => {
+    const updatedRun: WorkoutRun = {
+      ...run,
+      completed,
+      updatedAt: new Date().toISOString(),
+    };
+    handleSaveRun(updatedRun);
+
+    if (currentUser.role === 'runner' && completed) {
+      const notif: CoachNotification = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        athleteId: currentUser.id,
+        athleteName: currentUser.name,
+        type: 'edited',
+        date: run.workoutDate,
+        runType: run.runType,
+        distance: run.distance,
+        unit: run.distanceUnit,
+        comment: `✓ ${currentUser.name} completed ${run.distance} ${run.distanceUnit.toUpperCase()} ${run.runType.replace('_', ' ')} run!`,
+        timestamp: Date.now(),
+        read: false,
+      };
+      setNotifications((prev) => {
+        const next = [notif, ...prev];
+        saveStoredNotifications(next);
+        return next;
+      });
+    }
+  };
+
+  // Count of pending assigned runs for the athlete today
+  const todayStr = useMemo(() => formatDate(new Date()), []);
+  const todayPendingAssignedCount = useMemo(() => {
+    return workouts.filter((w) => {
+      const isForAthlete =
+        w.athleteId === currentUser.id ||
+        (w.athleteName &&
+          w.athleteName.toLowerCase().includes(currentUser.name.toLowerCase()));
+      const isAssigned = w.isPlanAssigned || w.assignedByCoachId !== undefined;
+      return isForAthlete && isAssigned && w.workoutDate === todayStr && !w.completed;
+    }).length;
+  }, [workouts, currentUser, todayStr]);
+
   // Synchronize active theme attribute with document root
   useEffect(() => {
     const theme = settings.themeMode || 'dark';
@@ -373,6 +421,9 @@ export const App: React.FC = () => {
         onClearAllNotifications={handleClearAllNotifications}
         onToggleRole={handleToggleRole}
         onOpenAssignRun={() => setIsAssignRunOpen(true)}
+        onOpenQuickLog={() => setIsQuickLogOpen(true)}
+        onOpenAssignedRuns={() => setIsAssignedRunsOpen(true)}
+        pendingAssignedCount={todayPendingAssignedCount}
       />
 
       <main className="main-content">
@@ -522,6 +573,28 @@ export const App: React.FC = () => {
         allWorkouts={workouts}
         onUpdateRun={handleSaveRun}
         onDeleteRun={handleDeleteRun}
+      />
+
+      {/* Global Quick Log Modal (+ button on all pages) */}
+      <QuickLogModal
+        isOpen={isQuickLogOpen}
+        onClose={() => setIsQuickLogOpen(false)}
+        currentUser={currentUser}
+        distanceUnit={settings.distanceUnit}
+        onSaveRun={handleSaveRun}
+        activeDate={selectedDate}
+        selectedAthleteFilter={selectedAthleteFilter}
+      />
+
+      {/* Athlete Assigned Runs & Daily Check-Off Modal (✓ icon) */}
+      <AssignedRunsModal
+        isOpen={isAssignedRunsOpen}
+        onClose={() => setIsAssignedRunsOpen(false)}
+        currentUser={currentUser}
+        distanceUnit={settings.distanceUnit}
+        allWorkouts={workouts}
+        onToggleComplete={handleAthleteToggleComplete}
+        activeDate={selectedDate}
       />
 
       {/* Athlete Plan Viewer Modal (Triggered by QR Code Scan) */}

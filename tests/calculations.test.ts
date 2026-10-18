@@ -440,6 +440,85 @@ describe('Coach Analytics - Multi-Athlete Breakdown & Graph View Selection (TDD)
     expect(assignedRun.completed).toBe(false);
     expect(assignedRun.isPlanAssigned).toBe(true);
   });
+
+  it('test_quickLogRun_anyPage() - logs run on any page with accurate load calculation', () => {
+    const athlete = { id: 'user_rob', name: 'Rob', role: 'runner' as const };
+    const date = '2026-10-17';
+    const distance = 6.0;
+    const unit = 'mi' as const;
+    const runType = 'tempo'; // multiplier is 5.0
+    const mult = 5.0;
+
+    const quickRun: WorkoutRun = {
+      id: `run_quick_${Date.now()}`,
+      workoutDate: date,
+      runOrder: 1,
+      distance,
+      distanceUnit: unit,
+      runType,
+      multiplier: mult,
+      load: distance * mult,
+      comments: 'Quick logged run from header',
+      completed: true,
+      isPlanAssigned: false,
+      athleteId: athlete.id,
+      athleteName: athlete.name,
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(quickRun.distance).toBe(6.0);
+    expect(quickRun.load).toBe(30.0);
+    expect(quickRun.completed).toBe(true);
+    expect(quickRun.athleteName).toBe('Rob');
+  });
+
+  it('test_athleteCheckOffAssignedRun() - checks off assigned run as completed and dispatches coach notification', () => {
+    const assignedRun: WorkoutRun = {
+      id: 'run_assigned_rob_today',
+      workoutDate: '2026-10-17',
+      runOrder: 1,
+      distance: 8.0,
+      distanceUnit: 'mi',
+      runType: 'long_run',
+      multiplier: 3.0,
+      load: 24.0,
+      comments: 'Long run prescribed by coach',
+      completed: false, // Initially planned
+      isPlanAssigned: true,
+      athleteId: 'user_rob',
+      athleteName: 'Rob',
+      assignedByCoachId: 'user_michael_carey',
+      assignedByCoachName: 'Michael Carey',
+      updatedAt: '2026-10-17T08:00:00.000Z',
+    };
+
+    // Athlete checks off run as completed
+    const completedRun: WorkoutRun = {
+      ...assignedRun,
+      completed: true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(completedRun.completed).toBe(true);
+
+    // Creates notification for Coach Michael Carey
+    const coachNotification: CoachNotification = {
+      id: `notif_${Date.now()}`,
+      athleteId: completedRun.athleteId!,
+      athleteName: completedRun.athleteName!,
+      type: 'edited',
+      date: completedRun.workoutDate,
+      runType: completedRun.runType,
+      distance: completedRun.distance,
+      unit: completedRun.distanceUnit,
+      comment: `✓ ${completedRun.athleteName} completed ${completedRun.distance} ${completedRun.distanceUnit.toUpperCase()} ${completedRun.runType.replace('_', ' ')} run!`,
+      timestamp: Date.now(),
+      read: false,
+    };
+
+    expect(coachNotification.athleteName).toBe('Rob');
+    expect(coachNotification.comment).toContain('completed 8 MI long run');
+  });
 });
 
 

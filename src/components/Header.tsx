@@ -27,6 +27,9 @@ interface Props {
   onClearAllNotifications: () => void;
   onToggleRole: () => void;
   onOpenAssignRun?: () => void;
+  onOpenQuickLog?: () => void;
+  onOpenAssignedRuns?: () => void;
+  pendingAssignedCount?: number;
 }
 
 export const Header: React.FC<Props> = ({
@@ -46,6 +49,9 @@ export const Header: React.FC<Props> = ({
   onClearAllNotifications,
   onToggleRole,
   onOpenAssignRun,
+  onOpenQuickLog,
+  onOpenAssignedRuns,
+  pendingAssignedCount = 0,
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const settingsMenuRef = React.useRef<HTMLDivElement>(null);
@@ -195,6 +201,38 @@ export const Header: React.FC<Props> = ({
             >
               <span className="desktop-only-text">Assign Plan</span>
               <span className="mobile-only-text">Plans</span>
+            </button>
+          )}
+
+          {/* Global + Symbol: Log a run on ANY page (Athlete or Coach Admin) */}
+          {onOpenQuickLog && (
+            <button
+              type="button"
+              className="btn-header-quick-log"
+              onClick={onOpenQuickLog}
+              title="Log a run"
+              aria-label="Log Run"
+            >
+              <span className="quick-log-plus-icon">+</span>
+              <span className="desktop-only-text font-bold">Log Run</span>
+            </button>
+          )}
+
+          {/* Checkmark Icon: For athletes to view and check off today's assigned runs */}
+          {currentUser.role === 'runner' && onOpenAssignedRuns && (
+            <button
+              type="button"
+              className="btn-header-check-assigned"
+              onClick={onOpenAssignedRuns}
+              title="Today's assigned workouts"
+              aria-label="Today's Assigned Workouts"
+            >
+              <span className="check-assigned-icon">✓</span>
+              {pendingAssignedCount > 0 && (
+                <span className="check-assigned-badge" title={`${pendingAssignedCount} assigned workouts pending today`}>
+                  {pendingAssignedCount}
+                </span>
+              )}
             </button>
           )}
 

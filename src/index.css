@@ -3853,6 +3853,332 @@ body {
   color: #ffffff !important;
 }
 
+/* -------------------------------------------------------------------
+   Global Header Action Buttons (+ Quick Log & ✓ Assigned Runs)
+   ------------------------------------------------------------------- */
+.btn-header-quick-log {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: var(--color-accent);
+  color: var(--btn-accent-text);
+  border: 1px solid var(--color-accent);
+  padding: 0.32rem 0.7rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.btn-header-quick-log:hover {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+
+.quick-log-plus-icon {
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.btn-header-check-assigned {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--color-accent);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.btn-header-check-assigned:hover {
+  background-color: var(--bg-surface-subtle);
+  border-color: var(--color-accent);
+  color: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+
+.check-assigned-icon {
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.check-assigned-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background-color: #22c55e;
+  color: #ffffff;
+  font-size: 0.62rem;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  box-shadow: 0 0 0 2px var(--header-bg);
+  animation: badge-pulse 2.2s infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.quick-add-plus-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background-color: var(--color-accent);
+  color: var(--btn-accent-text);
+  border-radius: 50%;
+  font-weight: 900;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.assigned-check-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background-color: #10b981;
+  color: #ffffff;
+  border-radius: 50%;
+  font-weight: 900;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+/* -------------------------------------------------------------------
+   Feel-Good Checkmark Completion Micro-Interactions
+   ------------------------------------------------------------------- */
+.assigned-run-card {
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.assigned-run-completed {
+  background-color: rgba(34, 197, 94, 0.04);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.assigned-run-celebrating {
+  animation: card-celebrate-glow 2.2s ease-out;
+}
+
+@keyframes card-celebrate-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6);
+    transform: scale(1.01);
+  }
+  40% {
+    box-shadow: 0 0 20px 4px rgba(34, 197, 94, 0.4);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+    transform: scale(1);
+  }
+}
+
+.delightful-check-btn {
+  position: relative;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.check-btn-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 9999px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.is-unchecked .check-btn-inner {
+  background-color: var(--bg-surface-subtle);
+  border: 1.5px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.is-unchecked .check-btn-inner:hover {
+  border-color: #10b981;
+  color: var(--text-primary);
+  background-color: rgba(16, 185, 129, 0.08);
+  transform: translateY(-1px);
+}
+
+.is-checked .check-btn-inner {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: 1.5px solid #059669;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+}
+
+.is-checked .check-btn-inner:hover {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-1px);
+}
+
+.check-svg-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.is-unchecked .check-circle-ring {
+  stroke: var(--text-muted);
+}
+
+.is-unchecked .check-mark-path {
+  stroke: var(--text-muted);
+  opacity: 0.35;
+}
+
+.is-checked .check-circle-ring {
+  stroke: #ffffff;
+  fill: rgba(255, 255, 255, 0.15);
+}
+
+.is-checked .check-mark-path {
+  stroke: #ffffff;
+  opacity: 1;
+}
+
+/* Spring bounce animation when completed */
+.just-checked-pop .check-btn-inner {
+  animation: check-spring-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes check-spring-bounce {
+  0% {
+    transform: scale(0.9);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Sparkle burst star particles */
+.sparkle-burst-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.burst-star {
+  position: absolute;
+  font-size: 0.9rem;
+  line-height: 1;
+  pointer-events: none;
+  animation: star-fly 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.burst-star.s1 { color: #f59e0b; --tx: -28px; --ty: -26px; animation-delay: 0.02s; }
+.burst-star.s2 { color: #10b981; --tx: 24px;  --ty: -30px; animation-delay: 0.05s; }
+.burst-star.s3 { color: #38bdf8; --tx: 32px;  --ty: 12px;  animation-delay: 0.04s; }
+.burst-star.s4 { color: #ec4899; --tx: 10px;  --ty: 28px;  animation-delay: 0.03s; }
+.burst-star.s5 { color: #eab308; --tx: -24px; --ty: 22px;  animation-delay: 0.06s; }
+.burst-star.s6 { color: #22c55e; --tx: -34px; --ty: -6px;  animation-delay: 0.01s; }
+
+@keyframes star-fly {
+  0% {
+    transform: translate(0, 0) scale(0) rotate(0deg);
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+    transform: translate(var(--tx), var(--ty)) scale(1.3) rotate(180deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--tx) * 1.3), calc(var(--ty) * 1.3)) scale(0) rotate(360deg);
+  }
+}
+
+.completion-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: rgba(34, 197, 94, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+[data-theme="light"] .completion-badge-pill {
+  background-color: #15803d;
+  color: #ffffff !important;
+  border-color: #15803d;
+}
+
+[data-theme="light"] .is-checked .check-btn-inner {
+  background: #15803d !important;
+  color: #ffffff !important;
+  border-color: #15803d !important;
+}
+
+[data-theme="light"] .btn-header-quick-log {
+  background-color: #15803d !important;
+  color: #ffffff !important;
+  border-color: #15803d !important;
+}
+
+.celebration-toast-text {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #10b981;
+}
+
+[data-theme="light"] .celebration-toast-text {
+  color: #15803d;
+}
+
+
 
 
 
