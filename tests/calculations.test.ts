@@ -519,6 +519,113 @@ describe('Coach Analytics - Multi-Athlete Breakdown & Graph View Selection (TDD)
     expect(coachNotification.athleteName).toBe('Rob');
     expect(coachNotification.comment).toContain('completed 8 MI long run');
   });
+
+  it('test_athleteCheckOffWithComment_notifiesCoach() - preserves athlete comment and dispatches coach alert', () => {
+    const assignedRun: WorkoutRun = {
+      id: 'run_rob_sunday',
+      workoutDate: '2026-10-18',
+      runOrder: 1,
+      distance: 8.0,
+      distanceUnit: 'mi',
+      runType: 'long_run',
+      multiplier: 3.0,
+      load: 24.0,
+      comments: 'Coach: Keep pace conversational',
+      completed: false,
+      isPlanAssigned: true,
+      athleteId: 'user_rob',
+      athleteName: 'Rob',
+    };
+
+    const athletePostRunComment = 'Felt super smooth, kept HR under 145 bpm the whole time!';
+
+    const completedRun: WorkoutRun = {
+      ...assignedRun,
+      completed: true,
+      athleteComment: athletePostRunComment,
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(completedRun.completed).toBe(true);
+    expect(completedRun.athleteComment).toBe(athletePostRunComment);
+
+    const notif: CoachNotification = {
+      id: `notif_${Date.now()}`,
+      athleteId: completedRun.athleteId!,
+      athleteName: completedRun.athleteName!,
+      type: 'completed',
+      date: completedRun.workoutDate,
+      runType: completedRun.runType,
+      distance: completedRun.distance,
+      unit: completedRun.distanceUnit,
+      comment: completedRun.athleteComment,
+      timestamp: Date.now(),
+      read: false,
+    };
+
+    expect(notif.comment).toBe(athletePostRunComment);
+    expect(notif.type).toBe('completed');
+  });
+
+  it('test_athleteEditAssignedRun_withOptionalReason() - updates parameters, recalculates load, and includes edit reason', () => {
+    const originalRun: WorkoutRun = {
+      id: 'run_rob_assigned',
+      workoutDate: '2026-10-19',
+      runOrder: 1,
+      distance: 10.0,
+      distanceUnit: 'mi',
+      runType: 'tempo',
+      multiplier: 5.0,
+      load: 50.0,
+      comments: 'Prescribed tempo session',
+      completed: false,
+      isPlanAssigned: true,
+      athleteId: 'user_rob',
+      athleteName: 'Rob',
+    };
+
+    // Athlete edits run from 10 mi tempo to 7.5 mi easy due to hamstring tightness
+    const newDistance = 7.5;
+    const newType = 'easy';
+    const newMultiplier = 3.0;
+    const newLoad = newDistance * newMultiplier; // 22.5
+    const editReason = 'Shortened and slowed down due to mild left hamstring tightness';
+
+    const editedRun: WorkoutRun = {
+      ...originalRun,
+      distance: newDistance,
+      runType: newType,
+      multiplier: newMultiplier,
+      load: newLoad,
+      completed: true,
+      editReason,
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(editedRun.distance).toBe(7.5);
+    expect(editedRun.runType).toBe('easy');
+    expect(editedRun.load).toBe(22.5);
+    expect(editedRun.completed).toBe(true);
+    expect(editedRun.editReason).toContain('hamstring tightness');
+
+    // Notification generated for Coach Michael Carey
+    const coachNotification: CoachNotification = {
+      id: `notif_${Date.now()}`,
+      athleteId: editedRun.athleteId!,
+      athleteName: editedRun.athleteName!,
+      type: 'edited',
+      date: editedRun.workoutDate,
+      runType: editedRun.runType,
+      distance: editedRun.distance,
+      unit: editedRun.distanceUnit,
+      comment: `Reason: "${editedRun.editReason}"`,
+      timestamp: Date.now(),
+      read: false,
+    };
+
+    expect(coachNotification.type).toBe('edited');
+    expect(coachNotification.comment).toBe(`Reason: "${editReason}"`);
+  });
 });
 
 

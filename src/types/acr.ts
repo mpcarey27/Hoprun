@@ -30,6 +30,8 @@ export interface WorkoutRun {
   athleteName?: string;
   assignedByCoachId?: string;
   assignedByCoachName?: string;
+  athleteComment?: string;
+  editReason?: string;
 }
 
 export interface DayWorkload {

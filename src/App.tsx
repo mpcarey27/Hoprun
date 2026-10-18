@@ -254,26 +254,72 @@ export const App: React.FC = () => {
     });
   };
 
-  // Athlete checking off assigned run as completed with coach notification
-  const handleAthleteToggleComplete = (run: WorkoutRun, completed: boolean) => {
+  // Athlete checking off assigned run as completed with coach notification & optional comment
+  const handleAthleteToggleComplete = (
+    run: WorkoutRun,
+    completed: boolean,
+    athleteComment?: string
+  ) => {
     const updatedRun: WorkoutRun = {
       ...run,
       completed,
+      athleteComment: athleteComment !== undefined ? athleteComment : run.athleteComment,
       updatedAt: new Date().toISOString(),
     };
     handleSaveRun(updatedRun);
 
     if (currentUser.role === 'runner' && completed) {
+      const commentText = athleteComment?.trim()
+        ? athleteComment.trim()
+        : updatedRun.athleteComment?.trim() || '';
+
+      const notif: CoachNotification = {
+        id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        athleteId: currentUser.id,
+        athleteName: currentUser.name,
+        type: 'completed',
+        date: run.workoutDate,
+        runType: run.runType,
+        distance: run.distance,
+        unit: run.distanceUnit,
+        comment: commentText,
+        timestamp: Date.now(),
+        read: false,
+      };
+      setNotifications((prev) => {
+        const next = [notif, ...prev];
+        saveStoredNotifications(next);
+        return next;
+      });
+    }
+  };
+
+  // Athlete editing their assigned run parameters with optional reason for coach
+  const handleAthleteEditAssignedRun = (
+    updatedRun: WorkoutRun,
+    editReason?: string
+  ) => {
+    const runToSave: WorkoutRun = {
+      ...updatedRun,
+      editReason: editReason?.trim() || updatedRun.editReason,
+      updatedAt: new Date().toISOString(),
+    };
+    handleSaveRun(runToSave);
+
+    if (currentUser.role === 'runner') {
+      const reasonText = editReason?.trim() || '';
       const notif: CoachNotification = {
         id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         athleteId: currentUser.id,
         athleteName: currentUser.name,
         type: 'edited',
-        date: run.workoutDate,
-        runType: run.runType,
-        distance: run.distance,
-        unit: run.distanceUnit,
-        comment: `✓ ${currentUser.name} completed ${run.distance} ${run.distanceUnit.toUpperCase()} ${run.runType.replace('_', ' ')} run!`,
+        date: runToSave.workoutDate,
+        runType: runToSave.runType,
+        distance: runToSave.distance,
+        unit: runToSave.distanceUnit,
+        comment: reasonText
+          ? `Reason: "${reasonText}"`
+          : `Adjusted workout parameters (${runToSave.distance} ${runToSave.distanceUnit.toUpperCase()} ${runToSave.runType})`,
         timestamp: Date.now(),
         read: false,
       };
@@ -594,6 +640,7 @@ export const App: React.FC = () => {
         distanceUnit={settings.distanceUnit}
         allWorkouts={workouts}
         onToggleComplete={handleAthleteToggleComplete}
+        onUpdateRun={handleAthleteEditAssignedRun}
         activeDate={selectedDate}
       />
 
