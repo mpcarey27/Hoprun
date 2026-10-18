@@ -30,7 +30,6 @@ interface Props {
   onSavePlan: (plan: TrainingPlan) => void;
   distanceUnit: DistanceUnit;
   onOpenAsAthlete: (plan: TrainingPlan) => void;
-  onOpenAssignRun?: () => void;
   onAssignRuns?: (newRuns: WorkoutRun[], notificationText: string) => void;
 }
 
@@ -42,7 +41,6 @@ export const AdminPlanModal: React.FC<Props> = ({
   onSavePlan,
   distanceUnit,
   onOpenAsAthlete,
-  onOpenAssignRun,
   onAssignRuns,
 }) => {
   const isCoach = currentUser.role === 'coach';
@@ -267,16 +265,6 @@ export const AdminPlanModal: React.FC<Props> = ({
               <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">Coach</span>
               <h2 className="modal-title">Training Plan Builder</h2>
             </div>
-            {currentUser.role === 'coach' && onOpenAssignRun && (
-              <button
-                type="button"
-                className="btn-assign-run-admin"
-                onClick={onOpenAssignRun}
-                title="Schedule recurring runs for athlete"
-              >
-                Assign Run
-              </button>
-            )}
           </div>
           <button type="button" className="btn-modal-close" onClick={onClose}>✕</button>
         </div>

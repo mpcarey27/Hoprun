@@ -24,8 +24,6 @@ interface Props {
   onDeleteRun: (runId: string) => void;
   distanceUnit: DistanceUnit;
   onAthleteEdit?: (run: WorkoutRun) => void;
-  isCoach?: boolean;
-  onOpenAssignRun?: () => void;
 }
 
 export const LogRunTab: React.FC<Props> = ({
@@ -37,8 +35,6 @@ export const LogRunTab: React.FC<Props> = ({
   onDeleteRun,
   distanceUnit,
   onAthleteEdit,
-  isCoach,
-  onOpenAssignRun,
 }) => {
   const todayStr = formatDate(new Date());
   const isToday = selectedDate === todayStr;
@@ -357,16 +353,6 @@ export const LogRunTab: React.FC<Props> = ({
             Workouts · {getDayName(selectedDate)}
           </h3>
           <div className="flex items-center gap-2">
-            {isCoach && onOpenAssignRun && (
-              <button
-                type="button"
-                className="btn-assign-run"
-                onClick={onOpenAssignRun}
-                title="Schedule recurring runs for athlete"
-              >
-                Assign Run
-              </button>
-            )}
             <button
               type="button"
               className="btn-add-primary"

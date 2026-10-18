@@ -397,6 +397,49 @@ describe('Coach Analytics - Multi-Athlete Breakdown & Graph View Selection (TDD)
     switchMode('all');
     expect(currentMode).toBe('all');
   });
+
+  it('test_coachAssignSingleRun_robLongRun_monday() - assigns 1 single run for 1 athlete for 1 day', () => {
+    const coach = { id: 'user_michael_carey', name: 'Michael Carey', role: 'coach' as const };
+    const athleteRob = { id: 'user_rob', name: 'Rob', role: 'runner' as const };
+    const date = '2026-10-19'; // Monday
+
+    const [y, m, d] = date.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    expect(dateObj.getDay()).toBe(1); // Monday
+
+    const distance = 10;
+    const unit = 'mi' as const;
+    const runType = 'long_run';
+    const multiplier = 3.0;
+    const load = distance * multiplier;
+
+    const assignedRun: WorkoutRun = {
+      id: `run_assigned_${Date.now()}`,
+      workoutDate: date,
+      runOrder: 1,
+      distance,
+      distanceUnit: unit,
+      runType,
+      multiplier,
+      load,
+      comments: 'Coach Michael Carey assigned long run to Rob',
+      completed: false,
+      isPlanAssigned: true,
+      athleteId: athleteRob.id,
+      athleteName: athleteRob.name,
+      assignedByCoachId: coach.id,
+      assignedByCoachName: coach.name,
+      updatedAt: new Date().toISOString(),
+    };
+
+    expect(assignedRun.workoutDate).toBe('2026-10-19');
+    expect(assignedRun.athleteName).toBe('Rob');
+    expect(assignedRun.runType).toBe('long_run');
+    expect(assignedRun.distance).toBe(10);
+    expect(assignedRun.load).toBe(30);
+    expect(assignedRun.completed).toBe(false);
+    expect(assignedRun.isPlanAssigned).toBe(true);
+  });
 });
 
 

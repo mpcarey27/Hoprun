@@ -21,7 +21,6 @@ interface Props {
   onSelectAthleteFilter?: (athleteId: string) => void;
   firstDayOfWeek?: DayOfWeek;
   activeWeekStartDate?: string;
-  onOpenAssignRun?: () => void;
 }
 
 export const AnalyticsTab: React.FC<Props> = ({
@@ -36,7 +35,6 @@ export const AnalyticsTab: React.FC<Props> = ({
   onSelectAthleteFilter = () => {},
   firstDayOfWeek = 1,
   activeWeekStartDate,
-  onOpenAssignRun,
 }) => {
   // Custom windows options
   const [windowOption, setWindowOption] = useState<'4w' | '8w' | '12w' | 'ytd' | 'all' | 'custom'>('all');
@@ -512,15 +510,6 @@ export const AnalyticsTab: React.FC<Props> = ({
                         <p className="text-secondary font-medium text-xs">
                           No workout data logged yet for {athlete.name}.
                         </p>
-                        {onOpenAssignRun && athlete.role === 'runner' && (
-                          <button
-                            type="button"
-                            className="btn-action-primary text-xs py-1 px-3 mt-2"
-                            onClick={onOpenAssignRun}
-                          >
-                            + Prescribe Run for {athlete.name.split(' ')[0]}
-                          </button>
-                        )}
                       </div>
                     ) : (
                       <>

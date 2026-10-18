@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type {
   WorkoutRun,
   DistanceUnit,
@@ -9,11 +9,8 @@ import {
   getRunTypeMultiplier,
   getRunTypeColor,
   calculateRunLoad,
-  convertDistance,
   formatDate,
   getDayName,
-  addDays,
-  generateRecurringDates,
 } from '../utils/calculations';
 import { ROSTER_USERS } from '../utils/storage';
 
@@ -29,16 +26,6 @@ interface Props {
   onDeleteRun?: (runId: string) => void;
 }
 
-const DAY_LABELS = [
-  { day: 1, label: 'Mon', full: 'Monday' },
-  { day: 2, label: 'Tue', full: 'Tuesday' },
-  { day: 3, label: 'Wed', full: 'Wednesday' },
-  { day: 4, label: 'Thu', full: 'Thursday' },
-  { day: 5, label: 'Fri', full: 'Friday' },
-  { day: 6, label: 'Sat', full: 'Saturday' },
-  { day: 0, label: 'Sun', full: 'Sunday' },
-];
-
 export const AssignRunModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -52,13 +39,12 @@ export const AssignRunModal: React.FC<Props> = ({
 }) => {
   const isCoach = currentUser.role === 'coach';
   const todayStr = useMemo(() => formatDate(new Date()), []);
-  const initialStart = activeDate || todayStr;
 
-  // Active Modal Mode Tab: 'assign' = Create New Recurring Runs, 'edit' = Manage & Edit Previously Assigned Runs
+  // Modal Mode Tab: 'assign' = Assign Single Run, 'edit' = Manage & Edit Previously Assigned Runs
   const [activeTab, setActiveTab] = useState<'assign' | 'edit'>('assign');
 
   // -------------------------------------------------------------
-  // Assign Tab State
+  // Assign Tab State: 1 Athlete, 1 Run, 1 Date (No Repeating)
   // -------------------------------------------------------------
   // Default target athlete to Rob (or coach themselves if selected)
   const [selectedAthleteId, setSelectedAthleteId] = useState<string>(() => {
@@ -70,26 +56,44 @@ export const AssignRunModal: React.FC<Props> = ({
     return ROSTER_USERS.find((u) => u.id === selectedAthleteId) || currentUser;
   }, [selectedAthleteId, currentUser]);
 
-  // Run Configuration
-  const [distance, setDistance] = useState<number>(10);
+  // Single date for the assigned run (default to activeDate or today)
+  const [workoutDate, setWorkoutDate] = useState<string>(() => activeDate || todayStr);
+
+  useEffect(() => {
+    if (activeDate) {
+      setWorkoutDate(activeDate);
+    }
+  }, [activeDate, isOpen]);
+
+  // Run Configuration: distance, unit, runType, instructions
+  const [distance, setDistance] = useState<number>(8);
   const [unit, setUnit] = useState<DistanceUnit>(distanceUnit);
-  const [runType, setRunType] = useState<string>('easy');
-  const [instructions, setInstructions] = useState<string>('Easy Zone 2 aerobic run');
-
-  // Date Range
-  const [startDate, setStartDate] = useState<string>(initialStart);
-  const [endDate, setEndDate] = useState<string>(() => {
-    const currentYear = new Date().getFullYear();
-    const defaultEnd = `${currentYear}-12-31`;
-    return defaultEnd >= initialStart ? defaultEnd : addDays(initialStart, 56);
-  });
-
-  // Repeating Days: Default to Monday & Wednesday
-  const [selectedDays, setSelectedDays] = useState<number[]>([1, 3]);
-  const [intervalWeeks, setIntervalWeeks] = useState<number>(1);
+  const [runType, setRunType] = useState<string>('long_run');
+  const [instructions, setInstructions] = useState<string>('');
 
   // Success message toast
   const [successMessage, setSuccessMessage] = useState<string>('');
+
+  // Formatted date string (e.g. "Monday, Oct 19, 2026")
+  const formattedDate = useMemo(() => {
+    if (!workoutDate) return '';
+    try {
+      const [y, m, d] = workoutDate.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      return dateObj.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch {
+      return workoutDate;
+    }
+  }, [workoutDate]);
+
+  // Math totals for single run
+  const multiplier = getRunTypeMultiplier(runType);
+  const load = calculateRunLoad(distance, unit, multiplier);
 
   // -------------------------------------------------------------
   // Edit Previously Assigned Runs State
@@ -136,51 +140,21 @@ export const AssignRunModal: React.FC<Props> = ({
     }).sort((a, b) => b.workoutDate.localeCompare(a.workoutDate));
   }, [previouslyAssignedRuns, editAthleteFilter, editSearchQuery]);
 
-  // Toggle single day
-  const handleToggleDay = (day: number) => {
-    setSelectedDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
-    );
-  };
-
-  const handleSelectPreset = (days: number[]) => {
-    setSelectedDays(days);
-  };
-
-  // Computed matching dates
-  const matchingDates = useMemo(() => {
-    return generateRecurringDates({
-      startDate,
-      endDate,
-      selectedDays,
-      intervalWeeks,
-    });
-  }, [startDate, endDate, selectedDays, intervalWeeks]);
-
-  // Math totals
-  const multiplier = getRunTypeMultiplier(runType);
-  const loadPerRun = calculateRunLoad(distance, unit, multiplier);
-  const totalVolumeMiles = useMemo(() => {
-    const mi = convertDistance(distance, unit, 'mi');
-    return Number((mi * matchingDates.length).toFixed(1));
-  }, [distance, unit, matchingDates.length]);
-  const totalWorkloadStress = Number((loadPerRun * matchingDates.length).toFixed(1));
-
-  // Assign recurring runs to the selected athlete
+  // Assign single run to the selected athlete
   const handleAssign = () => {
-    if (matchingDates.length === 0 || distance <= 0) return;
+    if (!workoutDate || distance <= 0) return;
 
     const baseTime = Date.now();
-    const newRuns: WorkoutRun[] = matchingDates.map((dateStr, idx) => ({
-      id: `run_assigned_${baseTime}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
-      workoutDate: dateStr,
+    const newRun: WorkoutRun = {
+      id: `run_assigned_${baseTime}_${Math.random().toString(36).slice(2, 6)}`,
+      workoutDate,
       runOrder: 1,
       distance,
       distanceUnit: unit,
       runType,
       multiplier,
-      load: loadPerRun,
-      comments: instructions.trim() || `Coach ${currentUser.name || 'Michael Carey'} assigned ${runType} run to ${selectedAthlete.name}`,
+      load,
+      comments: instructions.trim() || `Coach ${currentUser.name || 'Michael Carey'} assigned ${runType.replace('_', ' ')} run`,
       completed: false, // Planned workout for athlete to complete
       isPlanAssigned: true,
       athleteId: selectedAthlete.id,
@@ -188,21 +162,16 @@ export const AssignRunModal: React.FC<Props> = ({
       assignedByCoachId: currentUser.id,
       assignedByCoachName: currentUser.name,
       updatedAt: new Date().toISOString(),
-    }));
+    };
 
-    const daysSummary = selectedDays
-      .map((d) => DAY_LABELS.find((l) => l.day === d)?.label)
-      .filter(Boolean)
-      .join(', ');
+    const notifMsg = `Coach ${currentUser.name || 'Michael Carey'} assigned a ${distance} ${unit.toUpperCase()} ${runType.replace('_', ' ')} run to ${selectedAthlete.name} for ${formattedDate}`;
 
-    const notifMsg = `Coach ${currentUser.name || 'Michael Carey'} assigned ${newRuns.length} runs to ${selectedAthlete.name}: ${distance} ${unit.toUpperCase()} ${runType.replace('_', ' ')} on ${daysSummary} (${startDate} through ${endDate})`;
-
-    onAssignRuns(newRuns, notifMsg);
-    setSuccessMessage(`✓ Successfully assigned ${newRuns.length} workouts to ${selectedAthlete.name}!`);
+    onAssignRuns([newRun], notifMsg);
+    setSuccessMessage(`✓ Successfully assigned run to ${selectedAthlete.name} for ${formattedDate}!`);
     setTimeout(() => {
       setSuccessMessage('');
       onClose();
-    }, 1400);
+    }, 1200);
   };
 
   // Start editing a previously assigned run
@@ -299,7 +268,7 @@ export const AssignRunModal: React.FC<Props> = ({
             className={`tab-pill ${activeTab === 'assign' ? 'tab-pill-active' : ''}`}
             onClick={() => setActiveTab('assign')}
           >
-            Assign Runs
+            Assign Run
           </button>
           <button
             type="button"
@@ -332,11 +301,11 @@ export const AssignRunModal: React.FC<Props> = ({
           )}
 
           {/* ============================================================ */}
-          {/* TAB 1: ASSIGN NEW RUNS */}
+          {/* TAB 1: ASSIGN 1 RUN FOR 1 ATHLETE FOR 1 DAY */}
           {/* ============================================================ */}
           {activeTab === 'assign' && (
             <>
-              {/* Section 0: Target Athlete Selection (Mandatory Coach Choice) */}
+              {/* Section 1: Target Athlete Selection */}
               <div className="assign-section mb-4 p-3 rounded" style={{ backgroundColor: 'var(--bg-surface-elevated)', border: '1px solid var(--border-subtle)' }}>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="section-label font-mono text-xs text-primary uppercase font-bold">
@@ -388,7 +357,49 @@ export const AssignRunModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Section 1: Workout Prescription */}
+              {/* Section 2: Date Selection for Single Run */}
+              <div className="assign-section mb-4 p-3 rounded" style={{ backgroundColor: 'var(--bg-surface-elevated)', border: '1px solid var(--border-subtle)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="section-label font-mono text-xs text-primary uppercase font-bold">
+                    Workout Date
+                  </h3>
+                  <span className="text-xs font-mono font-bold text-primary">
+                    {formattedDate}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="date"
+                    className="input-field text-sm font-mono flex-1 min-w-[200px]"
+                    value={workoutDate}
+                    onChange={(e) => setWorkoutDate(e.target.value)}
+                  />
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="btn-filter-pill text-xs font-mono py-1 px-2.5"
+                      onClick={() => setWorkoutDate(todayStr)}
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-filter-pill text-xs font-mono py-1 px-2.5"
+                      onClick={() => {
+                        const [y, m, d] = todayStr.split('-').map(Number);
+                        const nextDay = new Date(y, m - 1, d + 1);
+                        setWorkoutDate(formatDate(nextDay));
+                      }}
+                    >
+                      Tomorrow
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Run Details (Distance, Run Type, Multiplier, Notes) */}
               <div className="assign-section">
                 <h3 className="section-label font-mono text-xs text-primary uppercase mb-2">
                   Workout Details
@@ -407,7 +418,7 @@ export const AssignRunModal: React.FC<Props> = ({
                         min="0.1"
                         className="hero-distance-input font-mono"
                         value={distance || ''}
-                        placeholder="10.0"
+                        placeholder="8.0"
                         onChange={(e) => setDistance(parseFloat(e.target.value) || 0)}
                       />
                       <button
@@ -421,7 +432,7 @@ export const AssignRunModal: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  {/* Stress per run badge */}
+                  {/* Workload stress badge */}
                   <div>
                     <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
                       Workload
@@ -430,7 +441,7 @@ export const AssignRunModal: React.FC<Props> = ({
                       <span className="text-xs text-muted">
                         {distance} {unit} × {multiplier.toFixed(1)}
                       </span>
-                      <span className="text-lg font-bold text-primary">{loadPerRun.toFixed(1)}</span>
+                      <span className="text-lg font-bold text-primary">{load.toFixed(1)}</span>
                     </div>
                   </div>
                 </div>
@@ -470,161 +481,30 @@ export const AssignRunModal: React.FC<Props> = ({
                   className="textarea-notes"
                   value={instructions}
                   onChange={(e) => setInstructions(e.target.value)}
-                  placeholder={`e.g. Aerobic zone 2 run for ${selectedAthlete.name}...`}
+                  placeholder={`e.g. Long run for ${selectedAthlete.name}, keep pace easy and steady...`}
                 />
               </div>
 
-              <div className="settings-divider" />
-
-              {/* Section 2: Repeating Schedule Options */}
-              <div className="assign-section">
-                <h3 className="section-label font-mono text-xs text-primary uppercase mb-2">
-                  Repeating Schedule
-                </h3>
-
-                {/* Days of week selector pills */}
-                <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1.5">
-                  Repeat On:
-                </label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {DAY_LABELS.map(({ day, label, full }) => {
-                    const isSelected = selectedDays.includes(day);
-                    return (
-                      <button
-                        key={day}
-                        type="button"
-                        className={`btn-day-picker-pill ${isSelected ? 'active' : ''}`}
-                        onClick={() => handleToggleDay(day)}
-                        title={full}
-                      >
-                        <span className="font-bold">{label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Presets */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xxs text-muted font-mono uppercase">Presets:</span>
-                  <button
-                    type="button"
-                    className="btn-preset-pill font-mono text-xxs"
-                    onClick={() => handleSelectPreset([1, 3])}
-                  >
-                    Mon &amp; Wed
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-preset-pill font-mono text-xxs"
-                    onClick={() => handleSelectPreset([1, 3, 5])}
-                  >
-                    Mon / Wed / Fri
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-preset-pill font-mono text-xxs"
-                    onClick={() => handleSelectPreset([2, 4, 6])}
-                  >
-                    Tue / Thu / Sat
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-preset-pill font-mono text-xxs"
-                    onClick={() => handleSelectPreset([6, 0])}
-                  >
-                    Weekends (Sat/Sun)
-                  </button>
-                </div>
-
-                {/* Date range grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                  <div>
-                    <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      Start Date
-                    </label>
-                    <input
-                      type="date"
-                      className="input-field text-xs font-mono w-full"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      End Date
-                    </label>
-                    <input
-                      type="date"
-                      className="input-field text-xs font-mono w-full"
-                      value={endDate}
-                      min={startDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      Cadence
-                    </label>
-                    <select
-                      className="select-field text-xs font-mono w-full"
-                      value={intervalWeeks}
-                      onChange={(e) => setIntervalWeeks(Number(e.target.value))}
-                    >
-                      <option value={1}>Every week</option>
-                      <option value={2}>Every 2 weeks</option>
-                      <option value={3}>Every 3 weeks</option>
-                      <option value={4}>Every 4 weeks</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Schedule Calculation & Preview */}
-              <div className="assign-summary-box">
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              {/* Assignment Summary Strip */}
+              <div className="assign-summary-box mt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <span className="font-mono text-xs text-muted uppercase block">
-                      {selectedAthlete.name}
+                      Target Athlete
                     </span>
                     <strong className="text-sm font-mono text-primary">
-                      {matchingDates.length} Runs Prescribed
+                      {selectedAthlete.name} · {formattedDate}
                     </strong>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-mono text-muted">
-                      Distance: <strong className="text-primary">{totalVolumeMiles} mi</strong>
+                      Distance: <strong className="text-primary">{distance} {unit.toUpperCase()}</strong>
                     </span>
                     <span className="text-xs font-mono text-primary font-bold">
-                      Workload: {totalWorkloadStress}
+                      Workload: {load.toFixed(1)}
                     </span>
                   </div>
                 </div>
-
-                {/* Scrollable list of matched dates */}
-                {matchingDates.length > 0 ? (
-                  <div className="matched-dates-chip-list">
-                    {matchingDates.map((dStr) => {
-                      const [y, m, d] = dStr.split('-').map(Number);
-                      const dateObj = new Date(y, m - 1, d);
-                      const formatted = dateObj.toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                      });
-                      return (
-                        <span key={dStr} className="matched-date-pill font-mono text-xxs">
-                          {formatted}
-                        </span>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-danger font-mono mt-1">
-                    No dates matched. Please select at least one day of the week and ensure the end date is on or after the start date.
-                  </p>
-                )}
               </div>
             </>
           )}
@@ -903,10 +783,10 @@ export const AssignRunModal: React.FC<Props> = ({
             <button
               type="button"
               className="btn-action-primary"
-              disabled={!isCoach || matchingDates.length === 0 || distance <= 0}
+              disabled={!isCoach || !workoutDate || distance <= 0}
               onClick={handleAssign}
             >
-              Assign {matchingDates.length} Runs →
+              Assign Run to {selectedAthlete.name} →
             </button>
           )}
         </div>

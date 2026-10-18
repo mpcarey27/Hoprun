@@ -379,33 +379,13 @@ export const App: React.FC = () => {
         {/* Coach Admin Athlete Roster Bar (Only visible in Coach Mode) */}
         {currentUser.role === 'coach' && (
           <div className="mb-4 p-3 rounded bg-surface border border-subtle">
-            <div className="flex flex-wrap items-center justify-between gap-2.5 mb-2">
-              <div className="flex items-center gap-2">
-                <span className="badge-safe font-mono text-xxs font-bold">
-                  COACH MODE
-                </span>
-                <span className="text-xs font-mono font-bold text-primary">
-                  Roster
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="btn-assign-run text-xs py-1 px-3"
-                  onClick={() => setIsAssignRunOpen(true)}
-                  title="Prescribe runs to an athlete"
-                >
-                  + Assign Run
-                </button>
-                <button
-                  type="button"
-                  className="btn-action-secondary text-xs py-1 px-3"
-                  onClick={() => setIsPlanBuilderOpen(true)}
-                  title="Assign training plan to an athlete"
-                >
-                  + Assign Plan
-                </button>
-              </div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="badge-safe font-mono text-xxs font-bold">
+                COACH MODE
+              </span>
+              <span className="text-xs font-mono font-bold text-primary">
+                Roster
+              </span>
             </div>
 
             {/* Roster Filter Pills */}
@@ -453,8 +433,6 @@ export const App: React.FC = () => {
             onDeleteRun={handleDeleteRun}
             distanceUnit={settings.distanceUnit}
             onAthleteEdit={handleAthleteEdit}
-            isCoach={currentUser.role === 'coach'}
-            onOpenAssignRun={() => setIsAssignRunOpen(true)}
           />
         )}
 
@@ -506,7 +484,6 @@ export const App: React.FC = () => {
             onSelectAthleteFilter={setSelectedAthleteFilter}
             firstDayOfWeek={settings.firstDayOfWeek}
             activeWeekStartDate={activeWeekStartDate}
-            onOpenAssignRun={() => setIsAssignRunOpen(true)}
           />
         )}
 
@@ -531,7 +508,6 @@ export const App: React.FC = () => {
         onSavePlan={handleSavePlan}
         distanceUnit={settings.distanceUnit}
         onOpenAsAthlete={handleOpenAsAthlete}
-        onOpenAssignRun={() => setIsAssignRunOpen(true)}
         onAssignRuns={handleAssignRuns}
       />
 
