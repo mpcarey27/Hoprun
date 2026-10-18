@@ -4,6 +4,8 @@ import {
   getRunTypeColor,
   convertDistance,
   getRunTypeMultiplier,
+  formatDuration,
+  formatPace,
 } from '../utils/calculations';
 
 interface Props {
@@ -39,6 +41,7 @@ export const DayDetailsModal: React.FC<Props> = ({
   }, 0);
 
   const totalLoad = runs.reduce((acc, r) => acc + r.load, 0);
+  const totalDurSecs = runs.reduce((acc, r) => acc + (r.durationSeconds || 0), 0);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -83,6 +86,14 @@ export const DayDetailsModal: React.FC<Props> = ({
                 {totalLoad.toFixed(1)}
               </span>
             </div>
+            {totalDurSecs > 0 && (
+              <div className="quick-metric">
+                <span className="metric-label">Time</span>
+                <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
+                  {formatDuration(totalDurSecs)}
+                </span>
+              </div>
+            )}
             <div className="quick-metric">
               <span className="metric-label">Activities</span>
               <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
@@ -172,7 +183,7 @@ export const DayDetailsModal: React.FC<Props> = ({
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
                       <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
                         <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                           Distance
@@ -188,6 +199,24 @@ export const DayDetailsModal: React.FC<Props> = ({
                         </span>
                         <strong className="text-base font-mono text-primary font-bold">
                           {run.load.toFixed(1)}
+                        </strong>
+                      </div>
+
+                      <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
+                        <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                          Time
+                        </span>
+                        <strong className="text-base font-mono" style={{ color: 'var(--text-primary)' }}>
+                          {run.durationFormatted || (run.durationSeconds ? formatDuration(run.durationSeconds) : '—')}
+                        </strong>
+                      </div>
+
+                      <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
+                        <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                          Avg Pace
+                        </span>
+                        <strong className="text-base font-mono text-accent font-bold">
+                          {run.paceFormatted || (run.paceSeconds ? formatPace(run.paceSeconds, run.distanceUnit) : '—')}
                         </strong>
                       </div>
                     </div>

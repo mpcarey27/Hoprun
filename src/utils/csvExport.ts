@@ -14,6 +14,8 @@ export function exportWorkloadToCsv(
     `Distance (${preferredUnit.toUpperCase()})`,
     'Distance (MI)',
     'Distance (KM)',
+    'Time',
+    'Pace',
     'Multiplier',
     'Calculated Load',
     'Completed',
@@ -41,6 +43,8 @@ export function exportWorkloadToCsv(
           '0.00',
           '0.00',
           '0.00',
+          '-',
+          '-',
           '0.0',
           '0.0',
           'Yes',
@@ -60,6 +64,8 @@ export function exportWorkloadToCsv(
 
           // Escape quotes in comments
           const escapedComment = `"${(run.comments || '').replace(/"/g, '""')}"`;
+          const timeVal = run.durationFormatted || '-';
+          const paceVal = run.paceFormatted || '-';
 
           rows.push([
             String(w.weekNumber),
@@ -70,6 +76,8 @@ export function exportWorkloadToCsv(
             prefDist.toFixed(2),
             mi.toFixed(2),
             km.toFixed(2),
+            timeVal,
+            paceVal,
             String(run.multiplier),
             run.load.toFixed(1),
             run.completed ? 'Yes' : 'Planned',

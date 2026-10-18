@@ -5,6 +5,15 @@ import {
   calculateInWeekPrediction,
   buildWeeklyWorkloadData,
   generateRecurringDates,
+  timeToSeconds,
+  secondsToTime,
+  formatDuration,
+  formatDurationStrava,
+  paceToSeconds,
+  secondsToPace,
+  calculatePaceSeconds,
+  calculateDurationFromPace,
+  formatPace,
 } from '../src/utils/calculations';
 import type { WorkoutRun, WeekWorkload, UserProfile } from '../src/types/acr';
 
@@ -627,5 +636,112 @@ describe('Coach Analytics - Multi-Athlete Breakdown & Graph View Selection (TDD)
     expect(coachNotification.comment).toBe(`Reason: "${editReason}"`);
   });
 });
+
+describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
+  it('test_timeToSeconds_and_secondsToTime() - roundtrip duration conversion', () => {
+    // 1 hr 04 min 15 sec -> 3855 sec
+    const totalSec = timeToSeconds(1, 4, 15);
+    expect(totalSec).toBe(3855);
+
+    const parsed = secondsToTime(totalSec);
+    expect(parsed.hours).toBe(1);
+    expect(parsed.minutes).toBe(4);
+    expect(parsed.seconds).toBe(15);
+
+    // 45 min 30 sec -> 2730 sec
+    const secOnly = timeToSeconds(0, 45, 30);
+    expect(secOnly).toBe(2730);
+    const parsedSecOnly = secondsToTime(secOnly);
+    expect(parsedSecOnly.hours).toBe(0);
+    expect(parsedSecOnly.minutes).toBe(45);
+    expect(parsedSecOnly.seconds).toBe(30);
+  });
+
+  it('test_formatDuration_hours_and_minutes() - running time strings', () => {
+    // Under 1 hr -> MM:SS
+    expect(formatDuration(2730)).toBe('45:30');
+    // Over 1 hr -> H:MM:SS
+    expect(formatDuration(3855)).toBe('1:04:15');
+    // Strava friendly display
+    expect(formatDurationStrava(3855)).toBe('1h 4m 15s');
+    expect(formatDurationStrava(2730)).toBe('45m 30s');
+  });
+
+  it('test_calculatePaceSeconds_and_formatPace() - calculates exact pace from duration and distance', () => {
+    // 10 miles in 1 hr 20 min (4800s) -> 480 sec/mi = 8:00 /mi
+    const pace1 = calculatePaceSeconds(4800, 10.0);
+    expect(pace1).toBe(480);
+    expect(formatPace(pace1, 'mi')).toBe('8:00 /mi');
+
+    // 5 miles in 38 min 45 sec (2325s) -> 465 sec/mi = 7:45 /mi
+    const pace2 = calculatePaceSeconds(2325, 5.0);
+    expect(pace2).toBe(465);
+    expect(formatPace(pace2, 'mi')).toBe('7:45 /mi');
+
+    // 5 km in 25 min (1500s) -> 300 sec/km = 5:00 /km
+    const paceKm = calculatePaceSeconds(1500, 5.0);
+    expect(paceKm).toBe(300);
+    expect(formatPace(paceKm, 'km')).toBe('5:00 /km');
+  });
+
+  it('test_calculateDurationFromPace() - calculates duration from pace and distance', () => {
+    // Pace: 8:00 /mi (480s), Distance: 10 mi -> Duration: 4800s (1:20:00)
+    const dur1 = calculateDurationFromPace(480, 10.0);
+    expect(dur1).toBe(4800);
+    expect(formatDuration(dur1)).toBe('1:20:00');
+
+    // Pace: 7:30 /mi (450s), Distance: 6 mi -> Duration: 2700s (45:00)
+    const dur2 = calculateDurationFromPace(450, 6.0);
+    expect(dur2).toBe(2700);
+    expect(formatDuration(dur2)).toBe('45:00');
+  });
+
+  it('test_stravaBiDirectionalConversion() - bi-directional sync between Time and Pace', () => {
+    const distance = 8.0;
+    // User types Time: 1h 00m 00s (3600s)
+    const durSecs = 3600;
+    const computedPace = calculatePaceSeconds(durSecs, distance); // 450s = 7:30 /mi
+    expect(computedPace).toBe(450);
+    expect(formatPace(computedPace, 'mi')).toBe('7:30 /mi');
+
+    // User switches to Pace mode and tweaks pace to 7:00 /mi (420s)
+    const newPaceSecs = paceToSeconds(7, 0); // 420s
+    const computedDuration = calculateDurationFromPace(newPaceSecs, distance); // 3360s = 56m 00s
+    expect(computedDuration).toBe(3360);
+    expect(formatDuration(computedDuration)).toBe('56:00');
+  });
+
+  it('test_optionalTimeAndPaceOnWorkoutRun() - workout runs remain valid with or without timing', () => {
+    // Run without timing (existing backward compatibility)
+    const runWithoutTime: WorkoutRun = {
+      id: 'run_no_time',
+      workoutDate: '2026-10-18',
+      runOrder: 1,
+      distance: 5.0,
+      distanceUnit: 'mi',
+      runType: 'easy',
+      multiplier: 3.0,
+      load: 15.0,
+      comments: 'Regular run',
+      completed: true,
+    };
+    expect(runWithoutTime.durationSeconds).toBeUndefined();
+    expect(runWithoutTime.paceFormatted).toBeUndefined();
+
+    // Run with Strava timing
+    const runWithTime: WorkoutRun = {
+      ...runWithoutTime,
+      id: 'run_with_time',
+      durationSeconds: 2400, // 40m 00s
+      durationFormatted: '40:00',
+      paceSeconds: 480, // 8:00 /mi
+      paceFormatted: '8:00 /mi',
+    };
+    expect(runWithTime.durationFormatted).toBe('40:00');
+    expect(runWithTime.paceFormatted).toBe('8:00 /mi');
+    expect(runWithTime.load).toBe(15.0);
+  });
+});
+
 
 

@@ -12,6 +12,7 @@ import {
   getDayName,
 } from '../utils/calculations';
 import { ROSTER_USERS } from '../utils/storage';
+import { StravaTimePacePicker } from './StravaTimePacePicker';
 
 interface Props {
   isOpen: boolean;
@@ -59,6 +60,12 @@ export const QuickLogModal: React.FC<Props> = ({
   const [completed, setCompleted] = useState<boolean>(true);
   const [successToast, setSuccessToast] = useState<string>('');
 
+  // Strava Time & Pace (Optional)
+  const [durationSeconds, setDurationSeconds] = useState<number | undefined>(undefined);
+  const [durationFormatted, setDurationFormatted] = useState<string | undefined>(undefined);
+  const [paceSeconds, setPaceSeconds] = useState<number | undefined>(undefined);
+  const [paceFormatted, setPaceFormatted] = useState<string | undefined>(undefined);
+
   // Math totals
   const multiplier = getRunTypeMultiplier(runType);
   const load = calculateRunLoad(distance, unit, multiplier);
@@ -99,6 +106,10 @@ export const QuickLogModal: React.FC<Props> = ({
       isPlanAssigned: false,
       athleteId: targetAthlete.id,
       athleteName: targetAthlete.name,
+      durationSeconds,
+      durationFormatted,
+      paceSeconds,
+      paceFormatted,
       updatedAt: new Date().toISOString(),
     };
 
@@ -254,6 +265,22 @@ export const QuickLogModal: React.FC<Props> = ({
                 </div>
               </div>
             </div>
+
+            {/* Strava Time & Pace (Optional) */}
+            <StravaTimePacePicker
+              distance={distance}
+              distanceUnit={unit}
+              durationSeconds={durationSeconds}
+              paceSeconds={paceSeconds}
+              onChange={(timing) => {
+                setDurationSeconds(timing.durationSeconds);
+                setDurationFormatted(timing.durationFormatted);
+                setPaceSeconds(timing.paceSeconds);
+                setPaceFormatted(timing.paceFormatted);
+              }}
+              label="Time & Pace (Optional · Strava Style)"
+              compact
+            />
 
             {/* Run Category */}
             <div>

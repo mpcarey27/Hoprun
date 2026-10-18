@@ -13,6 +13,7 @@ import {
   getDayName,
 } from '../utils/calculations';
 import { ROSTER_USERS } from '../utils/storage';
+import { StravaTimePacePicker } from './StravaTimePacePicker';
 
 interface Props {
   isOpen: boolean;
@@ -71,6 +72,12 @@ export const AssignRunModal: React.FC<Props> = ({
   const [runType, setRunType] = useState<string>('long_run');
   const [instructions, setInstructions] = useState<string>('');
 
+  // Target Pace & Time for Assigned Run (Optional)
+  const [targetDurationSeconds, setTargetDurationSeconds] = useState<number | undefined>(undefined);
+  const [targetDurationFormatted, setTargetDurationFormatted] = useState<string | undefined>(undefined);
+  const [targetPaceSeconds, setTargetPaceSeconds] = useState<number | undefined>(undefined);
+  const [targetPaceFormatted, setTargetPaceFormatted] = useState<string | undefined>(undefined);
+
   // Success message toast
   const [successMessage, setSuccessMessage] = useState<string>('');
 
@@ -110,6 +117,12 @@ export const AssignRunModal: React.FC<Props> = ({
   const [draftRunType, setDraftRunType] = useState<string>('easy');
   const [draftComments, setDraftComments] = useState<string>('');
   const [draftCompleted, setDraftCompleted] = useState<boolean>(false);
+
+  // Draft timing state
+  const [draftDurationSeconds, setDraftDurationSeconds] = useState<number | undefined>(undefined);
+  const [draftDurationFormatted, setDraftDurationFormatted] = useState<string | undefined>(undefined);
+  const [draftPaceSeconds, setDraftPaceSeconds] = useState<number | undefined>(undefined);
+  const [draftPaceFormatted, setDraftPaceFormatted] = useState<string | undefined>(undefined);
 
   // Computed list of previously assigned runs
   const previouslyAssignedRuns = useMemo(() => {
@@ -161,10 +174,14 @@ export const AssignRunModal: React.FC<Props> = ({
       athleteName: selectedAthlete.name,
       assignedByCoachId: currentUser.id,
       assignedByCoachName: currentUser.name,
+      durationSeconds: targetDurationSeconds,
+      durationFormatted: targetDurationFormatted,
+      paceSeconds: targetPaceSeconds,
+      paceFormatted: targetPaceFormatted,
       updatedAt: new Date().toISOString(),
     };
 
-    const notifMsg = `Coach ${currentUser.name || 'Michael Carey'} assigned a ${distance} ${unit.toUpperCase()} ${runType.replace('_', ' ')} run to ${selectedAthlete.name} for ${formattedDate}`;
+    const notifMsg = `Coach ${currentUser.name || 'Michael Carey'} assigned a ${distance} ${unit.toUpperCase()} ${runType.replace('_', ' ')} run to ${selectedAthlete.name} for ${formattedDate}${targetPaceFormatted ? ` (Target: ${targetPaceFormatted})` : ''}`;
 
     onAssignRuns([newRun], notifMsg);
     setSuccessMessage(`✓ Successfully assigned run to ${selectedAthlete.name} for ${formattedDate}!`);
@@ -184,6 +201,10 @@ export const AssignRunModal: React.FC<Props> = ({
     setDraftRunType(run.runType);
     setDraftComments(run.comments || '');
     setDraftCompleted(run.completed);
+    setDraftDurationSeconds(run.durationSeconds);
+    setDraftDurationFormatted(run.durationFormatted);
+    setDraftPaceSeconds(run.paceSeconds);
+    setDraftPaceFormatted(run.paceFormatted);
   };
 
   // Save changes to previously assigned run
@@ -208,6 +229,10 @@ export const AssignRunModal: React.FC<Props> = ({
       isPlanAssigned: true,
       assignedByCoachId: currentUser.id,
       assignedByCoachName: currentUser.name,
+      durationSeconds: draftDurationSeconds,
+      durationFormatted: draftDurationFormatted,
+      paceSeconds: draftPaceSeconds,
+      paceFormatted: draftPaceFormatted,
       updatedAt: new Date().toISOString(),
     };
 
@@ -446,6 +471,22 @@ export const AssignRunModal: React.FC<Props> = ({
                   </div>
                 </div>
 
+                {/* Prescribed Target Pace & Duration (Optional) */}
+                <StravaTimePacePicker
+                  distance={distance}
+                  distanceUnit={unit}
+                  durationSeconds={targetDurationSeconds}
+                  paceSeconds={targetPaceSeconds}
+                  onChange={(timing) => {
+                    setTargetDurationSeconds(timing.durationSeconds);
+                    setTargetDurationFormatted(timing.durationFormatted);
+                    setTargetPaceSeconds(timing.paceSeconds);
+                    setTargetPaceFormatted(timing.paceFormatted);
+                  }}
+                  label="Prescribed Target Pace & Time (Optional · Strava Style)"
+                  compact
+                />
+
                 {/* Run Category Selector */}
                 <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1.5">
                   Run Category
@@ -628,6 +669,16 @@ export const AssignRunModal: React.FC<Props> = ({
                               <span className="text-muted ml-2">
                                 (Workload: {run.load.toFixed(1)})
                               </span>
+                              {run.durationFormatted && (
+                                <span className="badge-safe text-xxs font-mono ml-2">
+                                  ⏱️ {run.durationFormatted}
+                                </span>
+                              )}
+                              {run.paceFormatted && (
+                                <span className="badge-safe text-xxs font-mono ml-1.5">
+                                  ⚡ {run.paceFormatted}
+                                </span>
+                              )}
                             </div>
                             {run.comments && (
                               <p className="text-xs text-muted font-sans italic w-full mt-1">
@@ -694,7 +745,23 @@ export const AssignRunModal: React.FC<Props> = ({
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-2.5">
+                            {/* Strava Time & Pace for edited workout */}
+                            <StravaTimePacePicker
+                              distance={draftDistance}
+                              distanceUnit={draftUnit}
+                              durationSeconds={draftDurationSeconds}
+                              paceSeconds={draftPaceSeconds}
+                              onChange={(timing) => {
+                                setDraftDurationSeconds(timing.durationSeconds);
+                                setDraftDurationFormatted(timing.durationFormatted);
+                                setDraftPaceSeconds(timing.paceSeconds);
+                                setDraftPaceFormatted(timing.paceFormatted);
+                              }}
+                              label="Target Pace & Duration (Optional · Strava Style)"
+                              compact
+                            />
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mb-2.5 mt-2.5">
                               <div>
                                 <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
                                   Run Category

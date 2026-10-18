@@ -498,4 +498,109 @@ export function getMonthCalendarWeeks(
   return weeks;
 }
 
+/**
+ * Converts hours, minutes, and seconds into total duration in seconds.
+ */
+export function timeToSeconds(hours: number = 0, minutes: number = 0, seconds: number = 0): number {
+  const h = Math.max(0, Math.floor(Number(hours) || 0));
+  const m = Math.max(0, Math.floor(Number(minutes) || 0));
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  return (h * 3600) + (m * 60) + s;
+}
+
+/**
+ * Converts total seconds into { hours, minutes, seconds }.
+ */
+export function secondsToTime(totalSeconds: number): { hours: number; minutes: number; seconds: number } {
+  if (!totalSeconds || totalSeconds <= 0) {
+    return { hours: 0, minutes: 0, seconds: 0 };
+  }
+  const hours = Math.floor(totalSeconds / 3600);
+  const rem = totalSeconds % 3600;
+  const minutes = Math.floor(rem / 60);
+  const seconds = Math.round(rem % 60);
+  return { hours, minutes, seconds };
+}
+
+/**
+ * Formats duration in seconds into running timing string:
+ * e.g. 3855 -> "1:04:15", 2730 -> "45:30"
+ */
+export function formatDuration(totalSeconds?: number | null): string {
+  if (!totalSeconds || totalSeconds <= 0) return '';
+  const { hours, minutes, seconds } = secondsToTime(totalSeconds);
+  const sStr = String(seconds).padStart(2, '0');
+  if (hours > 0) {
+    const mStr = String(minutes).padStart(2, '0');
+    return `${hours}:${mStr}:${sStr}`;
+  }
+  return `${minutes}:${sStr}`;
+}
+
+/**
+ * Strava-style duration display string:
+ * e.g. "1h 04m 15s" or "45m 30s"
+ */
+export function formatDurationStrava(totalSeconds?: number | null): string {
+  if (!totalSeconds || totalSeconds <= 0) return '';
+  const { hours, minutes, seconds } = secondsToTime(totalSeconds);
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || hours > 0) parts.push(`${minutes}m`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+  return parts.join(' ');
+}
+
+/**
+ * Converts pace minutes and seconds into pace seconds per unit.
+ */
+export function paceToSeconds(minutes: number = 0, seconds: number = 0): number {
+  const m = Math.max(0, Math.floor(Number(minutes) || 0));
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  return (m * 60) + s;
+}
+
+/**
+ * Converts pace seconds into { minutes, seconds }.
+ */
+export function secondsToPace(paceSeconds: number): { minutes: number; seconds: number } {
+  if (!paceSeconds || paceSeconds <= 0) {
+    return { minutes: 0, seconds: 0 };
+  }
+  const minutes = Math.floor(paceSeconds / 60);
+  const seconds = Math.round(paceSeconds % 60);
+  return { minutes, seconds };
+}
+
+/**
+ * Calculates average pace (seconds per unit) from duration in seconds and distance.
+ */
+export function calculatePaceSeconds(durationSeconds: number, distance: number): number | null {
+  if (!durationSeconds || durationSeconds <= 0 || !distance || distance <= 0) {
+    return null;
+  }
+  return Math.round(durationSeconds / distance);
+}
+
+/**
+ * Calculates duration (seconds) from pace (seconds per unit) and distance.
+ */
+export function calculateDurationFromPace(paceSeconds: number, distance: number): number | null {
+  if (!paceSeconds || paceSeconds <= 0 || !distance || distance <= 0) {
+    return null;
+  }
+  return Math.round(distance * paceSeconds);
+}
+
+/**
+ * Formats pace in seconds per unit into "M:SS /mi" or "M:SS /km".
+ */
+export function formatPace(paceSeconds: number | null | undefined, unit: DistanceUnit = 'mi'): string {
+  if (!paceSeconds || paceSeconds <= 0) return '';
+  const minutes = Math.floor(paceSeconds / 60);
+  const seconds = Math.round(paceSeconds % 60);
+  return `${minutes}:${String(seconds).padStart(2, '0')} /${unit}`;
+}
+
+
 

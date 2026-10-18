@@ -4,6 +4,9 @@ import {
   DEFAULT_RUN_TYPES,
   getRunTypeColor,
   convertDistance,
+  formatDuration,
+  formatDurationStrava,
+  formatPace,
 } from '../utils/calculations';
 
 interface Props {
@@ -43,14 +46,22 @@ export const WorkoutsTab: React.FC<Props> = ({
   }, [sortedWorkouts, filterType, searchQuery]);
 
   // Total stats memoized
-  const { totalDistance, totalLoad } = useMemo(() => {
+  const { totalDistance, totalLoad, totalDurationSecs, avgPaceSecs } = useMemo(() => {
     let dist = 0;
     let load = 0;
+    let dur = 0;
     for (const w of workouts) {
       dist += convertDistance(w.distance, w.distanceUnit, distanceUnit);
       load += w.load;
+      if (w.durationSeconds) dur += w.durationSeconds;
     }
-    return { totalDistance: dist, totalLoad: load };
+    const pace = dist > 0 && dur > 0 ? Math.round(dur / dist) : null;
+    return {
+      totalDistance: dist,
+      totalLoad: load,
+      totalDurationSecs: dur,
+      avgPaceSecs: pace,
+    };
   }, [workouts, distanceUnit]);
 
   return (
@@ -67,6 +78,22 @@ export const WorkoutsTab: React.FC<Props> = ({
             {totalDistance.toFixed(1)} {distanceUnit.toUpperCase()}
           </span>
         </div>
+        {totalDurationSecs > 0 && (
+          <div className="strava-profile-stat">
+            <span className="strava-stat-label">Time</span>
+            <span className="strava-stat-val font-mono">
+              {formatDurationStrava(totalDurationSecs)}
+            </span>
+          </div>
+        )}
+        {avgPaceSecs && avgPaceSecs > 0 && (
+          <div className="strava-profile-stat">
+            <span className="strava-stat-label">Avg Pace</span>
+            <span className="strava-stat-val font-mono text-accent">
+              {formatPace(avgPaceSecs, distanceUnit)}
+            </span>
+          </div>
+        )}
         <div className="strava-profile-stat">
           <span className="strava-stat-label">Workload</span>
           <span className="strava-stat-val font-mono text-primary font-bold">
@@ -186,6 +213,24 @@ export const WorkoutsTab: React.FC<Props> = ({
                       <span className="text-xs text-muted font-normal">{distanceUnit.toUpperCase()}</span>
                     </span>
                   </div>
+
+                  {(w.durationFormatted || (w.durationSeconds && w.durationSeconds > 0)) && (
+                    <div className="activity-stat">
+                      <span className="activity-stat-label">Time</span>
+                      <span className="activity-stat-val font-mono">
+                        {w.durationFormatted || formatDuration(w.durationSeconds)}
+                      </span>
+                    </div>
+                  )}
+
+                  {(w.paceFormatted || (w.paceSeconds && w.paceSeconds > 0)) && (
+                    <div className="activity-stat">
+                      <span className="activity-stat-label">Avg Pace</span>
+                      <span className="activity-stat-val font-mono text-accent">
+                        {w.paceFormatted || formatPace(w.paceSeconds, distanceUnit)}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="activity-stat">
                     <span className="activity-stat-label">Workload</span>

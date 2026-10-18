@@ -12,6 +12,7 @@ import {
   formatDate,
   getDayName,
 } from '../utils/calculations';
+import { StravaTimePacePicker } from './StravaTimePacePicker';
 
 interface Props {
   isOpen: boolean;
@@ -57,6 +58,12 @@ export const AssignedRunsModal: React.FC<Props> = ({
   const [draftRunType, setDraftRunType] = useState<string>('easy');
   const [draftCompleted, setDraftCompleted] = useState<boolean>(false);
   const [draftEditReason, setDraftEditReason] = useState<string>('');
+
+  // Draft timing state for athlete edit
+  const [draftDurationSeconds, setDraftDurationSeconds] = useState<number | undefined>(undefined);
+  const [draftDurationFormatted, setDraftDurationFormatted] = useState<string | undefined>(undefined);
+  const [draftPaceSeconds, setDraftPaceSeconds] = useState<number | undefined>(undefined);
+  const [draftPaceFormatted, setDraftPaceFormatted] = useState<string | undefined>(undefined);
 
   // Filter athlete's coach-assigned runs
   const athleteAssignedRuns = useMemo(() => {
@@ -111,6 +118,10 @@ export const AssignedRunsModal: React.FC<Props> = ({
     setDraftRunType(run.runType);
     setDraftCompleted(run.completed);
     setDraftEditReason(run.editReason || '');
+    setDraftDurationSeconds(run.durationSeconds);
+    setDraftDurationFormatted(run.durationFormatted);
+    setDraftPaceSeconds(run.paceSeconds);
+    setDraftPaceFormatted(run.paceFormatted);
   };
 
   // Save athlete's edits to the assigned run
@@ -129,6 +140,10 @@ export const AssignedRunsModal: React.FC<Props> = ({
       load: newLoad,
       completed: draftCompleted,
       editReason: draftEditReason.trim(),
+      durationSeconds: draftDurationSeconds,
+      durationFormatted: draftDurationFormatted,
+      paceSeconds: draftPaceSeconds,
+      paceFormatted: draftPaceFormatted,
       updatedAt: new Date().toISOString(),
     };
 
@@ -331,6 +346,20 @@ export const AssignedRunsModal: React.FC<Props> = ({
                                 {run.load.toFixed(1)}
                               </strong>
                             </div>
+                            {(run.durationFormatted || run.paceFormatted) && (
+                              <>
+                                <div className="h-6 w-px bg-border-subtle" />
+                                <div>
+                                  <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                                    {run.completed ? 'Time & Pace' : 'Target Pace'}
+                                  </span>
+                                  <div className="flex items-center gap-1 font-mono text-xs font-bold text-accent">
+                                    {run.durationFormatted && <span>⏱️ {run.durationFormatted}</span>}
+                                    {run.paceFormatted && <span>⚡ {run.paceFormatted}</span>}
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
 
                           {/* Coach Instructions */}
@@ -521,6 +550,22 @@ export const AssignedRunsModal: React.FC<Props> = ({
                             </label>
                           </div>
                         </div>
+
+                        {/* Athlete Time & Pace Input (Optional) */}
+                        <StravaTimePacePicker
+                          distance={draftDistance}
+                          distanceUnit={draftUnit}
+                          durationSeconds={draftDurationSeconds}
+                          paceSeconds={draftPaceSeconds}
+                          onChange={(timing) => {
+                            setDraftDurationSeconds(timing.durationSeconds);
+                            setDraftDurationFormatted(timing.durationFormatted);
+                            setDraftPaceSeconds(timing.paceSeconds);
+                            setDraftPaceFormatted(timing.paceFormatted);
+                          }}
+                          label="Your Time & Pace (Optional · Strava Style)"
+                          compact
+                        />
 
                         {/* Run Category Chips */}
                         <div className="mb-2.5">

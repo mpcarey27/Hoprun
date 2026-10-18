@@ -13,7 +13,11 @@ import {
   addDays,
   calculateRunLoad,
   convertDistance,
+  formatDuration,
+  formatPace,
+  calculatePaceSeconds,
 } from '../utils/calculations';
+import { StravaTimePacePicker } from './StravaTimePacePicker';
 
 interface Props {
   selectedDate: string;
@@ -138,6 +142,13 @@ export const LogRunTab: React.FC<Props> = ({
     }
     updated.load = calculateRunLoad(updated.distance, updated.distanceUnit, updated.multiplier);
 
+    // If distance or distanceUnit changed and duration is set, recalculate pace
+    if (('distance' in updates || 'distanceUnit' in updates) && updated.durationSeconds && updated.distance > 0) {
+      const pSecs = calculatePaceSeconds(updated.durationSeconds, updated.distance);
+      updated.paceSeconds = pSecs || undefined;
+      updated.paceFormatted = pSecs ? formatPace(pSecs, updated.distanceUnit) : undefined;
+    }
+
     onSaveRun(updated);
     if (onAthleteEdit) {
       onAthleteEdit(updated);
@@ -149,6 +160,11 @@ export const LogRunTab: React.FC<Props> = ({
   }, 0);
 
   const totalDayLoad = runsForSelectedDate.reduce((acc, r) => acc + r.load, 0);
+
+  const totalDayDurationSecs = runsForSelectedDate.reduce(
+    (acc, r) => acc + (r.durationSeconds || 0),
+    0
+  );
 
   // Friendly date formatting e.g. "Today · Saturday, Oct 10, 2026"
   const [y, m, d] = selectedDate.split('-').map(Number);
@@ -323,6 +339,14 @@ export const LogRunTab: React.FC<Props> = ({
               {totalDayLoad.toFixed(1)}
             </span>
           </div>
+          {totalDayDurationSecs > 0 && (
+            <div className="quick-metric">
+              <span className="metric-label">Time</span>
+              <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
+                {formatDuration(totalDayDurationSecs)}
+              </span>
+            </div>
+          )}
           <div className="quick-metric">
             <span className="metric-label">Week Acute</span>
             <span className="metric-val font-mono text-white">
@@ -406,6 +430,16 @@ export const LogRunTab: React.FC<Props> = ({
                           COACH ASSIGNED
                         </span>
                       )}
+                      {run.durationFormatted && (
+                        <span className="badge-safe text-xxs font-mono">
+                          ⏱️ {run.durationFormatted}
+                        </span>
+                      )}
+                      {run.paceFormatted && (
+                        <span className="badge-safe text-xxs font-mono">
+                          ⚡ {run.paceFormatted}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -478,6 +512,16 @@ export const LogRunTab: React.FC<Props> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Strava Time & Pace Input (Optional) */}
+                  <StravaTimePacePicker
+                    distance={run.distance}
+                    distanceUnit={run.distanceUnit}
+                    durationSeconds={run.durationSeconds}
+                    paceSeconds={run.paceSeconds}
+                    onChange={(timing) => handleUpdateField(run, timing)}
+                    label="Time & Pace (Optional · Strava Style)"
+                  />
 
                   {/* Quick-Tap Workout Category Chips */}
                   <div className="workout-chips-section mt-3">

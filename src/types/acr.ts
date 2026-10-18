@@ -32,6 +32,10 @@ export interface WorkoutRun {
   assignedByCoachName?: string;
   athleteComment?: string;
   editReason?: string;
+  durationSeconds?: number; // total duration in seconds (optional)
+  durationFormatted?: string; // e.g. "1:04:15" or "45:30"
+  paceSeconds?: number; // seconds per distance unit (e.g. 480 = 8:00 /mi or /km)
+  paceFormatted?: string; // e.g. "8:00 /mi"
 }
 
 export interface DayWorkload {
