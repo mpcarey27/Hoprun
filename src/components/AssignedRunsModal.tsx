@@ -11,6 +11,7 @@ import {
   calculateRunLoad,
   formatDate,
   getDayName,
+  calculateCompliance,
 } from '../utils/calculations';
 import { StravaTimePacePicker } from './StravaTimePacePicker';
 
@@ -297,6 +298,13 @@ export const AssignedRunsModal: React.FC<Props> = ({
                         {run.editReason && (
                           <span className="badge-safe text-xxs font-mono" title={run.editReason}>
                             MODIFIED
+                          </span>
+                        )}
+                        {run.plannedDistance && (
+                          <span
+                            className={`badge-compliance badge-compliance-${calculateCompliance(run.plannedDistance, run.distance).status} text-xxs font-mono`}
+                          >
+                            {calculateCompliance(run.plannedDistance, run.distance).percent}% EXEC
                           </span>
                         )}
                       </div>

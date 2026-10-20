@@ -7,6 +7,7 @@ import {
   formatDuration,
   formatDurationStrava,
   formatPace,
+  calculateCompliance,
 } from '../utils/calculations';
 
 interface Props {
@@ -180,6 +181,28 @@ export const WorkoutsTab: React.FC<Props> = ({
                     {w.isPlanAssigned && (
                       <span className="badge-safe text-xxs font-mono ml-1.5">
                         COACH ASSIGNED
+                      </span>
+                    )}
+                    {w.plannedDistance && (
+                      <span
+                        className={`badge-compliance badge-compliance-${calculateCompliance(w.plannedDistance, w.distance).status} text-xxs font-mono ml-1.5`}
+                      >
+                        {calculateCompliance(w.plannedDistance, w.distance).percent}% EXEC
+                      </span>
+                    )}
+                    {w.feeling && (
+                      <span className="badge-feeling text-xxs ml-1.5">
+                        {w.feeling.toUpperCase()}
+                      </span>
+                    )}
+                    {w.rpe && (
+                      <span className="badge-rpe text-xxs font-mono ml-1.5">
+                        RPE {w.rpe}/10
+                      </span>
+                    )}
+                    {w.shoeName && (
+                      <span className="badge-shoe text-xxs ml-1.5">
+                        👟 {w.shoeName}
                       </span>
                     )}
                   </div>

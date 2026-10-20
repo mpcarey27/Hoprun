@@ -36,6 +36,42 @@ export interface WorkoutRun {
   durationFormatted?: string; // e.g. "1:04:15" or "45:30"
   paceSeconds?: number; // seconds per distance unit (e.g. 480 = 8:00 /mi or /km)
   paceFormatted?: string; // e.g. "8:00 /mi"
+  rpe?: number; // Borg CR10 Rate of Perceived Exertion (1 to 10)
+  feeling?: RunnerFeeling; // Post-run feeling state
+  plannedDistance?: number; // Original distance assigned by coach (in distanceUnit)
+  plannedPaceFormatted?: string; // Original target pace
+  compliancePercent?: number; // Adherence percentage (e.g. 98)
+  complianceStatus?: 'exact' | 'over' | 'under';
+  shoeId?: string; // Running shoe used for this run
+  shoeName?: string;
+}
+
+export type RunnerFeeling = 'fresh' | 'good' | 'normal' | 'tired' | 'exhausted';
+
+export interface TargetRace {
+  name: string; // e.g. "Boston Marathon"
+  date: string; // YYYY-MM-DD
+  targetTime?: string; // e.g. "3:15:00"
+  distance?: number;
+  distanceUnit?: DistanceUnit;
+}
+
+export interface RunningShoe {
+  id: string;
+  name: string; // e.g. "Nike Pegasus 41"
+  brand?: string;
+  totalMiles: number;
+  maxMiles: number; // default 400
+  isRetired: boolean;
+  dateAdded: string;
+}
+
+export interface QuickLogStaple {
+  id: string;
+  label: string;
+  distance: number;
+  unit: DistanceUnit;
+  runType: string;
 }
 
 export interface DayWorkload {
@@ -116,4 +152,6 @@ export interface AppSettings {
   firstDayOfWeek: DayOfWeek; // 1 = Monday, 0 = Sunday
   warningThreshold: number; // default 1.2
   themeMode: ThemeMode; // 'dark' | 'light'
+  targetRace?: TargetRace;
+  shoes?: RunningShoe[];
 }

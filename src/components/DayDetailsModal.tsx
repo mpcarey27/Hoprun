@@ -6,6 +6,7 @@ import {
   getRunTypeMultiplier,
   formatDuration,
   formatPace,
+  calculateCompliance,
 } from '../utils/calculations';
 
 interface Props {
@@ -168,6 +169,28 @@ export const DayDetailsModal: React.FC<Props> = ({
                         {run.isPlanAssigned && (
                           <span className="badge-safe text-xxs font-mono">
                             COACH ASSIGNED
+                          </span>
+                        )}
+                        {run.plannedDistance && (
+                          <span
+                            className={`badge-compliance badge-compliance-${calculateCompliance(run.plannedDistance, run.distance).status} text-xxs font-mono`}
+                          >
+                            {calculateCompliance(run.plannedDistance, run.distance).percent}% EXEC
+                          </span>
+                        )}
+                        {run.feeling && (
+                          <span className="badge-feeling text-xxs font-mono">
+                            {run.feeling.toUpperCase()}
+                          </span>
+                        )}
+                        {run.rpe && (
+                          <span className="badge-rpe text-xxs font-mono">
+                            RPE {run.rpe}/10
+                          </span>
+                        )}
+                        {run.shoeName && (
+                          <span className="badge-shoe text-xxs font-mono">
+                            👟 {run.shoeName}
                           </span>
                         )}
                       </div>

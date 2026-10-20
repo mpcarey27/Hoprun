@@ -1,8 +1,10 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import type {
   WorkoutRun,
   DistanceUnit,
   WeekWorkload,
+  TargetRace,
+  RunningShoe,
 } from '../types/acr';
 import {
   DEFAULT_RUN_TYPES,
@@ -16,8 +18,14 @@ import {
   formatDuration,
   formatPace,
   calculatePaceSeconds,
+  getQuickLogStaples,
+  calculateCompliance,
 } from '../utils/calculations';
 import { StravaTimePacePicker } from './StravaTimePacePicker';
+import { ACRTachometerDial } from './Charts/ACRTachometerDial';
+import { RPEFeelingPicker } from './RPEFeelingPicker';
+import { RaceCountdownBanner } from './RaceCountdownBanner';
+import { ShoeMileageTracker } from './ShoeMileageTracker';
 
 interface Props {
   selectedDate: string;
@@ -28,6 +36,11 @@ interface Props {
   onDeleteRun: (runId: string) => void;
   distanceUnit: DistanceUnit;
   onAthleteEdit?: (run: WorkoutRun) => void;
+  targetRace?: TargetRace;
+  shoes?: RunningShoe[];
+  safeRemainingBudget?: number | null;
+  hasExceededBudget?: boolean;
+  onOpenSettings?: () => void;
 }
 
 export const LogRunTab: React.FC<Props> = ({
@@ -39,9 +52,17 @@ export const LogRunTab: React.FC<Props> = ({
   onDeleteRun,
   distanceUnit,
   onAthleteEdit,
+  targetRace,
+  shoes = [],
+  safeRemainingBudget,
+  hasExceededBudget,
+  onOpenSettings,
 }) => {
   const todayStr = formatDate(new Date());
   const isToday = selectedDate === todayStr;
+
+  // Toggle for showing Tachometer Dial
+  const [showTachometer, setShowTachometer] = useState(true);
 
   // Calendar popover dropdown state
   const [isCalendarOpen, setIsCalendarOpen] = React.useState(false);
@@ -135,6 +156,26 @@ export const LogRunTab: React.FC<Props> = ({
     onSaveRun(newRun);
   };
 
+  const handleQuickLogStaple = (staple: { distance: number; unit: DistanceUnit; runType: string }) => {
+    const newOrder = runsForSelectedDate.length + 1;
+    const mult = getRunTypeMultiplier(staple.runType);
+    const newRun: WorkoutRun = {
+      id: `run_staple_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      workoutDate: selectedDate,
+      runOrder: newOrder,
+      distance: staple.distance,
+      distanceUnit: staple.unit,
+      runType: staple.runType,
+      multiplier: mult,
+      load: calculateRunLoad(staple.distance, staple.unit, mult),
+      comments: '',
+      completed: true,
+      updatedAt: new Date().toISOString(),
+    };
+
+    onSaveRun(newRun);
+  };
+
   const handleUpdateField = (run: WorkoutRun, updates: Partial<WorkoutRun>) => {
     const updated = { ...run, ...updates, updatedAt: new Date().toISOString() };
     if ('runType' in updates) {
@@ -178,6 +219,13 @@ export const LogRunTab: React.FC<Props> = ({
 
   return (
     <div className="tab-container">
+      {/* Target Race Countdown Banner (when configured) */}
+      <RaceCountdownBanner
+        targetRace={targetRace}
+        todayStr={todayStr}
+        onOpenSettings={onOpenSettings}
+      />
+
       {/* Date Header with Calendar Icon Date Picker */}
       <div className="today-header-card">
         <div className="date-nav-controls">
@@ -368,10 +416,55 @@ export const LogRunTab: React.FC<Props> = ({
             </span>
           </div>
         </div>
+
+        {/* Interactive ACWR Tachometer Dial */}
+        <div className="mt-3 pt-3 border-t border-subtle">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xxs font-mono uppercase tracking-wider text-muted font-bold">
+              ACWR Sweet Spot Tachometer
+            </span>
+            <button
+              type="button"
+              className="text-xxs font-mono text-accent hover:underline bg-transparent border-0 cursor-pointer"
+              onClick={() => setShowTachometer(!showTachometer)}
+            >
+              {showTachometer ? 'Hide Gauge ▲' : 'Show Gauge ▼'}
+            </button>
+          </div>
+          {showTachometer && (
+            <ACRTachometerDial
+              acr={currentWeek?.acr ?? null}
+              projectedAcr={currentWeek?.projectedAcr}
+              acuteWorkload={currentWeek?.acuteWorkload}
+              chronicWorkload={currentWeek?.chronicWorkload}
+              safeRemainingBudget={safeRemainingBudget}
+              hasExceededBudget={hasExceededBudget}
+              compact
+            />
+          )}
+        </div>
       </div>
 
       {/* Runs Logged for This Day */}
       <div className="day-runs-container">
+        {/* 1-Tap Quick Re-Log Staple Chips */}
+        <div className="quick-relog-section">
+          <span className="quick-relog-title">1-Tap Quick Log:</span>
+          <div className="quick-relog-chips">
+            {getQuickLogStaples(distanceUnit).map((staple) => (
+              <button
+                key={staple.id}
+                type="button"
+                className="quick-staple-btn"
+                onClick={() => handleQuickLogStaple(staple)}
+                title={`Quick-log ${staple.label} on ${selectedDate}`}
+              >
+                + {staple.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="day-runs-header">
           <h3 className="section-title">
             Workouts · {getDayName(selectedDate)}
@@ -438,6 +531,28 @@ export const LogRunTab: React.FC<Props> = ({
                       {run.paceFormatted && (
                         <span className="badge-safe text-xxs font-mono">
                           ⚡ {run.paceFormatted}
+                        </span>
+                      )}
+                      {run.plannedDistance && (
+                        <span
+                          className={`badge-compliance badge-compliance-${calculateCompliance(run.plannedDistance, run.distance).status} text-xxs font-mono`}
+                        >
+                          {calculateCompliance(run.plannedDistance, run.distance).percent}% EXEC
+                        </span>
+                      )}
+                      {run.feeling && (
+                        <span className="badge-feeling text-xxs font-mono">
+                          {run.feeling.toUpperCase()}
+                        </span>
+                      )}
+                      {run.rpe && (
+                        <span className="badge-rpe text-xxs font-mono">
+                          RPE {run.rpe}/10
+                        </span>
+                      )}
+                      {run.shoeName && (
+                        <span className="badge-shoe text-xxs font-mono">
+                          👟 {run.shoeName}
                         </span>
                       )}
                     </div>
@@ -568,6 +683,33 @@ export const LogRunTab: React.FC<Props> = ({
                       }
                     />
                   </div>
+
+                  {/* Subjective Effort (RPE) & Feeling Selector */}
+                  <RPEFeelingPicker
+                    rpe={run.rpe}
+                    onRpeChange={(rpe) => handleUpdateField(run, { rpe })}
+                    feeling={run.feeling}
+                    onFeelingChange={(feeling) => handleUpdateField(run, { feeling })}
+                    durationSeconds={run.durationSeconds}
+                  />
+
+                  {/* Running Shoe Selector (if shoes registered) */}
+                  {shoes.length > 0 && (
+                    <ShoeMileageTracker
+                      shoes={shoes}
+                      mode="select"
+                      selectedShoeId={run.shoeId}
+                      onSelectShoe={(shoeId) => {
+                        const match = shoes.find((s) => s.id === shoeId);
+                        handleUpdateField(run, {
+                          shoeId,
+                          shoeName: match ? match.name : undefined,
+                        });
+                      }}
+                      onAddShoe={() => {}}
+                      onRetireShoe={() => {}}
+                    />
+                  )}
                 </div>
               );
             })}

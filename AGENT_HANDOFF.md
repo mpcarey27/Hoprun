@@ -512,3 +512,42 @@ If the user asks for further features, prioritize:
 1. **Garmin / Strava OAuth Webhook Integration:** Auto-syncing completed runs directly into the daily log.
 2. **Cloudflare D1 Remote Provisioning:** Running `wrangler d1 create acr-db` and executing `d1/schema.sql` on Cloudflare for production multi-user sync.
 3. **PWA Offline Manifest:** Adding a service worker so athletes can log runs in areas with no cellular coverage.
+
+
+---
+
+## 9. Recent Updates & Full Conversation History (`079687c8-47f5-4989-aafc-4a7152226850`)
+
+All prompts, responses, and architectural enhancements from the `hop_run` development conversation have been synchronized into this project directory and archived verbatim in [`CONVERSATION_HISTORY.md`](./CONVERSATION_HISTORY.md).
+
+### Summary of Completed Features & Commits
+1. **GitHub & Cloudflare Pages + D1 Edge Deployment (`6b2fe64`, `3104d40`):**
+   - Linked to GitHub repository: `https://github.com/mpcarey17/acr-run-tracker`
+   - Configured Cloudflare D1 database (`acr-db`, ID `eb327029-4cd1-4430-b98d-0c66c8e0ffdd`) and deployed to Cloudflare Pages (`https://acr-run-tracker.pages.dev`).
+2. **Calendar Auto-Close on Date Selection (`LogRunTab.tsx`):**
+   - Selecting a date in the Log Run calendar popover immediately sets the date and closes the calendar popover while keeping the calendar trigger icon visible.
+3. **Big Month Calendar View with Color-Coded Runs & Day Details Modal (`TrainingLogTab.tsx`, `DayDetailsModal.tsx`):**
+   - Added a `Big Calendar` view under Training Log showing day-by-day color-coded run badges, distance totals, weekly mileage & ACR summary columns, and an interactive `DayDetailsModal` on day click.
+4. **Light & Dark Mode + Dedicated Settings Tab (`SettingsTab.tsx`, `index.css`, `f869165`, `fef4bf8`):**
+   - Added an eye-friendly slate Dark Mode and high-contrast Light Mode (ensuring all text on green backgrounds renders in crisp `#ffffff`), controlled via a dedicated `Settings` tab.
+5. **Coach Admin Permissions, Roster Management & Single-Run Assignment (`AssignRunModal.tsx`, `c7cbd51`, `a88833b`):**
+   - Coach/Admin-only `Assign Run` and `Assign Plan` controls at the top header bar (cleaned up redundant buttons next to the roster).
+   - Streamlined `Assign Run` to assign **1 single run for 1 athlete on 1 specific date** (e.g., assigning Rob a Long Run on Monday `10/19/2026`), while keeping multi-week recurring/plan options in `Assign Plan`.
+   - Added ability for coaches to edit previously assigned runs and filter views per athlete.
+6. **Multi-Athlete Analytics Breakdown & Graph View Selector (`AnalyticsTab.tsx`, `4fda00e`, `7b43862`):**
+   - Added per-athlete isolated breakdown cards in the `All Athletes` coach analytics view, plus a `Select View` graph switcher (`ACR Trend`, `Acute vs. Chronic`, `Total Mileage`, `All Graphs`).
+   - Streamlined UI copy across the site for a clean, Strava-inspired look.
+7. **Global Quick-Log (`+`) & Athlete Assigned Runs Checkmark (`✓`) Modals (`QuickLogModal.tsx`, `AssignedRunsModal.tsx`, `dad4784`, `9507e48`):**
+   - Added a global `+` button in the top-right header across all pages for instant run logging by both athletes and coaches.
+   - Added a `✓` Checkmark button next to it for athletes to view their assigned runs, check them off with a celebratory completion animation, add comments for the coach, or edit assigned run parameters with an optional reason for the coach.
+8. **Strava-Style Time, Pace & Bi-Directional Recording Modes (`StravaTimePacePicker.tsx`, `calculations.ts`, `a1974ec`):**
+   - Added optional Strava-inspired timing fields (`Duration H:MM:SS` and `Pace MM:SS /mi` or `/km`) with bi-directional auto-calculation across `LogRunTab`, `QuickLogModal`, `AssignRunModal`, `AssignedRunsModal`, `WorkoutsTab`, and `DayDetailsModal`.
+   - Verified with 28 unit tests in `tests/calculations.test.ts`.
+9. **Product Roadmap & Approved Phase 1 & 2 Features (`ACRTachometerDial.tsx`, `RPEFeelingPicker.tsx`, `RaceCountdownBanner.tsx`, `ShoeMileageTracker.tsx`):**
+   - **Interactive ACWR "Sweet Spot" Tachometer / Dial:** Precision SVG arc gauge displaying Deload (`<0.80`), Optimal Sweet Spot (`0.80-1.20`), Caution (`1.20-1.35`), and Hazard (`>1.35`) zones with live needle and safe workload point budget indicators.
+   - **Subjective Effort (Borg CR10 RPE 1–10) & Feeling Selector:** Allows runners to capture internal load (sRPE) and 5 tactile feeling states (Fresh, Good, Normal, Tired, Exhausted) across `LogRunTab`, `QuickLogModal`, and `WorkoutsTab`.
+   - **1-Tap Quick-Log Staple Chips:** Instant 1-tap logging for staple runs (`+ 3.0 mi Easy`, `+ 5.0 mi Easy`, `+ 8.0 mi Long Run`) based on distance units.
+   - **Planned vs. Actual Compliance Scoring:** Automatically calculates execution adherence percentages (`100% Executed`, `+1.5 mi Over`, or `Under by 0.5 mi`) on coach-assigned workouts.
+   - **Target Race Countdown & Macro-Cycle Periodization:** Displays days remaining to goal event and auto-determines training phase (Base Building, Peak Mileage, Taper, Race Week) configured via Settings.
+   - **Running Shoes & Gear Lifespan Tracker:** Tracks cumulative shoe mileage with progressive foam wear bars and replacement warnings ($>400$ mi) to prevent shin splints and Achilles injuries.
+   - Verified with 33 comprehensive unit tests passing cleanly in `tests/calculations.test.ts`.

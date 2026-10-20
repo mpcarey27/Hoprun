@@ -19,6 +19,17 @@ export const DEFAULT_SETTINGS: AppSettings = {
   firstDayOfWeek: 1, // Monday
   warningThreshold: 1.2,
   themeMode: 'dark',
+  shoes: [
+    {
+      id: 'shoe_default_1',
+      name: 'Daily Trainer (Nike Pegasus / Ghost)',
+      brand: 'Daily Trainer',
+      totalMiles: 124.5,
+      maxMiles: 400,
+      isRetired: false,
+      dateAdded: '2026-09-01',
+    },
+  ],
 };
 
 export const ROSTER_USERS: UserProfile[] = [

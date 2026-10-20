@@ -3,6 +3,7 @@ import type { WeekWorkload, DistanceUnit, UserProfile, WorkoutRun, DayOfWeek } f
 import { ACRTrendChart } from './Charts/ACRTrendChart';
 import { WorkloadComparisonChart } from './Charts/WorkloadComparisonChart';
 import { MileageBarChart } from './Charts/MileageBarChart';
+import { ACRTachometerDial } from './Charts/ACRTachometerDial';
 import { exportWorkloadToCsv } from '../utils/csvExport';
 import { ROSTER_USERS, DEFAULT_USER } from '../utils/storage';
 import { buildWeeklyWorkloadData } from '../utils/calculations';
@@ -603,6 +604,16 @@ export const AnalyticsTab: React.FC<Props> = ({
                 <span className="text-xs font-normal text-muted">{distanceUnit.toUpperCase()}</span>
               </span>
             </div>
+          </div>
+
+          {/* ACWR Sweet Spot Gauge Dial */}
+          <div className="mb-6 flex justify-center">
+            <ACRTachometerDial
+              acr={latestCalculatedWeek?.acr ?? null}
+              projectedAcr={latestCalculatedWeek?.projectedAcr}
+              acuteWorkload={latestCalculatedWeek?.acuteWorkload}
+              chronicWorkload={latestCalculatedWeek?.chronicWorkload}
+            />
           </div>
 
           {/* SVG Charts: Full Suite */}

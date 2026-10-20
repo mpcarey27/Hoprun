@@ -10,10 +10,13 @@ import {
   formatDuration,
   formatDurationStrava,
   paceToSeconds,
-  secondsToPace,
   calculatePaceSeconds,
   calculateDurationFromPace,
   formatPace,
+  calculateCompliance,
+  calculateRaceCountdown,
+  calculateShoeWear,
+  getQuickLogStaples,
 } from '../src/utils/calculations';
 import type { WorkoutRun, WeekWorkload, UserProfile } from '../src/types/acr';
 
@@ -741,7 +744,107 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
     expect(runWithTime.paceFormatted).toBe('8:00 /mi');
     expect(runWithTime.load).toBe(15.0);
   });
+
+  /* -------------------------------------------------------------
+   * Phase 1 & 2 Approved Features: TDD Tests
+   * ------------------------------------------------------------- */
+  describe('Phase 1 & 2 Features: RPE, Feeling, Compliance & Race Countdown', () => {
+    it('test_rpe_and_sRPE_calculation() - calculates internal session RPE workload', () => {
+      // 45 minutes at RPE 7 (Hard) -> 45 * 7 = 315 sRPE points
+      const durationSecs = 2700; // 45 min
+      const rpe = 7;
+      const srpe = Math.round((durationSecs / 60) * rpe);
+      expect(srpe).toBe(315);
+    });
+
+    it('test_calculateCompliance_planned_vs_actual() - calculates execution variance and percent', () => {
+      // Test 1: Exactly executed 8.0 miles
+      const comp1 = calculateCompliance(8.0, 8.0);
+      expect(comp1.percent).toBe(100);
+      expect(comp1.status).toBe('exact');
+      expect(comp1.diff).toBe(0);
+
+      // Test 2: Planned 8.0 miles, ran 7.5 miles (Under by 0.5 mi, 93.8% -> 94%)
+      const comp2 = calculateCompliance(8.0, 7.5);
+      expect(comp2.percent).toBe(94);
+      expect(comp2.status).toBe('under');
+      expect(comp2.diff).toBe(-0.5);
+
+      // Test 3: Planned 6.0 miles, ran 8.0 miles (Over by 2.0 mi, 133%)
+      const comp3 = calculateCompliance(6.0, 8.0);
+      expect(comp3.percent).toBe(133);
+      expect(comp3.status).toBe('over');
+      expect(comp3.diff).toBe(2.0);
+
+      // Test 4: Planned 0 miles or missing
+      const comp4 = calculateCompliance(0, 5.0);
+      expect(comp4.percent).toBe(100);
+      expect(comp4.status).toBe('exact');
+    });
+
+    it('test_calculateRaceCountdown_days_and_phase() - computes days to event and training phase', () => {
+      // Future race in 35 days: Peak phase (4-6 weeks out)
+      const today = '2026-10-19';
+      const raceDate = '2026-11-23'; // 35 days away
+      const countdown = calculateRaceCountdown(today, raceDate);
+      expect(countdown.daysRemaining).toBe(35);
+      expect(countdown.isPast).toBe(false);
+      expect(countdown.phase).toBe('Peak Mileage');
+
+      // Taper phase (1-3 weeks out, e.g. 14 days away)
+      const taperRaceDate = '2026-11-02'; // 14 days away
+      const taperCountdown = calculateRaceCountdown(today, taperRaceDate);
+      expect(taperCountdown.daysRemaining).toBe(14);
+      expect(taperCountdown.phase).toBe('Taper');
+
+      // Race week (< 7 days away)
+      const raceWeekDate = '2026-10-24'; // 5 days away
+      const raceWeekCountdown = calculateRaceCountdown(today, raceWeekDate);
+      expect(raceWeekCountdown.daysRemaining).toBe(5);
+      expect(raceWeekCountdown.phase).toBe('Race Week');
+
+      // Base phase (> 6 weeks away)
+      const baseRaceDate = '2026-12-30'; // ~72 days away
+      const baseCountdown = calculateRaceCountdown(today, baseRaceDate);
+      expect(baseCountdown.daysRemaining).toBe(72);
+      expect(baseCountdown.phase).toBe('Base Building');
+    });
+
+    it('test_calculateShoeWear() - calculates wear percentage and alert status', () => {
+      // 250 miles on 400 mile shoe -> 63%, good
+      const wear1 = calculateShoeWear(250, 400);
+      expect(wear1.percent).toBe(63);
+      expect(wear1.status).toBe('good');
+      expect(wear1.remainingMiles).toBe(150);
+
+      // 360 miles on 400 mile shoe (90%) -> caution
+      const wear2 = calculateShoeWear(360, 400);
+      expect(wear2.percent).toBe(90);
+      expect(wear2.status).toBe('caution');
+      expect(wear2.remainingMiles).toBe(40);
+
+      // 420 miles on 400 mile shoe (105%) -> retired/replace
+      const wear3 = calculateShoeWear(420, 400);
+      expect(wear3.percent).toBe(105);
+      expect(wear3.status).toBe('replace');
+      expect(wear3.remainingMiles).toBe(0);
+    });
+
+    it('test_getQuickLogStaples() - generates smart staple workouts based on unit', () => {
+      const staplesMi = getQuickLogStaples('mi');
+      expect(staplesMi.length).toBeGreaterThanOrEqual(3);
+      expect(staplesMi[0].distance).toBe(3);
+      expect(staplesMi[0].unit).toBe('mi');
+      expect(staplesMi[0].runType).toBe('easy');
+
+      const staplesKm = getQuickLogStaples('km');
+      expect(staplesKm.length).toBeGreaterThanOrEqual(3);
+      expect(staplesKm[0].unit).toBe('km');
+      expect(staplesKm[0].distance).toBe(5);
+    });
+  });
 });
+
 
 
 

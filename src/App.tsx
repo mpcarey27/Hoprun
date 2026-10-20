@@ -530,6 +530,11 @@ export const App: React.FC = () => {
             onDeleteRun={handleDeleteRun}
             distanceUnit={settings.distanceUnit}
             onAthleteEdit={handleAthleteEdit}
+            targetRace={settings.targetRace}
+            shoes={settings.shoes || []}
+            safeRemainingBudget={inWeekPrediction.remainingSafeLoad}
+            hasExceededBudget={inWeekPrediction.hasAlreadyExceeded}
+            onOpenSettings={() => setActiveTab('settings')}
           />
         )}
 

@@ -4274,6 +4274,678 @@ body {
   user-select: none;
 }
 
+/* ===================================================================
+   Phase 1 & 2 Approved UI Features: Tachometer, RPE, Race & Shoes
+   =================================================================== */
+
+/* --- ACWR Tachometer Arc Dial --- */
+.acr-tachometer-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.acr-tachometer-card:hover {
+  border-color: var(--border-muted);
+}
+
+.tachometer-compact {
+  padding: 10px 14px;
+}
+
+.tachometer-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.tachometer-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.tachometer-projected-tag {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.tachometer-svg-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tachometer-svg {
+  overflow: visible;
+}
+
+.tachometer-readout {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.tachometer-value {
+  font-size: 1.85rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.tachometer-badge {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dial-status-sweet {
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+}
+
+.dial-status-caution {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+}
+
+.dial-status-danger {
+  background: rgba(239, 68, 68, 0.18);
+  color: #ef4444;
+}
+
+.dial-status-deload {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+}
+
+.dial-status-baseline {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text-muted);
+}
+
+.tachometer-budget-row {
+  margin-top: 10px;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface-elevated);
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+}
+
+.budget-label {
+  color: var(--text-secondary);
+}
+
+.budget-hint {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.budget-alert-badge {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tachometer-metrics-sub {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* --- RPE & Feeling Picker --- */
+.rpe-feeling-picker {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.picker-block {
+  margin-bottom: 12px;
+}
+
+.picker-block:last-child {
+  margin-bottom: 0;
+}
+
+.picker-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.picker-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rpe-active-tag {
+  color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+}
+
+.picker-rpe-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.srpe-metric {
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--color-accent-subtle);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.picker-clear-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.picker-clear-btn:hover {
+  color: var(--text-primary);
+}
+
+.feeling-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+@media (max-width: 480px) {
+  .feeling-chips-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.feeling-chip {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.feeling-chip:hover {
+  border-color: var(--border-muted);
+  background: var(--bg-surface-subtle);
+}
+
+.feeling-chip.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+
+.feeling-icon {
+  font-size: 1.1rem;
+}
+
+.feeling-name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rpe-scale-row {
+  display: flex;
+  gap: 4px;
+}
+
+.rpe-chip {
+  flex: 1;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rpe-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-muted);
+}
+
+.rpe-chip.rpe-low.active {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.rpe-chip.rpe-mid.active {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+
+.rpe-chip.rpe-high.active {
+  background: rgba(249, 115, 22, 0.22);
+  border-color: #f97316;
+  color: #f97316;
+}
+
+.rpe-chip.rpe-max.active {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.rpe-descriptor {
+  margin-top: 6px;
+  line-height: 1.3;
+}
+
+/* --- 1-Tap Quick Re-Log Section --- */
+.quick-relog-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.quick-relog-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.quick-relog-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.quick-staple-btn {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-staple-btn:hover {
+  background: var(--bg-surface-subtle);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+/* --- Target Race Countdown Banner --- */
+.race-countdown-banner {
+  background: linear-gradient(135deg, var(--bg-surface) 0%, var(--bg-surface-elevated) 100%);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: var(--card-shadow);
+}
+
+.race-countdown-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.race-flag-icon {
+  font-size: 1.5rem;
+}
+
+.race-details-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.race-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.race-name {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.race-target-pill {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.race-phase-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.race-phase-badge {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.phase-base {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+}
+
+.phase-peak {
+  background: rgba(168, 85, 247, 0.16);
+  color: #c084fc;
+}
+
+.phase-taper {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+}
+
+.phase-raceweek {
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+}
+
+.race-countdown-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.countdown-number-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.countdown-big-val {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.race-edit-btn {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.race-edit-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--border-muted);
+}
+
+/* --- Running Shoes & Gear Lifespan Tracker --- */
+.shoe-tracker-card {
+  margin-top: 10px;
+}
+
+.shoe-tracker-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.shoe-add-form {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.shoe-form-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 640px) {
+  .shoe-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.shoe-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shoe-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.shoes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shoe-row-card {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shoe-row-card.shoe-retired {
+  opacity: 0.6;
+}
+
+.shoe-info-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shoe-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.shoe-name {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.shoe-wear-bar-container {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-surface-subtle);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.shoe-wear-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.shoe-stats-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shoe-selector-compact {
+  margin-top: 10px;
+}
+
+.shoe-select-dropdown {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+}
+
+.shoe-select-dropdown:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+/* Activity Card Badges */
+.badge-rpe {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.badge-feeling {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.badge-shoe {
+  background: var(--bg-surface-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+}
+
+.badge-compliance {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.badge-compliance-exact {
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.badge-compliance-over {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-compliance-under {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+
 
 
 

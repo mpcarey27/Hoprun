@@ -3,6 +3,7 @@ import type {
   WorkoutRun,
   DistanceUnit,
   UserProfile,
+  RunnerFeeling,
 } from '../types/acr';
 import {
   DEFAULT_RUN_TYPES,
@@ -13,6 +14,7 @@ import {
 } from '../utils/calculations';
 import { ROSTER_USERS } from '../utils/storage';
 import { StravaTimePacePicker } from './StravaTimePacePicker';
+import { RPEFeelingPicker } from './RPEFeelingPicker';
 
 interface Props {
   isOpen: boolean;
@@ -59,6 +61,8 @@ export const QuickLogModal: React.FC<Props> = ({
   const [comments, setComments] = useState<string>('');
   const [completed, setCompleted] = useState<boolean>(true);
   const [successToast, setSuccessToast] = useState<string>('');
+  const [rpe, setRpe] = useState<number | undefined>(undefined);
+  const [feeling, setFeeling] = useState<RunnerFeeling | undefined>(undefined);
 
   // Strava Time & Pace (Optional)
   const [durationSeconds, setDurationSeconds] = useState<number | undefined>(undefined);
@@ -110,6 +114,8 @@ export const QuickLogModal: React.FC<Props> = ({
       durationFormatted,
       paceSeconds,
       paceFormatted,
+      rpe,
+      feeling,
       updatedAt: new Date().toISOString(),
     };
 
@@ -333,6 +339,16 @@ export const QuickLogModal: React.FC<Props> = ({
                 </span>
               </label>
             </div>
+
+            {/* Subjective Effort (RPE) & Feeling Selector */}
+            <RPEFeelingPicker
+              rpe={rpe}
+              onRpeChange={setRpe}
+              feeling={feeling}
+              onFeelingChange={setFeeling}
+              durationSeconds={durationSeconds}
+              compact
+            />
 
             {/* Optional Notes */}
             <div>

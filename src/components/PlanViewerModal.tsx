@@ -36,12 +36,9 @@ export const PlanViewerModal: React.FC<Props> = ({
 }) => {
   const [activeWeekTab, setActiveWeekTab] = useState<number>(0);
 
-  if (!isOpen || !plan) return null;
-
-  const totalWeeks = getPlanWeeksCount(plan.days);
-
   // Local state for each day item to allow editing before confirmation
   const [dayEdits, setDayEdits] = useState(() => {
+    if (!plan) return [];
     return plan.days.map((d) => ({
       distance: d.targetDistance,
       runType: d.runType,
@@ -51,6 +48,10 @@ export const PlanViewerModal: React.FC<Props> = ({
   });
 
   const [confirmedDays, setConfirmedDays] = useState<Record<number, boolean>>({});
+
+  if (!isOpen || !plan) return null;
+
+  const totalWeeks = getPlanWeeksCount(plan.days);
 
   const handleUpdate = (idx: number, updates: Partial<{ distance: number; runType: string; comment: string; completed: boolean }>) => {
     const updated = [...dayEdits];

@@ -602,5 +602,99 @@ export function formatPace(paceSeconds: number | null | undefined, unit: Distanc
   return `${minutes}:${String(seconds).padStart(2, '0')} /${unit}`;
 }
 
+/**
+ * Calculates planned vs. actual workout adherence/compliance.
+ */
+export function calculateCompliance(
+  plannedDistance: number,
+  actualDistance: number
+): { percent: number; status: 'exact' | 'over' | 'under'; diff: number } {
+  if (!plannedDistance || plannedDistance <= 0) {
+    return { percent: 100, status: 'exact', diff: 0 };
+  }
+  const diff = Number((actualDistance - plannedDistance).toFixed(1));
+  const percent = Math.round((actualDistance / plannedDistance) * 100);
+  const status: 'exact' | 'over' | 'under' =
+    Math.abs(diff) < 0.2 ? 'exact' : diff > 0 ? 'over' : 'under';
+
+  return { percent, status, diff };
+}
+
+/**
+ * Calculates days remaining to a target race and determines the current training macro-cycle phase.
+ */
+export function calculateRaceCountdown(
+  currentDate: Date | string,
+  raceDateStr: string
+): { daysRemaining: number; isPast: boolean; phase: 'Race Day' | 'Race Week' | 'Taper' | 'Peak Mileage' | 'Base Building' | 'Completed' } {
+  const currentStr = typeof currentDate === 'string' ? currentDate : formatDate(currentDate);
+  const [cy, cm, cd] = currentStr.split('-').map(Number);
+  const [ry, rm, rd] = raceDateStr.split('-').map(Number);
+  const d1 = new Date(cy, cm - 1, cd);
+  const d2 = new Date(ry, rm - 1, rd);
+
+  const diffMs = d2.getTime() - d1.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return { daysRemaining: Math.abs(diffDays), isPast: true, phase: 'Completed' };
+  }
+  if (diffDays === 0) {
+    return { daysRemaining: 0, isPast: false, phase: 'Race Day' };
+  }
+  if (diffDays < 7) {
+    return { daysRemaining: diffDays, isPast: false, phase: 'Race Week' };
+  }
+  if (diffDays <= 21) {
+    return { daysRemaining: diffDays, isPast: false, phase: 'Taper' };
+  }
+  if (diffDays <= 42) {
+    return { daysRemaining: diffDays, isPast: false, phase: 'Peak Mileage' };
+  }
+  return { daysRemaining: diffDays, isPast: false, phase: 'Base Building' };
+}
+
+/**
+ * Calculates shoe wear percentage, remaining miles, and alert status based on total mileage.
+ */
+export function calculateShoeWear(
+  totalMiles: number,
+  maxMiles: number = 400
+): { percent: number; remainingMiles: number; status: 'good' | 'caution' | 'replace' } {
+  const percent = Math.round((totalMiles / maxMiles) * 100);
+  const remainingMiles = Math.max(0, Math.round(maxMiles - totalMiles));
+  const status: 'good' | 'caution' | 'replace' =
+    percent >= 100 ? 'replace' : percent >= 80 ? 'caution' : 'good';
+
+  return { percent, remainingMiles, status };
+}
+
+/**
+ * Generates smart quick-log staple workout suggestions based on the active distance unit.
+ */
+export function getQuickLogStaples(unit: DistanceUnit = 'mi'): Array<{
+  id: string;
+  label: string;
+  distance: number;
+  unit: DistanceUnit;
+  runType: string;
+}> {
+  if (unit === 'km') {
+    return [
+      { id: 'staple_km_1', label: '5.0 km Easy', distance: 5.0, unit: 'km', runType: 'easy' },
+      { id: 'staple_km_2', label: '8.0 km Easy', distance: 8.0, unit: 'km', runType: 'easy' },
+      { id: 'staple_km_3', label: '12.0 km Long Run', distance: 12.0, unit: 'km', runType: 'long_run' },
+      { id: 'staple_km_4', label: '6.0 km Mod Workout', distance: 6.0, unit: 'km', runType: 'mod_workout' },
+    ];
+  }
+
+  return [
+    { id: 'staple_mi_1', label: '3.0 mi Easy', distance: 3.0, unit: 'mi', runType: 'easy' },
+    { id: 'staple_mi_2', label: '5.0 mi Easy', distance: 5.0, unit: 'mi', runType: 'easy' },
+    { id: 'staple_mi_3', label: '8.0 mi Long Run', distance: 8.0, unit: 'mi', runType: 'long_run' },
+    { id: 'staple_mi_4', label: '4.0 mi Mod Workout', distance: 4.0, unit: 'mi', runType: 'mod_workout' },
+  ];
+}
+
 
 

@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type {
   AppSettings,
   UserProfile,
+  TargetRace,
+  RunningShoe,
 } from '../types/acr';
+import { ShoeMileageTracker } from './ShoeMileageTracker';
 
 interface Props {
   settings: AppSettings;
@@ -20,6 +23,45 @@ export const SettingsTab: React.FC<Props> = ({
   onOpenAuth,
 }) => {
   const currentTheme = settings.themeMode || 'dark';
+
+  // Target race form state
+  const [raceName, setRaceName] = useState(settings.targetRace?.name || '');
+  const [raceDate, setRaceDate] = useState(settings.targetRace?.date || '');
+  const [raceTime, setRaceTime] = useState(settings.targetRace?.targetTime || '');
+  const [raceSavedToast, setRaceSavedToast] = useState('');
+
+  const handleSaveRace = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!raceName.trim() || !raceDate) return;
+    const targetRace: TargetRace = {
+      name: raceName.trim(),
+      date: raceDate,
+      targetTime: raceTime.trim() || undefined,
+    };
+    onUpdateSettings({ targetRace });
+    setRaceSavedToast('✓ Target race saved!');
+    setTimeout(() => setRaceSavedToast(''), 2500);
+  };
+
+  const handleClearRace = () => {
+    setRaceName('');
+    setRaceDate('');
+    setRaceTime('');
+    onUpdateSettings({ targetRace: undefined });
+    setRaceSavedToast('✓ Target race cleared');
+    setTimeout(() => setRaceSavedToast(''), 2500);
+  };
+
+  const handleAddShoe = (newShoe: RunningShoe) => {
+    const currentShoes = settings.shoes || [];
+    onUpdateSettings({ shoes: [...currentShoes, newShoe] });
+  };
+
+  const handleRetireShoe = (shoeId: string) => {
+    const currentShoes = settings.shoes || [];
+    const updated = currentShoes.map((s) => (s.id === shoeId ? { ...s, isRetired: true } : s));
+    onUpdateSettings({ shoes: updated });
+  };
 
   return (
     <div className="settings-tab-view animate-fade-in">
@@ -214,6 +256,85 @@ export const SettingsTab: React.FC<Props> = ({
               Account & Sync
             </button>
           </div>
+        </section>
+
+        {/* Target Race & Periodization Goal */}
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div>
+              <h2 className="settings-card-title">Target Race &amp; Goal Event</h2>
+              <p className="settings-card-desc">
+                Sets up the countdown widget and training macro-cycle phase (Base, Peak, Taper, Race Week).
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveRace} className="space-y-3">
+            <div className="shoe-form-grid">
+              <div className="shoe-input-group">
+                <label className="text-xs text-muted">Race / Event Name</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. Boston Marathon, Local 5K"
+                  value={raceName}
+                  onChange={(e) => setRaceName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="shoe-input-group">
+                <label className="text-xs text-muted">Race Date</label>
+                <input
+                  type="date"
+                  className="input font-mono"
+                  value={raceDate}
+                  onChange={(e) => setRaceDate(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="shoe-input-group">
+                <label className="text-xs text-muted">Goal Time (Optional)</label>
+                <input
+                  type="text"
+                  className="input font-mono"
+                  placeholder="e.g. 3:15:00 or 19:45"
+                  value={raceTime}
+                  onChange={(e) => setRaceTime(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center gap-2">
+                <button type="submit" className="btn btn-primary btn-sm">
+                  Save Target Race
+                </button>
+                {settings.targetRace && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleClearRace}
+                  >
+                    Clear Race
+                  </button>
+                )}
+              </div>
+              {raceSavedToast && (
+                <span className="text-xs font-mono font-bold text-success animate-fade-in">
+                  {raceSavedToast}
+                </span>
+              )}
+            </div>
+          </form>
+        </section>
+
+        {/* Running Shoes & Gear Lifespan Tracker */}
+        <section className="settings-card">
+          <ShoeMileageTracker
+            shoes={settings.shoes || []}
+            onAddShoe={handleAddShoe}
+            onRetireShoe={handleRetireShoe}
+          />
         </section>
       </div>
     </div>
