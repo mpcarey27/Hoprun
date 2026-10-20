@@ -68,10 +68,11 @@ export interface RunningShoe {
 
 export interface QuickLogStaple {
   id: string;
-  label: string;
+  label?: string;
   distance: number;
   unit: DistanceUnit;
   runType: string;
+  userId?: string;
 }
 
 export interface DayWorkload {
@@ -154,4 +155,5 @@ export interface AppSettings {
   themeMode: ThemeMode; // 'dark' | 'light'
   targetRace?: TargetRace;
   shoes?: RunningShoe[];
+  userQuickStaples?: Record<string, QuickLogStaple[]>;
 }

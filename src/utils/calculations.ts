@@ -5,6 +5,7 @@ import type {
   DayWorkload,
   WeekWorkload,
   DayOfWeek,
+  QuickLogStaple,
 } from '../types/acr';
 
 export const MILES_TO_KM = 1.609344;
@@ -672,13 +673,7 @@ export function calculateShoeWear(
 /**
  * Generates smart quick-log staple workout suggestions based on the active distance unit.
  */
-export function getQuickLogStaples(unit: DistanceUnit = 'mi'): Array<{
-  id: string;
-  label: string;
-  distance: number;
-  unit: DistanceUnit;
-  runType: string;
-}> {
+export function getQuickLogStaples(unit: DistanceUnit = 'mi'): QuickLogStaple[] {
   if (unit === 'km') {
     return [
       { id: 'staple_km_1', label: '5.0 km Easy', distance: 5.0, unit: 'km', runType: 'easy' },
@@ -694,6 +689,36 @@ export function getQuickLogStaples(unit: DistanceUnit = 'mi'): Array<{
     { id: 'staple_mi_3', label: '8.0 mi Long Run', distance: 8.0, unit: 'mi', runType: 'long_run' },
     { id: 'staple_mi_4', label: '4.0 mi Mod Workout', distance: 4.0, unit: 'mi', runType: 'mod_workout' },
   ];
+}
+
+/**
+ * Returns customized staples for a specific user, capped at 7 options, or unit defaults.
+ */
+export function getUserQuickStaples(
+  userId: string | undefined,
+  userQuickStaplesMap: Record<string, QuickLogStaple[]> | undefined,
+  unit: DistanceUnit = 'mi'
+): QuickLogStaple[] {
+  if (userId && userQuickStaplesMap && userQuickStaplesMap[userId] && userQuickStaplesMap[userId].length > 0) {
+    return userQuickStaplesMap[userId].slice(0, 7);
+  }
+  return getQuickLogStaples(unit);
+}
+
+/**
+ * Formats a display label for a staple option. Uses custom label if provided, otherwise auto-generates.
+ */
+export function formatStapleLabel(staple: {
+  distance: number;
+  unit: DistanceUnit;
+  runType: string;
+  label?: string;
+}): string {
+  if (staple.label && staple.label.trim().length > 0) {
+    return staple.label.trim();
+  }
+  const typeName = getRunType(staple.runType).name;
+  return `${staple.distance.toFixed(1)} ${staple.unit} ${typeName}`;
 }
 
 

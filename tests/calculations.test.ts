@@ -17,8 +17,10 @@ import {
   calculateRaceCountdown,
   calculateShoeWear,
   getQuickLogStaples,
+  getUserQuickStaples,
+  formatStapleLabel,
 } from '../src/utils/calculations';
-import type { WorkoutRun, WeekWorkload, UserProfile } from '../src/types/acr';
+import type { WorkoutRun, WeekWorkload, UserProfile, QuickLogStaple } from '../src/types/acr';
 
 describe('ACWR Calculations (TDD Core Science)', () => {
   it('test_calculateRunLoad_multipliers() - exact workload values', () => {
@@ -841,6 +843,52 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(staplesKm.length).toBeGreaterThanOrEqual(3);
       expect(staplesKm[0].unit).toBe('km');
       expect(staplesKm[0].distance).toBe(5);
+    });
+
+    it('test_getUserQuickStaples_custom_and_fallback() - returns customized staples per user or default', () => {
+      const userMap: Record<string, QuickLogStaple[]> = {
+        user_michael_carey: [
+          { id: 'm1', label: 'Easy 10 Miler', distance: 10, unit: 'mi', runType: 'easy' },
+          { id: 'm2', label: '10 Mile Moderate', distance: 10, unit: 'mi', runType: 'mod_workout' },
+          { id: 'm3', label: '18 Mile Long Run', distance: 18, unit: 'mi', runType: 'long_run' },
+        ],
+      };
+
+      // Michael gets his 3 custom staples
+      const michaelStaples = getUserQuickStaples('user_michael_carey', userMap, 'mi');
+      expect(michaelStaples.length).toBe(3);
+      expect(michaelStaples[0].label).toBe('Easy 10 Miler');
+      expect(michaelStaples[0].distance).toBe(10);
+      expect(michaelStaples[1].label).toBe('10 Mile Moderate');
+      expect(michaelStaples[1].runType).toBe('mod_workout');
+      expect(michaelStaples[2].label).toBe('18 Mile Long Run');
+      expect(michaelStaples[2].distance).toBe(18);
+
+      // Rob has no custom staples -> falls back to unit defaults
+      const robStaples = getUserQuickStaples('user_rob', userMap, 'mi');
+      expect(robStaples.length).toBeGreaterThanOrEqual(3);
+      expect(robStaples[0].distance).toBe(3);
+    });
+
+    it('test_getUserQuickStaples_max7Limit() - limits to maximum 7 options', () => {
+      const longList: QuickLogStaple[] = Array.from({ length: 10 }, (_, i) => ({
+        id: `staple_${i}`,
+        label: `Run ${i + 1}`,
+        distance: i + 1,
+        unit: 'mi' as const,
+        runType: 'easy',
+      }));
+
+      const userMap = { user_sarah: longList };
+      const sarahStaples = getUserQuickStaples('user_sarah', userMap, 'mi');
+      expect(sarahStaples.length).toBe(7);
+      expect(sarahStaples[6].distance).toBe(7);
+    });
+
+    it('test_formatStapleLabel() - generates clean fallback label when custom label is blank', () => {
+      expect(formatStapleLabel({ distance: 10, unit: 'mi', runType: 'easy', label: 'Easy 10 Miler' })).toBe('Easy 10 Miler');
+      expect(formatStapleLabel({ distance: 10, unit: 'mi', runType: 'mod_workout', label: '' })).toBe('10.0 mi Mod workout');
+      expect(formatStapleLabel({ distance: 18, unit: 'mi', runType: 'long_run' })).toBe('18.0 mi Long run');
     });
   });
 });

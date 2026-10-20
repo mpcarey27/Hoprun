@@ -1,10 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import type {
   WorkoutRun,
   DistanceUnit,
   WeekWorkload,
   TargetRace,
   RunningShoe,
+  UserProfile,
+  QuickLogStaple,
 } from '../types/acr';
 import {
   DEFAULT_RUN_TYPES,
@@ -18,7 +20,8 @@ import {
   formatDuration,
   formatPace,
   calculatePaceSeconds,
-  getQuickLogStaples,
+  getUserQuickStaples,
+  formatStapleLabel,
   calculateCompliance,
 } from '../utils/calculations';
 import { StravaTimePacePicker } from './StravaTimePacePicker';
@@ -26,6 +29,7 @@ import { ACRTachometerDial } from './Charts/ACRTachometerDial';
 import { RPEFeelingPicker } from './RPEFeelingPicker';
 import { RaceCountdownBanner } from './RaceCountdownBanner';
 import { ShoeMileageTracker } from './ShoeMileageTracker';
+import { QuickLogPresetsModal } from './QuickLogPresetsModal';
 
 interface Props {
   selectedDate: string;
@@ -41,6 +45,9 @@ interface Props {
   safeRemainingBudget?: number | null;
   hasExceededBudget?: boolean;
   onOpenSettings?: () => void;
+  currentUser?: UserProfile;
+  userQuickStaplesMap?: Record<string, QuickLogStaple[]>;
+  onSaveUserStaples?: (userId: string, staples: QuickLogStaple[]) => void;
 }
 
 export const LogRunTab: React.FC<Props> = ({
@@ -57,12 +64,18 @@ export const LogRunTab: React.FC<Props> = ({
   safeRemainingBudget,
   hasExceededBudget,
   onOpenSettings,
+  currentUser,
+  userQuickStaplesMap,
+  onSaveUserStaples,
 }) => {
   const todayStr = formatDate(new Date());
   const isToday = selectedDate === todayStr;
 
   // Toggle for showing Tachometer Dial
   const [showTachometer, setShowTachometer] = useState(true);
+
+  // Modal for customizing quick log presets
+  const [isPresetsModalOpen, setIsPresetsModalOpen] = useState(false);
 
   // Calendar popover dropdown state
   const [isCalendarOpen, setIsCalendarOpen] = React.useState(false);
@@ -156,7 +169,7 @@ export const LogRunTab: React.FC<Props> = ({
     onSaveRun(newRun);
   };
 
-  const handleQuickLogStaple = (staple: { distance: number; unit: DistanceUnit; runType: string }) => {
+  const handleQuickLogStaple = (staple: QuickLogStaple) => {
     const newOrder = runsForSelectedDate.length + 1;
     const mult = getRunTypeMultiplier(staple.runType);
     const newRun: WorkoutRun = {
@@ -168,13 +181,19 @@ export const LogRunTab: React.FC<Props> = ({
       runType: staple.runType,
       multiplier: mult,
       load: calculateRunLoad(staple.distance, staple.unit, mult),
-      comments: '',
+      comments: staple.label ? `Preset: ${staple.label}` : '',
       completed: true,
+      athleteId: currentUser?.id,
+      athleteName: currentUser?.name,
       updatedAt: new Date().toISOString(),
     };
 
     onSaveRun(newRun);
   };
+
+  const activeStaples = useMemo(() => {
+    return getUserQuickStaples(currentUser?.id, userQuickStaplesMap, distanceUnit);
+  }, [currentUser?.id, userQuickStaplesMap, distanceUnit]);
 
   const handleUpdateField = (run: WorkoutRun, updates: Partial<WorkoutRun>) => {
     const updated = { ...run, ...updates, updatedAt: new Date().toISOString() };
@@ -449,17 +468,32 @@ export const LogRunTab: React.FC<Props> = ({
       <div className="day-runs-container">
         {/* 1-Tap Quick Re-Log Staple Chips */}
         <div className="quick-relog-section">
-          <span className="quick-relog-title">1-Tap Quick Log:</span>
+          <div className="flex items-center justify-between w-full mb-1">
+            <span className="quick-relog-title">
+              1-Tap Quick Log {currentUser ? `(${currentUser.name})` : ''}:
+            </span>
+            {onSaveUserStaples && currentUser && (
+              <button
+                type="button"
+                className="text-xxs font-mono text-accent hover:underline bg-transparent border-0 cursor-pointer flex items-center gap-1"
+                onClick={() => setIsPresetsModalOpen(true)}
+                title="Customize up to 7 quick-log staple workouts"
+              >
+                <span>⚙️</span>
+                <span>Customize Presets</span>
+              </button>
+            )}
+          </div>
           <div className="quick-relog-chips">
-            {getQuickLogStaples(distanceUnit).map((staple) => (
+            {activeStaples.map((staple) => (
               <button
                 key={staple.id}
                 type="button"
                 className="quick-staple-btn"
                 onClick={() => handleQuickLogStaple(staple)}
-                title={`Quick-log ${staple.label} on ${selectedDate}`}
+                title={`Quick-log ${formatStapleLabel(staple)} on ${selectedDate}`}
               >
-                + {staple.label}
+                + {formatStapleLabel(staple)}
               </button>
             ))}
           </div>
@@ -716,6 +750,18 @@ export const LogRunTab: React.FC<Props> = ({
           </div>
         )}
       </div>
+
+      {/* Quick Log Presets Customizer Modal */}
+      {isPresetsModalOpen && currentUser && onSaveUserStaples && (
+        <QuickLogPresetsModal
+          isOpen={isPresetsModalOpen}
+          onClose={() => setIsPresetsModalOpen(false)}
+          currentUser={currentUser}
+          distanceUnit={distanceUnit}
+          userQuickStaplesMap={userQuickStaplesMap}
+          onSaveUserStaples={onSaveUserStaples}
+        />
+      )}
     </div>
   );
 };

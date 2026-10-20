@@ -9,6 +9,7 @@ import type {
   DayOfWeek,
   UserRole,
   ThemeMode,
+  QuickLogStaple,
 } from './types/acr';
 import {
   loadStoredWorkouts,
@@ -357,6 +358,12 @@ export const App: React.FC = () => {
     saveStoredSettings(updated);
   };
 
+  const handleSaveUserStaples = (userId: string, staples: QuickLogStaple[]) => {
+    const currentMap = settings.userQuickStaples || {};
+    const updatedMap = { ...currentMap, [userId]: staples };
+    handleUpdateSettings({ userQuickStaples: updatedMap });
+  };
+
   const handleThemeChange = (theme: ThemeMode) => {
     handleUpdateSettings({ themeMode: theme });
   };
@@ -535,6 +542,9 @@ export const App: React.FC = () => {
             safeRemainingBudget={inWeekPrediction.remainingSafeLoad}
             hasExceededBudget={inWeekPrediction.hasAlreadyExceeded}
             onOpenSettings={() => setActiveTab('settings')}
+            currentUser={currentUser}
+            userQuickStaplesMap={settings.userQuickStaples}
+            onSaveUserStaples={handleSaveUserStaples}
           />
         )}
 

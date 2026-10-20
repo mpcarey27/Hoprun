@@ -4,8 +4,11 @@ import type {
   UserProfile,
   TargetRace,
   RunningShoe,
+  QuickLogStaple,
 } from '../types/acr';
 import { ShoeMileageTracker } from './ShoeMileageTracker';
+import { QuickLogPresetsModal } from './QuickLogPresetsModal';
+import { getUserQuickStaples, formatStapleLabel, getRunTypeColor } from '../utils/calculations';
 
 interface Props {
   settings: AppSettings;
@@ -61,6 +64,18 @@ export const SettingsTab: React.FC<Props> = ({
     const currentShoes = settings.shoes || [];
     const updated = currentShoes.map((s) => (s.id === shoeId ? { ...s, isRetired: true } : s));
     onUpdateSettings({ shoes: updated });
+  };
+
+  // Quick log presets modal state
+  const [isPresetsModalOpen, setIsPresetsModalOpen] = useState(false);
+
+  const handleSaveUserStaples = (userId: string, staples: QuickLogStaple[]) => {
+    const currentMap = settings.userQuickStaples || {};
+    const updatedMap = {
+      ...currentMap,
+      [userId]: staples,
+    };
+    onUpdateSettings({ userQuickStaples: updatedMap });
   };
 
   return (
@@ -328,6 +343,42 @@ export const SettingsTab: React.FC<Props> = ({
           </form>
         </section>
 
+        {/* 1-Tap Quick-Log Presets Customization */}
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div>
+              <h2 className="settings-card-title">1-Tap Quick-Log Presets</h2>
+              <p className="settings-card-desc">
+                Pre-set up to 7 custom shortcut buttons for {currentUser.name}&apos;s staple runs (e.g. Easy 10 Miler, 10 Mile Moderate, 18 Mile Long Run).
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm font-mono"
+              onClick={() => setIsPresetsModalOpen(true)}
+            >
+              Customize Presets ⚙️
+            </button>
+          </div>
+
+          <div className="quick-relog-chips mt-3">
+            {getUserQuickStaples(currentUser.id, settings.userQuickStaples, settings.distanceUnit).map((staple, idx) => {
+              const runColor = getRunTypeColor(staple.runType);
+              return (
+                <div
+                  key={staple.id}
+                  className="quick-staple-btn flex items-center gap-1.5 py-1 px-2.5"
+                  style={{ borderColor: runColor }}
+                >
+                  <span className="font-mono text-muted text-xxs">#{idx + 1}</span>
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: runColor }} />
+                  <span>{formatStapleLabel(staple)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         {/* Running Shoes & Gear Lifespan Tracker */}
         <section className="settings-card">
           <ShoeMileageTracker
@@ -337,6 +388,18 @@ export const SettingsTab: React.FC<Props> = ({
           />
         </section>
       </div>
+
+      {/* Quick-Log Presets Customizer Modal */}
+      {isPresetsModalOpen && (
+        <QuickLogPresetsModal
+          isOpen={isPresetsModalOpen}
+          onClose={() => setIsPresetsModalOpen(false)}
+          currentUser={currentUser}
+          distanceUnit={settings.distanceUnit}
+          userQuickStaplesMap={settings.userQuickStaples}
+          onSaveUserStaples={handleSaveUserStaples}
+        />
+      )}
     </div>
   );
 };
