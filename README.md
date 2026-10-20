@@ -1,4 +1,4 @@
-# 🏃 ACR Run Tracker
+# 🏃 Hop Run — Running Workload Tracker
 
 A modern, high-performance running workload tracker built on the scientific **Acute:Chronic Workload Ratio (ACWR / ACR)** methodology to optimize endurance training and prevent soft-tissue injury.
 

@@ -283,7 +283,7 @@ export const StravaTimePacePicker: React.FC<Props> = ({
           <div className="mt-2 flex items-center justify-between text-xxs font-mono">
             <span className="text-muted">Calculated Pace:</span>
             {paceSeconds && paceSeconds > 0 ? (
-              <span className="text-accent font-bold">
+              <span className="text-accent font-bold whitespace-nowrap">
                 ⚡ {formatPace(paceSeconds, distanceUnit)}
               </span>
             ) : distance > 0 && (hours || minutes || seconds) ? (

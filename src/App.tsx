@@ -559,6 +559,7 @@ export const App: React.FC = () => {
             onLogRun={() => handleOpenLogRun()}
             onDeleteWorkout={handleDeleteRun}
             targetRace={settings.targetRace}
+            onToggleComplete={(run) => handleAthleteToggleComplete(run, !run.completed)}
           />
         )}
 

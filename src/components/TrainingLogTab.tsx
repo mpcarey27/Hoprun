@@ -186,11 +186,11 @@ export const TrainingLogTab: React.FC<Props> = ({
         {logViewMode === 'calendar' && (
           <div className="flex items-center gap-2">
             <span className="text-xxs font-mono text-muted uppercase">Volume:</span>
-            <span className="font-mono text-xs font-bold text-primary">
+            <span className="font-mono text-xs font-bold text-primary whitespace-nowrap">
               {monthStats.totalDist} {distanceUnit.toUpperCase()}
             </span>
             <span className="text-muted text-xs">·</span>
-            <span className="font-mono text-xs text-primary font-bold">
+            <span className="font-mono text-xs text-primary font-bold whitespace-nowrap">
               {monthStats.totalLoad} pts
             </span>
           </div>
@@ -391,7 +391,7 @@ export const TrainingLogTab: React.FC<Props> = ({
                                     title="Click to edit this run in pop-up menu"
                                   >
                                     <div className="day-workout-top-line">
-                                      <span className="day-workout-miles">
+                                      <span className="day-workout-miles whitespace-nowrap">
                                         {r.distance} {r.distanceUnit.toUpperCase()}
                                       </span>
                                       <span
@@ -405,7 +405,7 @@ export const TrainingLogTab: React.FC<Props> = ({
                                       </span>
                                     </div>
 
-                                    <span className="day-workout-load-tag font-mono">
+                                    <span className="day-workout-load-tag font-mono whitespace-nowrap">
                                       Load: {r.load.toFixed(1)}
                                     </span>
 
@@ -569,7 +569,7 @@ export const TrainingLogTab: React.FC<Props> = ({
                             onClick={() => onEditRun && onEditRun(r)}
                             title="Click to edit this run in pop-up menu"
                           >
-                            <span className="font-mono text-xs font-semibold text-primary">
+                            <span className="font-mono text-xs font-semibold text-primary whitespace-nowrap">
                               {r.distance} {r.distanceUnit.toUpperCase()}
                             </span>
                             <span className="font-mono text-xxs text-muted">

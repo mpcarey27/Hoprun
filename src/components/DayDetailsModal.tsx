@@ -81,27 +81,27 @@ export const DayDetailsModal: React.FC<Props> = ({
           <div className="day-quick-metrics mb-4">
             <div className="quick-metric">
               <span className="metric-label">Distance</span>
-              <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
+              <span className="metric-val font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
                 {totalDist.toFixed(2)} {distanceUnit.toUpperCase()}
               </span>
             </div>
             <div className="quick-metric">
               <span className="metric-label">Workload</span>
-              <span className="metric-val font-mono text-primary font-bold">
+              <span className="metric-val font-mono text-primary font-bold whitespace-nowrap">
                 {totalLoad.toFixed(1)}
               </span>
             </div>
             {totalDurSecs > 0 && (
               <div className="quick-metric">
                 <span className="metric-label">Time</span>
-                <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
+                <span className="metric-val font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
                   {formatDuration(totalDurSecs)}
                 </span>
               </div>
             )}
             <div className="quick-metric">
               <span className="metric-label">Activities</span>
-              <span className="metric-val font-mono" style={{ color: 'var(--text-primary)' }}>
+              <span className="metric-val font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
                 {runs.length} {runs.length === 1 ? 'Run' : 'Runs'}
               </span>
             </div>
@@ -230,7 +230,7 @@ export const DayDetailsModal: React.FC<Props> = ({
                         <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                           Distance
                         </span>
-                        <strong className="text-base font-mono" style={{ color: 'var(--text-primary)' }}>
+                        <strong className="text-base font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
                           {run.distance} {run.distanceUnit.toUpperCase()}
                         </strong>
                       </div>
@@ -239,7 +239,7 @@ export const DayDetailsModal: React.FC<Props> = ({
                         <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                           Workload
                         </span>
-                        <strong className="text-base font-mono text-primary font-bold">
+                        <strong className="text-base font-mono text-primary font-bold whitespace-nowrap">
                           {run.load.toFixed(1)}
                         </strong>
                       </div>
@@ -248,7 +248,7 @@ export const DayDetailsModal: React.FC<Props> = ({
                         <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                           Time
                         </span>
-                        <strong className="text-base font-mono" style={{ color: 'var(--text-primary)' }}>
+                        <strong className="text-base font-mono whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
                           {run.durationFormatted || (run.durationSeconds ? formatDuration(run.durationSeconds) : '—')}
                         </strong>
                       </div>
@@ -257,7 +257,7 @@ export const DayDetailsModal: React.FC<Props> = ({
                         <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                           Avg Pace
                         </span>
-                        <strong className="text-base font-mono text-accent font-bold">
+                        <strong className="text-base font-mono text-accent font-bold whitespace-nowrap">
                           {run.paceFormatted || (run.paceSeconds ? formatPace(run.paceSeconds, run.distanceUnit) : '—')}
                         </strong>
                       </div>

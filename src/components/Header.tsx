@@ -79,7 +79,7 @@ export const Header: React.FC<Props> = ({
       <div className="header-container">
         {/* Brand with Running Shoe Logo */}
         <div className="brand-section">
-          <div className="brand-shoe-logo" title="ACR Running Workload Tracker">
+          <div className="brand-shoe-logo" title="Hop Run — Workload & Injury Prevention">
             <svg
               className="shoe-icon-svg"
               viewBox="0 0 54 36"
@@ -113,10 +113,10 @@ export const Header: React.FC<Props> = ({
               <line x1="30" y1="12" x2="35" y2="15" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
               <line x1="34" y1="10" x2="39" y2="13" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
-            <span className="brand-logo-text">ACR</span>
+            <span className="brand-logo-text">HOP</span>
           </div>
           <div>
-            <span className="brand-title">ACR RUN TRACKER</span>
+            <span className="brand-title">Hop Run</span>
             <span className="brand-subtitle desktop-only-text">Workload & Injury Prevention</span>
           </div>
         </div>

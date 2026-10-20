@@ -356,7 +356,7 @@ export const AssignedRunsModal: React.FC<Props> = ({
                               <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                                 Distance
                               </span>
-                              <strong className="text-lg font-mono text-primary">
+                              <strong className="text-lg font-mono text-primary whitespace-nowrap">
                                 {run.distance} {run.distanceUnit.toUpperCase()}
                               </strong>
                             </div>
@@ -365,7 +365,7 @@ export const AssignedRunsModal: React.FC<Props> = ({
                               <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                                 Workload
                               </span>
-                              <strong className="text-lg font-mono text-primary font-bold">
+                              <strong className="text-lg font-mono text-primary font-bold whitespace-nowrap">
                                 {run.load.toFixed(1)}
                               </strong>
                             </div>
@@ -376,9 +376,9 @@ export const AssignedRunsModal: React.FC<Props> = ({
                                   <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
                                     {run.completed ? 'Time & Pace' : 'Target Pace'}
                                   </span>
-                                  <div className="flex items-center gap-1 font-mono text-xs font-bold text-accent">
-                                    {run.durationFormatted && <span>⏱️ {run.durationFormatted}</span>}
-                                    {run.paceFormatted && <span>⚡ {run.paceFormatted}</span>}
+                                  <div className="flex items-center gap-1 font-mono text-xs font-bold text-accent whitespace-nowrap">
+                                    {run.durationFormatted && <span className="whitespace-nowrap">⏱️ {run.durationFormatted}</span>}
+                                    {run.paceFormatted && <span className="whitespace-nowrap">⚡ {run.paceFormatted}</span>}
                                   </div>
                                 </div>
                               </>

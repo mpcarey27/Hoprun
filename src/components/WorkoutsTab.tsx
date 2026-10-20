@@ -20,6 +20,7 @@ interface Props {
   onLogRun?: () => void;
   onDeleteWorkout: (id: string) => void;
   targetRace?: TargetRace;
+  onToggleComplete?: (run: WorkoutRun) => void;
 }
 
 export const WorkoutsTab: React.FC<Props> = ({
@@ -30,6 +31,7 @@ export const WorkoutsTab: React.FC<Props> = ({
   onLogRun,
   onDeleteWorkout,
   targetRace,
+  onToggleComplete,
 }) => {
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -88,18 +90,19 @@ export const WorkoutsTab: React.FC<Props> = ({
         <div className="flex items-center gap-4 flex-wrap">
           <div className="strava-profile-stat">
             <span className="strava-stat-label">Activities</span>
-            <span className="strava-stat-val font-mono">{workouts.length}</span>
+            <span className="strava-stat-val font-mono whitespace-nowrap">{workouts.length}</span>
           </div>
           <div className="strava-profile-stat">
             <span className="strava-stat-label">Distance</span>
-            <span className="strava-stat-val font-mono">
-              {totalDistance.toFixed(1)} {distanceUnit.toUpperCase()}
+            <span className="strava-stat-val font-mono whitespace-nowrap">
+              {totalDistance.toFixed(1)}{' '}
+              <span className="text-xs text-muted font-normal">{distanceUnit.toUpperCase()}</span>
             </span>
           </div>
           {totalDurationSecs > 0 && (
             <div className="strava-profile-stat">
               <span className="strava-stat-label">Time</span>
-              <span className="strava-stat-val font-mono">
+              <span className="strava-stat-val font-mono whitespace-nowrap">
                 {formatDurationStrava(totalDurationSecs)}
               </span>
             </div>
@@ -107,14 +110,14 @@ export const WorkoutsTab: React.FC<Props> = ({
           {avgPaceSecs && avgPaceSecs > 0 && (
             <div className="strava-profile-stat">
               <span className="strava-stat-label">Avg Pace</span>
-              <span className="strava-stat-val font-mono text-accent">
+              <span className="strava-stat-val font-mono text-accent whitespace-nowrap">
                 {formatPace(avgPaceSecs, distanceUnit)}
               </span>
             </div>
           )}
           <div className="strava-profile-stat">
             <span className="strava-stat-label">Workload</span>
-            <span className="strava-stat-val font-mono text-primary font-bold">
+            <span className="strava-stat-val font-mono text-primary font-bold whitespace-nowrap">
               {totalLoad.toFixed(1)}
             </span>
           </div>
@@ -123,11 +126,11 @@ export const WorkoutsTab: React.FC<Props> = ({
         {onLogRun && (
           <button
             type="button"
-            className="btn-action-primary flex items-center gap-1 py-1.5 px-3 text-xs"
+            className="btn-action-primary flex items-center gap-1.5 py-2 px-4 text-xs font-bold rounded-full shadow-sm"
             onClick={onLogRun}
             title="Log a new run with popup menu"
           >
-            <span>+</span>
+            <span className="text-sm font-bold leading-none">+</span>
             <span>Log Run</span>
           </button>
         )}
@@ -188,136 +191,193 @@ export const WorkoutsTab: React.FC<Props> = ({
               year: 'numeric',
             });
 
+            const defaultTitle = `${w.runType.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())} Run`;
+
             return (
-              <div
+              <article
                 key={w.id}
-                className="activity-card"
+                className={`activity-card ${w.completed ? 'activity-card-completed' : ''}`}
                 style={{ borderLeftColor: runColor }}
               >
-                <div className="activity-card-header">
-                  <div className="activity-card-meta">
-                    <span className="activity-date font-mono">{dateDisplay}</span>
-                    <span
-                      className="activity-type-badge font-mono text-xs"
-                      style={{ color: runColor, borderColor: runColor }}
+                <div className="activity-card-layout">
+                  {/* Stride Status Indicator Button */}
+                  <button
+                    type="button"
+                    className={`activity-status-btn ${w.completed ? 'status-btn-done' : 'status-btn-pending'}`}
+                    onClick={() => onToggleComplete?.(w)}
+                    aria-pressed={w.completed}
+                    title={w.completed ? 'Completed (click to mark planned)' : 'Planned (click to mark completed)'}
+                  >
+                    <svg
+                      className="status-check-icon"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
                     >
-                      {w.runType.replace('_', ' ').toUpperCase()} (×{w.multiplier})
-                    </span>
-                    {w.athleteName && (
-                      <span className="badge-safe text-xxs font-mono">
-                        ATHLETE: {w.athleteName.toUpperCase()}
-                      </span>
-                    )}
-                    {w.isPlanAssigned && (
-                      <span className="badge-safe text-xxs font-mono">
-                        COACH ASSIGNED
-                      </span>
-                    )}
-                    {w.plannedDistance && (
-                      <span
-                        className={`badge-compliance badge-compliance-${calculateCompliance(w.plannedDistance, w.distance).status} text-xxs font-mono`}
-                      >
-                        {calculateCompliance(w.plannedDistance, w.distance).percent}% EXEC
-                      </span>
-                    )}
-                    {w.feeling && (
-                      <span className="badge-feeling text-xxs">
-                        {w.feeling.toUpperCase()}
-                      </span>
-                    )}
-                    {w.rpe && (
-                      <span className="badge-rpe text-xxs font-mono">
-                        RPE {w.rpe}/10
-                      </span>
-                    )}
-                    {w.shoeName && (
-                      <span className="badge-shoe text-xxs">
-                        👟 {w.shoeName}
-                      </span>
-                    )}
-                  </div>
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span className="sr-only">{w.completed ? 'Mark as not done' : 'Mark as done'}</span>
+                  </button>
 
-                  <div className="activity-actions">
-                    <button
-                      type="button"
-                      className="btn-activity-edit"
-                      onClick={() => {
-                        if (onEditRun) {
-                          onEditRun(w);
-                        } else if (onEditWorkoutDate) {
-                          onEditWorkoutDate(w.workoutDate);
-                        }
-                      }}
-                      title="Edit this run individually in pop-up menu"
-                    >
-                      Edit ✎
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-activity-del"
-                      onClick={() => onDeleteWorkout(w.id)}
-                      title="Delete workout"
-                    >
-                      ✕
-                    </button>
+                  {/* Main Card Content */}
+                  <div className="activity-card-body">
+                    {/* Header Row: Meta badges + Actions */}
+                    <div className="activity-card-header">
+                      <div className="activity-card-meta">
+                        <span
+                          className="activity-type-badge font-mono text-xs"
+                          style={{
+                            color: runColor,
+                            backgroundColor: `${runColor}18`,
+                            borderColor: `${runColor}33`,
+                          }}
+                        >
+                          {w.runType.replace('_', ' ').toUpperCase()} (×{w.multiplier})
+                        </span>
+
+                        <span className="activity-date font-mono text-xs text-muted whitespace-nowrap">
+                          {dateDisplay}
+                        </span>
+
+                        {w.plannedDistance && (
+                          <span className="badge-planned text-xxs font-mono whitespace-nowrap">
+                            {w.plannedDistance} {distanceUnit.toUpperCase()} PLANNED
+                          </span>
+                        )}
+
+                        {w.athleteName && (
+                          <span className="badge-safe text-xxs font-mono whitespace-nowrap">
+                            ATHLETE: {w.athleteName.toUpperCase()}
+                          </span>
+                        )}
+
+                        {w.isPlanAssigned && (
+                          <span className="badge-safe text-xxs font-mono whitespace-nowrap">
+                            COACH ASSIGNED
+                          </span>
+                        )}
+
+                        {w.plannedDistance && (
+                          <span
+                            className={`badge-compliance badge-compliance-${calculateCompliance(w.plannedDistance, w.distance).status} text-xxs font-mono whitespace-nowrap`}
+                          >
+                            {calculateCompliance(w.plannedDistance, w.distance).percent}% EXEC
+                          </span>
+                        )}
+
+                        {w.feeling && (
+                          <span className="badge-feeling text-xxs font-semibold whitespace-nowrap">
+                            {w.feeling.toUpperCase()}
+                          </span>
+                        )}
+
+                        {w.rpe && (
+                          <span className="badge-rpe text-xxs font-mono whitespace-nowrap">
+                            RPE {w.rpe}/10
+                          </span>
+                        )}
+
+                        {w.shoeName && (
+                          <span className="badge-shoe text-xxs whitespace-nowrap">
+                            👟 {w.shoeName}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="activity-actions">
+                        <button
+                          type="button"
+                          className="btn-activity-edit"
+                          onClick={() => {
+                            if (onEditRun) {
+                              onEditRun(w);
+                            } else if (onEditWorkoutDate) {
+                              onEditWorkoutDate(w.workoutDate);
+                            }
+                          }}
+                          title="Edit this run individually in pop-up menu"
+                        >
+                          Edit ✎
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-activity-del"
+                          onClick={() => onDeleteWorkout(w.id)}
+                          title="Delete workout"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Workout Card Title */}
+                    <h3 className={`activity-card-title ${w.completed ? 'title-done' : ''}`}>
+                      {defaultTitle}
+                    </h3>
+
+                    {/* Dedicated Metrics Box (like Stride: rounded-2xl bg-surface-elevated/70 p-3.5 border border-subtle) */}
+                    <div className="activity-stats-row">
+                      <div className="activity-stat">
+                        <span className="activity-stat-label">Distance</span>
+                        <span className="activity-stat-val font-mono whitespace-nowrap">
+                          {distInPref.toFixed(2)}{' '}
+                          <span className="activity-stat-unit text-xs text-muted font-normal">{distanceUnit.toUpperCase()}</span>
+                        </span>
+                      </div>
+
+                      {(w.durationFormatted || (w.durationSeconds && w.durationSeconds > 0)) && (
+                        <div className="activity-stat">
+                          <span className="activity-stat-label">Time</span>
+                          <span className="activity-stat-val font-mono whitespace-nowrap">
+                            {w.durationFormatted || formatDuration(w.durationSeconds)}
+                          </span>
+                        </div>
+                      )}
+
+                      {(w.paceFormatted || (w.paceSeconds && w.paceSeconds > 0)) && (
+                        <div className="activity-stat">
+                          <span className="activity-stat-label">Avg Pace</span>
+                          <span className="activity-stat-val font-mono text-accent whitespace-nowrap">
+                            {w.paceFormatted || formatPace(w.paceSeconds, distanceUnit)}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="activity-stat">
+                        <span className="activity-stat-label">Workload</span>
+                        <span className="activity-stat-val font-mono text-primary font-bold whitespace-nowrap">
+                          {w.load.toFixed(1)}
+                        </span>
+                      </div>
+
+                      <div className="activity-stat">
+                        <span className="activity-stat-label">Status</span>
+                        <span
+                          className={`activity-status-pill font-mono text-xs whitespace-nowrap ${
+                            w.completed ? 'status-done' : 'status-plan'
+                          }`}
+                        >
+                          {w.completed ? 'Completed' : 'Planned'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Runner Comments / Notes Box */}
+                    {w.comments && (
+                      <div className="activity-notes-box">
+                        <svg className="notes-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                        <p className="activity-notes-text">{w.comments}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {/* Big Stats Row */}
-                <div className="activity-stats-row">
-                  <div className="activity-stat">
-                    <span className="activity-stat-label">Distance</span>
-                    <span className="activity-stat-val font-mono">
-                      {distInPref.toFixed(2)}{' '}
-                      <span className="text-xs text-muted font-normal">{distanceUnit.toUpperCase()}</span>
-                    </span>
-                  </div>
-
-                  {(w.durationFormatted || (w.durationSeconds && w.durationSeconds > 0)) && (
-                    <div className="activity-stat">
-                      <span className="activity-stat-label">Time</span>
-                      <span className="activity-stat-val font-mono">
-                        {w.durationFormatted || formatDuration(w.durationSeconds)}
-                      </span>
-                    </div>
-                  )}
-
-                  {(w.paceFormatted || (w.paceSeconds && w.paceSeconds > 0)) && (
-                    <div className="activity-stat">
-                      <span className="activity-stat-label">Avg Pace</span>
-                      <span className="activity-stat-val font-mono text-accent">
-                        {w.paceFormatted || formatPace(w.paceSeconds, distanceUnit)}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="activity-stat">
-                    <span className="activity-stat-label">Workload</span>
-                    <span className="activity-stat-val font-mono text-primary font-bold">
-                      {w.load.toFixed(1)}
-                    </span>
-                  </div>
-
-                  <div className="activity-stat">
-                    <span className="activity-stat-label">Status</span>
-                    <span
-                      className={`activity-status-pill font-mono text-xs ${
-                        w.completed ? 'status-done' : 'status-plan'
-                      }`}
-                    >
-                      {w.completed ? 'Completed' : 'Planned'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Runner Comments / Feelings */}
-                {w.comments && (
-                  <div className="activity-notes-box">
-                    <span className="notes-quote-mark">“</span>
-                    <p className="activity-notes-text">{w.comments}</p>
-                  </div>
-                )}
-              </div>
+              </article>
             );
           })
         )}
