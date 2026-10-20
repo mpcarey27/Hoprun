@@ -17,6 +17,8 @@ interface Props {
   distanceUnit: DistanceUnit;
   warningThreshold?: number;
   workouts?: WorkoutRun[];
+  onEditRun?: (run: WorkoutRun) => void;
+  onLogRun?: (date?: string) => void;
 }
 
 export const TrainingLogTab: React.FC<Props> = ({
@@ -27,6 +29,8 @@ export const TrainingLogTab: React.FC<Props> = ({
   distanceUnit,
   warningThreshold = 1.2,
   workouts = [],
+  onEditRun,
+  onLogRun,
 }) => {
   // View Modes: 'calendar' (Big Month Calendar), 'week' (Week Breakdown), 'table' (Monthly Table)
   const [logViewMode, setLogViewMode] = useState<'calendar' | 'week' | 'table'>('calendar');
@@ -373,11 +377,18 @@ export const TrainingLogTab: React.FC<Props> = ({
                                 return (
                                   <div
                                     key={r.id || rIdx}
-                                    className="day-workout-card"
+                                    className="day-workout-card cursor-pointer"
                                     style={{
                                       borderLeftColor: color,
                                       backgroundColor: `${color}18`,
                                     }}
+                                    onClick={(e) => {
+                                      if (onEditRun) {
+                                        e.stopPropagation();
+                                        onEditRun(r);
+                                      }
+                                    }}
+                                    title="Click to edit this run in pop-up menu"
                                   >
                                     <div className="day-workout-top-line">
                                       <span className="day-workout-miles">
@@ -553,8 +564,10 @@ export const TrainingLogTab: React.FC<Props> = ({
                         return (
                           <div
                             key={i}
-                            className="matrix-run-item"
+                            className="matrix-run-item cursor-pointer"
                             style={{ borderLeftColor: color }}
+                            onClick={() => onEditRun && onEditRun(r)}
+                            title="Click to edit this run in pop-up menu"
                           >
                             <span className="font-mono text-xs font-semibold text-white">
                               {r.distance} {r.distanceUnit.toUpperCase()}
@@ -698,8 +711,14 @@ export const TrainingLogTab: React.FC<Props> = ({
         distanceUnit={distanceUnit}
         onGoToLogRun={(clickedDate) => {
           setSelectedDayForModal(null);
-          onSelectDay(clickedDate);
+          if (onLogRun) {
+            onLogRun(clickedDate);
+          } else {
+            onSelectDay(clickedDate);
+          }
         }}
+        onEditRun={onEditRun}
+        onLogRun={onLogRun}
       />
     </div>
   );

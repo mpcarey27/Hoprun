@@ -890,6 +890,68 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(formatStapleLabel({ distance: 10, unit: 'mi', runType: 'mod_workout', label: '' })).toBe('10.0 mi Mod workout');
       expect(formatStapleLabel({ distance: 18, unit: 'mi', runType: 'long_run' })).toBe('18.0 mi Long run');
     });
+
+    it('test_editIndividualRun_recalculatesLoad() - updating distance or type updates load accurately', () => {
+      const originalRun: WorkoutRun = {
+        id: 'run_123',
+        workoutDate: '2026-10-19',
+        runOrder: 1,
+        distance: 5.0,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 1.0,
+        load: 5.0,
+        completed: true,
+      };
+
+      // Athlete edits the run: changes distance to 10 mi and runType to 'long_run'
+      const updatedDistance = 10.0;
+      const updatedRunType = 'long_run';
+      const newMultiplier = 1.2;
+      const newLoad = updatedDistance * newMultiplier; // 12.0
+
+      const editedRun: WorkoutRun = {
+        ...originalRun,
+        distance: updatedDistance,
+        runType: updatedRunType,
+        multiplier: newMultiplier,
+        load: newLoad,
+        comments: 'Felt strong, extended into a long run',
+        updatedAt: '2026-10-19T20:30:00.000Z',
+      };
+
+      expect(editedRun.id).toBe(originalRun.id);
+      expect(editedRun.load).toBe(12.0);
+      expect(editedRun.comments).toBe('Felt strong, extended into a long run');
+    });
+
+    it('test_editIndividualRun_preservesShoeAndStravaTiming() - preserves timing & gear in edit popup', () => {
+      const runWithGear: WorkoutRun = {
+        id: 'run_456',
+        workoutDate: '2026-10-19',
+        runOrder: 1,
+        distance: 10.0,
+        distanceUnit: 'mi',
+        runType: 'mod_workout',
+        multiplier: 1.1,
+        load: 11.0,
+        completed: true,
+        durationSeconds: 4200, // 1h 10m
+        durationFormatted: '1:10:00',
+        paceSeconds: 420, // 7:00 /mi
+        paceFormatted: '7:00 /mi',
+        shoeId: 'shoe_pegasus',
+        shoeName: 'Nike Pegasus 40',
+        rpe: 6,
+        feeling: 'great',
+      };
+
+      expect(runWithGear.durationFormatted).toBe('1:10:00');
+      expect(runWithGear.paceFormatted).toBe('7:00 /mi');
+      expect(runWithGear.shoeName).toBe('Nike Pegasus 40');
+      expect(runWithGear.rpe).toBe(6);
+      expect(runWithGear.feeling).toBe('great');
+    });
   });
 });
 

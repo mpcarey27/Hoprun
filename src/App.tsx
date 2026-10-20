@@ -33,7 +33,6 @@ import {
 import { decompressPlan } from './utils/planShare';
 import { Header } from './components/Header';
 import type { ActiveNavTab } from './components/Header';
-import { LogRunTab } from './components/LogRunTab';
 import { WorkoutsTab } from './components/WorkoutsTab';
 import { TrainingLogTab } from './components/TrainingLogTab';
 import { AnalyticsTab } from './components/AnalyticsTab';
@@ -43,7 +42,7 @@ import { AdminPlanModal } from './components/AdminPlanModal';
 import { PlanViewerModal } from './components/PlanViewerModal';
 import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { AssignRunModal } from './components/AssignRunModal';
-import { QuickLogModal } from './components/QuickLogModal';
+import { LogRunModal } from './components/LogRunModal';
 import { AssignedRunsModal } from './components/AssignedRunsModal';
 
 export const App: React.FC = () => {
@@ -56,8 +55,8 @@ export const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(() => loadStoredSettings());
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => loadStoredUser());
 
-  // UI Navigation state: defaults to Log Run (Today)
-  const [activeTab, setActiveTab] = useState<ActiveNavTab>('log_run');
+  // UI Navigation state: defaults to Workouts (Strava Activity Feed)
+  const [activeTab, setActiveTab] = useState<ActiveNavTab>('workouts');
   const [selectedDate, setSelectedDate] = useState<string>(() => formatDate(new Date()));
 
   // Active training week based on selectedDate
@@ -71,8 +70,40 @@ export const App: React.FC = () => {
   const [activeViewPlan, setActiveViewPlan] = useState<TrainingPlan | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAssignRunOpen, setIsAssignRunOpen] = useState(false);
-  const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
   const [isAssignedRunsOpen, setIsAssignedRunsOpen] = useState(false);
+
+  // Strava-Style Log Run / Edit Run Pop-up Modal State
+  const [isLogRunModalOpen, setIsLogRunModalOpen] = useState(false);
+  const [runToEdit, setRunToEdit] = useState<WorkoutRun | null>(null);
+  const [modalDefaultDate, setModalDefaultDate] = useState<string>(() => formatDate(new Date()));
+
+  const handleOpenLogRun = (date?: string) => {
+    setRunToEdit(null);
+    setModalDefaultDate(date || selectedDate || formatDate(new Date()));
+    setIsLogRunModalOpen(true);
+  };
+
+  const handleOpenEditRun = (run: WorkoutRun) => {
+    setRunToEdit(run);
+    setModalDefaultDate(run.workoutDate);
+    setIsLogRunModalOpen(true);
+  };
+
+  const handleCloseLogRunModal = () => {
+    setIsLogRunModalOpen(false);
+    setRunToEdit(null);
+  };
+
+  const handleSaveModalRun = (run: WorkoutRun) => {
+    handleSaveRun(run);
+    if (currentUser.role === 'runner' && runToEdit) {
+      handleAthleteEdit(run);
+    }
+  };
+
+  const handleDeleteModalRun = (runId: string) => {
+    handleDeleteRun(runId);
+  };
 
   // Check URL parameters on mount for QR code scanned plans
   useEffect(() => {
@@ -151,13 +182,6 @@ export const App: React.FC = () => {
     if (matched) return matched;
     return weeks[weeks.length - 1];
   }, [weeks, activeWeekStartDate]);
-
-  // Runs logged on the currently selected date
-  const runsForSelectedDate = useMemo(() => {
-    return visibleWorkouts
-      .filter((w) => w.workoutDate === selectedDate)
-      .sort((a, b) => a.runOrder - b.runOrder);
-  }, [visibleWorkouts, selectedDate]);
 
   // In-week mid-week warning and prediction
   const inWeekPrediction = useMemo(() => {
@@ -474,7 +498,7 @@ export const App: React.FC = () => {
         onClearAllNotifications={handleClearAllNotifications}
         onToggleRole={handleToggleRole}
         onOpenAssignRun={() => setIsAssignRunOpen(true)}
-        onOpenQuickLog={() => setIsQuickLogOpen(true)}
+        onOpenQuickLog={() => handleOpenLogRun()}
         onOpenAssignedRuns={() => setIsAssignedRunsOpen(true)}
         pendingAssignedCount={todayPendingAssignedCount}
       />
@@ -526,42 +550,19 @@ export const App: React.FC = () => {
           warningThreshold={settings.warningThreshold}
         />
 
-        {/* Tab 1: Log Run (Today's date by default, calendar icon to switch days) */}
-        {activeTab === 'log_run' && (
-          <LogRunTab
-            selectedDate={selectedDate}
-            onSelectDate={setSelectedDate}
-            runsForSelectedDate={runsForSelectedDate}
-            currentWeek={currentWeek}
-            onSaveRun={handleSaveRun}
-            onDeleteRun={handleDeleteRun}
-            distanceUnit={settings.distanceUnit}
-            onAthleteEdit={handleAthleteEdit}
-            targetRace={settings.targetRace}
-            shoes={settings.shoes || []}
-            safeRemainingBudget={inWeekPrediction.remainingSafeLoad}
-            hasExceededBudget={inWeekPrediction.hasAlreadyExceeded}
-            onOpenSettings={() => setActiveTab('settings')}
-            currentUser={currentUser}
-            userQuickStaplesMap={settings.userQuickStaples}
-            onSaveUserStaples={handleSaveUserStaples}
-          />
-        )}
-
-        {/* Tab 2: Workouts (Strava-Inspired Activity Feed) */}
+        {/* Tab 1: Workouts (Strava-Inspired Activity Feed) */}
         {activeTab === 'workouts' && (
           <WorkoutsTab
             workouts={visibleWorkouts}
             distanceUnit={settings.distanceUnit}
-            onEditWorkoutDate={(date) => {
-              setSelectedDate(date);
-              setActiveTab('log_run');
-            }}
+            onEditRun={handleOpenEditRun}
+            onLogRun={() => handleOpenLogRun()}
             onDeleteWorkout={handleDeleteRun}
+            targetRace={settings.targetRace}
           />
         )}
 
-        {/* Tab 3: Training Log (Week View & Month View) */}
+        {/* Tab 2: Training Log (Week View & Month View) */}
         {activeTab === 'training_log' && (
           <TrainingLogTab
             weeks={weeks}
@@ -571,15 +572,17 @@ export const App: React.FC = () => {
             }}
             onSelectDay={(date) => {
               setSelectedDate(date);
-              setActiveTab('log_run');
+              handleOpenLogRun(date);
             }}
+            onEditRun={handleOpenEditRun}
+            onLogRun={(date) => handleOpenLogRun(date)}
             distanceUnit={settings.distanceUnit}
             warningThreshold={settings.warningThreshold}
             workouts={visibleWorkouts}
           />
         )}
 
-        {/* Tab 4: Analytics (Custom windows, SVG charts, In-Week calculations, clean CSV export) */}
+        {/* Tab 3: Analytics (Custom windows, SVG charts, In-Week calculations, clean CSV export) */}
         {activeTab === 'analytics' && (
           <AnalyticsTab
             weeks={weeks}
@@ -587,7 +590,7 @@ export const App: React.FC = () => {
             distanceUnit={settings.distanceUnit}
             onSelectWeek={(startDate) => {
               setSelectedDate(startDate);
-              setActiveTab('log_run');
+              setActiveTab('training_log');
             }}
             warningThreshold={settings.warningThreshold}
             currentUser={currentUser}
@@ -599,7 +602,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {/* Tab 5: Settings (Appearance / Theme Mode, Units, Schedules, ACR Thresholds) */}
+        {/* Tab 4: Settings (Appearance / Theme Mode, Units, Schedules, ACR Thresholds) */}
         {activeTab === 'settings' && (
           <SettingsTab
             settings={settings}
@@ -636,15 +639,21 @@ export const App: React.FC = () => {
         onDeleteRun={handleDeleteRun}
       />
 
-      {/* Global Quick Log Modal (+ button on all pages) */}
-      <QuickLogModal
-        isOpen={isQuickLogOpen}
-        onClose={() => setIsQuickLogOpen(false)}
+      {/* Strava-Style Log Run / Edit Run Pop-up Menu Modal with Scroll Bar */}
+      <LogRunModal
+        isOpen={isLogRunModalOpen}
+        onClose={handleCloseLogRunModal}
+        runToEdit={runToEdit}
+        defaultDate={modalDefaultDate}
         currentUser={currentUser}
         distanceUnit={settings.distanceUnit}
-        onSaveRun={handleSaveRun}
-        activeDate={selectedDate}
+        onSaveRun={handleSaveModalRun}
+        onDeleteRun={handleDeleteModalRun}
+        shoes={settings.shoes || []}
+        userQuickStaplesMap={settings.userQuickStaples}
+        onSaveUserStaples={handleSaveUserStaples}
         selectedAthleteFilter={selectedAthleteFilter}
+        safeRemainingBudget={inWeekPrediction.remainingSafeLoad}
       />
 
       {/* Athlete Assigned Runs & Daily Check-Off Modal (✓ icon) */}
@@ -656,6 +665,7 @@ export const App: React.FC = () => {
         allWorkouts={workouts}
         onToggleComplete={handleAthleteToggleComplete}
         onUpdateRun={handleAthleteEditAssignedRun}
+        onEditRun={handleOpenEditRun}
         activeDate={selectedDate}
       />
 

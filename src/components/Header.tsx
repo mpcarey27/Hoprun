@@ -8,7 +8,7 @@ import type {
 } from '../types/acr';
 import { NotificationCenter } from './NotificationCenter';
 
-export type ActiveNavTab = 'log_run' | 'workouts' | 'training_log' | 'analytics' | 'settings';
+export type ActiveNavTab = 'workouts' | 'training_log' | 'analytics' | 'settings';
 
 interface Props {
   activeTab: ActiveNavTab;
@@ -125,13 +125,6 @@ export const Header: React.FC<Props> = ({
         <nav className="header-tabs-nav desktop-tabs-nav" aria-label="Main Navigation">
           <button
             type="button"
-            className={`tab-pill ${activeTab === 'log_run' ? 'tab-pill-active' : ''}`}
-            onClick={() => onTabChange('log_run')}
-          >
-            Log Run
-          </button>
-          <button
-            type="button"
             className={`tab-pill ${activeTab === 'workouts' ? 'tab-pill-active' : ''}`}
             onClick={() => onTabChange('workouts')}
           >
@@ -168,7 +161,6 @@ export const Header: React.FC<Props> = ({
             onChange={(e) => onTabChange(e.target.value as ActiveNavTab)}
             aria-label="Navigation View"
           >
-            <option value="log_run">Log Run</option>
             <option value="workouts">Workouts</option>
             <option value="training_log">Training Log</option>
             <option value="analytics">Analytics</option>

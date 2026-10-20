@@ -24,6 +24,7 @@ interface Props {
   onToggleComplete: (run: WorkoutRun, completed: boolean, athleteComment?: string) => void;
   onUpdateRun?: (updatedRun: WorkoutRun, editReason?: string) => void;
   activeDate?: string;
+  onEditRun?: (run: WorkoutRun) => void;
 }
 
 export const AssignedRunsModal: React.FC<Props> = ({
@@ -35,6 +36,7 @@ export const AssignedRunsModal: React.FC<Props> = ({
   onToggleComplete,
   onUpdateRun,
   activeDate,
+  onEditRun,
 }) => {
   const todayStr = useMemo(() => formatDate(new Date()), []);
   const viewingDate = activeDate || todayStr;
@@ -313,6 +315,19 @@ export const AssignedRunsModal: React.FC<Props> = ({
                         <span className="text-xxs font-mono text-muted uppercase hidden sm:inline">
                           Coach {run.assignedByCoachName || 'Michael Carey'}
                         </span>
+                        {onEditRun && (
+                          <button
+                            type="button"
+                            className="btn-filter-pill text-xxs font-mono py-0.5 px-2.5 text-accent"
+                            onClick={() => {
+                              onClose();
+                              onEditRun(run);
+                            }}
+                            title="Edit full workout in pop-up menu"
+                          >
+                            Full Edit ✎
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn-filter-pill text-xxs font-mono py-0.5 px-2.5"
@@ -324,7 +339,7 @@ export const AssignedRunsModal: React.FC<Props> = ({
                             }
                           }}
                         >
-                          {isEditing ? 'Cancel Edit' : '✏️ Edit'}
+                          {isEditing ? 'Cancel' : 'Quick Edit'}
                         </button>
                       </div>
                     </div>

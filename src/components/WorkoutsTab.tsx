@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { WorkoutRun, DistanceUnit } from '../types/acr';
+import type { WorkoutRun, DistanceUnit, TargetRace } from '../types/acr';
 import {
   DEFAULT_RUN_TYPES,
   getRunTypeColor,
@@ -8,23 +8,32 @@ import {
   formatDurationStrava,
   formatPace,
   calculateCompliance,
+  formatDate,
 } from '../utils/calculations';
+import { RaceCountdownBanner } from './RaceCountdownBanner';
 
 interface Props {
   workouts: WorkoutRun[];
   distanceUnit: DistanceUnit;
-  onEditWorkoutDate: (date: string) => void;
+  onEditWorkoutDate?: (date: string) => void;
+  onEditRun?: (run: WorkoutRun) => void;
+  onLogRun?: () => void;
   onDeleteWorkout: (id: string) => void;
+  targetRace?: TargetRace;
 }
 
 export const WorkoutsTab: React.FC<Props> = ({
   workouts,
   distanceUnit,
   onEditWorkoutDate,
+  onEditRun,
+  onLogRun,
   onDeleteWorkout,
+  targetRace,
 }) => {
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const todayStr = useMemo(() => formatDate(new Date()), []);
 
   // Sort newest first
   const sortedWorkouts = useMemo(() => {
@@ -67,40 +76,61 @@ export const WorkoutsTab: React.FC<Props> = ({
 
   return (
     <div className="tab-container">
+      {/* Target Race Countdown Banner (If Configured) */}
+      {targetRace && (
+        <div className="mb-4">
+          <RaceCountdownBanner targetRace={targetRace} todayStr={todayStr} />
+        </div>
+      )}
+
       {/* Strava-Style Top Banner / Summary */}
-      <div className="strava-summary-bar">
-        <div className="strava-profile-stat">
-          <span className="strava-stat-label">Activities</span>
-          <span className="strava-stat-val font-mono">{workouts.length}</span>
-        </div>
-        <div className="strava-profile-stat">
-          <span className="strava-stat-label">Distance</span>
-          <span className="strava-stat-val font-mono">
-            {totalDistance.toFixed(1)} {distanceUnit.toUpperCase()}
-          </span>
-        </div>
-        {totalDurationSecs > 0 && (
+      <div className="strava-summary-bar flex items-center justify-between">
+        <div className="flex items-center gap-4 flex-wrap">
           <div className="strava-profile-stat">
-            <span className="strava-stat-label">Time</span>
+            <span className="strava-stat-label">Activities</span>
+            <span className="strava-stat-val font-mono">{workouts.length}</span>
+          </div>
+          <div className="strava-profile-stat">
+            <span className="strava-stat-label">Distance</span>
             <span className="strava-stat-val font-mono">
-              {formatDurationStrava(totalDurationSecs)}
+              {totalDistance.toFixed(1)} {distanceUnit.toUpperCase()}
             </span>
           </div>
-        )}
-        {avgPaceSecs && avgPaceSecs > 0 && (
+          {totalDurationSecs > 0 && (
+            <div className="strava-profile-stat">
+              <span className="strava-stat-label">Time</span>
+              <span className="strava-stat-val font-mono">
+                {formatDurationStrava(totalDurationSecs)}
+              </span>
+            </div>
+          )}
+          {avgPaceSecs && avgPaceSecs > 0 && (
+            <div className="strava-profile-stat">
+              <span className="strava-stat-label">Avg Pace</span>
+              <span className="strava-stat-val font-mono text-accent">
+                {formatPace(avgPaceSecs, distanceUnit)}
+              </span>
+            </div>
+          )}
           <div className="strava-profile-stat">
-            <span className="strava-stat-label">Avg Pace</span>
-            <span className="strava-stat-val font-mono text-accent">
-              {formatPace(avgPaceSecs, distanceUnit)}
+            <span className="strava-stat-label">Workload</span>
+            <span className="strava-stat-val font-mono text-primary font-bold">
+              {totalLoad.toFixed(1)}
             </span>
           </div>
-        )}
-        <div className="strava-profile-stat">
-          <span className="strava-stat-label">Workload</span>
-          <span className="strava-stat-val font-mono text-primary font-bold">
-            {totalLoad.toFixed(1)}
-          </span>
         </div>
+
+        {onLogRun && (
+          <button
+            type="button"
+            className="btn-action-primary flex items-center gap-1 py-1.5 px-3 text-xs"
+            onClick={onLogRun}
+            title="Log a new run with popup menu"
+          >
+            <span>+</span>
+            <span>Log Run</span>
+          </button>
+        )}
       </div>
 
       {/* Filter & Search Bar */}
@@ -211,10 +241,16 @@ export const WorkoutsTab: React.FC<Props> = ({
                     <button
                       type="button"
                       className="btn-activity-edit"
-                      onClick={() => onEditWorkoutDate(w.workoutDate)}
-                      title="Edit this day in Log Run"
+                      onClick={() => {
+                        if (onEditRun) {
+                          onEditRun(w);
+                        } else if (onEditWorkoutDate) {
+                          onEditWorkoutDate(w.workoutDate);
+                        }
+                      }}
+                      title="Edit this run individually in pop-up menu"
                     >
-                      Edit →
+                      Edit ✎
                     </button>
                     <button
                       type="button"

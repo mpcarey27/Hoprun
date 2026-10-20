@@ -16,6 +16,8 @@ interface Props {
   runs: WorkoutRun[];
   distanceUnit: DistanceUnit;
   onGoToLogRun: (date: string) => void;
+  onEditRun?: (run: WorkoutRun) => void;
+  onLogRun?: (date: string) => void;
 }
 
 export const DayDetailsModal: React.FC<Props> = ({
@@ -25,6 +27,8 @@ export const DayDetailsModal: React.FC<Props> = ({
   runs,
   distanceUnit,
   onGoToLogRun,
+  onEditRun,
+  onLogRun,
 }) => {
   if (!isOpen || !date) return null;
 
@@ -195,15 +199,30 @@ export const DayDetailsModal: React.FC<Props> = ({
                         )}
                       </div>
 
-                      <span
-                        className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${
-                          run.completed
-                            ? 'status-done'
-                            : 'status-plan'
-                        }`}
-                      >
-                        {run.completed ? '✓ Completed' : '⏳ Planned'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {onEditRun && (
+                          <button
+                            type="button"
+                            className="btn-filter-pill text-xs font-mono py-0.5 px-2 text-accent"
+                            onClick={() => {
+                              onClose();
+                              onEditRun(run);
+                            }}
+                            title="Edit this run individually in pop-up menu"
+                          >
+                            Edit ✎
+                          </button>
+                        )}
+                        <span
+                          className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${
+                            run.completed
+                              ? 'status-done'
+                              : 'status-plan'
+                          }`}
+                        >
+                          {run.completed ? '✓ Completed' : '⏳ Planned'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
@@ -287,13 +306,18 @@ export const DayDetailsModal: React.FC<Props> = ({
 
           <button
             type="button"
-            className="btn-action-primary"
+            className="btn-action-primary flex items-center gap-1.5"
             onClick={() => {
               onClose();
-              onGoToLogRun(date);
+              if (onLogRun) {
+                onLogRun(date);
+              } else {
+                onGoToLogRun(date);
+              }
             }}
           >
-            Log / Edit Run →
+            <span>+</span>
+            <span>Log Run for this Day</span>
           </button>
         </div>
       </div>
