@@ -17,7 +17,7 @@ export const InWeekWarningBanner: React.FC<Props> = ({
           <span className="ribbon-status-dot">●</span>
           <span className="ribbon-badge">OPTIMAL</span>
           <span className="ribbon-metrics">
-            Projected ACR: <strong className="font-mono text-white">{prediction.projectedAcr !== null ? prediction.projectedAcr.toFixed(2) : '—'}</strong>
+            Projected ACR: <strong className="font-mono text-primary font-bold">{prediction.projectedAcr !== null ? prediction.projectedAcr.toFixed(2) : '—'}</strong>
             <span className="text-muted text-xs ml-1.5">(Ceiling: {warningThreshold.toFixed(2)})</span>
           </span>
           {prediction.remainingSafeLoad !== null && (
@@ -41,7 +41,7 @@ export const InWeekWarningBanner: React.FC<Props> = ({
           </span>
           <div className="inweek-metrics">
             <span>
-              Current ACR: <strong className="font-mono text-white">{prediction.currentAcr !== null ? prediction.currentAcr.toFixed(2) : '—'}</strong>
+              Current ACR: <strong className="font-mono text-primary font-bold">{prediction.currentAcr !== null ? prediction.currentAcr.toFixed(2) : '—'}</strong>
             </span>
             <span className="mx-2">·</span>
             <span>

@@ -161,7 +161,7 @@ export const QuickLogModal: React.FC<Props> = ({
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="modal-body space-y-4">
+          <div className="modal-body log-run-body space-y-4">
             {successToast && (
               <div className="inweek-ribbon inweek-ribbon-optimal mb-3">
                 <span className="font-mono text-sm font-bold text-success">
@@ -188,10 +188,8 @@ export const QuickLogModal: React.FC<Props> = ({
                       <button
                         key={user.id}
                         type="button"
-                        className={`text-xs px-2.5 py-1 rounded font-mono transition-all ${
-                          isSelected
-                            ? 'bg-accent text-white font-bold'
-                            : 'bg-surface-elevated text-primary border border-subtle'
+                        className={`btn-filter-pill font-mono text-xs ${
+                          isSelected ? 'active' : ''
                         }`}
                         onClick={() => setAthleteId(user.id)}
                       >

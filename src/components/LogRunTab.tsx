@@ -360,7 +360,7 @@ export const LogRunTab: React.FC<Props> = ({
                       </button>
                       <button
                         type="button"
-                        className="text-xxs text-muted hover:text-white font-mono bg-transparent border-0 cursor-pointer"
+                        className="text-xxs text-muted hover:text-primary font-mono bg-transparent border-0 cursor-pointer transition-colors"
                         onClick={() => setIsCalendarOpen(false)}
                       >
                         Close ✕
@@ -416,7 +416,7 @@ export const LogRunTab: React.FC<Props> = ({
           )}
           <div className="quick-metric">
             <span className="metric-label">Week Acute</span>
-            <span className="metric-val font-mono text-white">
+            <span className="metric-val font-mono text-primary font-bold">
               {currentWeek ? currentWeek.acuteWorkload.toFixed(1) : '0.0'}
             </span>
           </div>

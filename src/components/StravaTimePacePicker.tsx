@@ -216,7 +216,7 @@ export const StravaTimePacePicker: React.FC<Props> = ({
           {hasValues && (
             <button
               type="button"
-              className="text-xxs font-mono text-muted hover:text-danger underline transition-colors"
+              className="picker-clear-btn"
               onClick={handleClear}
               title="Clear time & pace"
             >

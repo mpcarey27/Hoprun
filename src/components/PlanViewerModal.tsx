@@ -125,7 +125,7 @@ export const PlanViewerModal: React.FC<Props> = ({
           <button type="button" className="btn-modal-close" onClick={onClose}>✕</button>
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body log-run-body">
           <p className="text-xs text-secondary mb-3">
             Review your daily workouts. You can verify or edit your actual distance, leave notes on how you felt,
             and confirm completion. Your coach will receive an instant notification.
@@ -163,7 +163,7 @@ export const PlanViewerModal: React.FC<Props> = ({
                 >
                   <div className="athlete-day-header">
                     <div>
-                      <span className="font-mono font-bold text-sm text-white">
+                      <span className="font-mono font-bold text-sm text-primary">
                         Day {globalIdx + 1} ({date})
                       </span>
                       {day.instructions && (

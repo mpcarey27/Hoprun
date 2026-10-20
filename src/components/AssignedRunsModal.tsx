@@ -240,7 +240,7 @@ export const AssignedRunsModal: React.FC<Props> = ({
           </span>
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body log-run-body">
           {actionToast && (
             <div className="inweek-ribbon inweek-ribbon-optimal mb-3">
               <span className="font-mono text-sm font-bold text-success">
@@ -283,7 +283,7 @@ export const AssignedRunsModal: React.FC<Props> = ({
                   >
                     {/* Header Row: Date, Category badge, Coach attribution & Edit button */}
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-subtle">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <span className="font-mono text-xs font-bold text-primary">
                           {run.workoutDate} ({getDayName(run.workoutDate)})
                         </span>
@@ -390,7 +390,7 @@ export const AssignedRunsModal: React.FC<Props> = ({
                             <span className="text-xxs uppercase tracking-wider text-muted font-mono block mb-0.5">
                               Coach Focus Instructions
                             </span>
-                            <p className="text-xs text-secondary italic font-sans m-0">
+                            <p className="text-xs text-secondary italic font-sans m-0 assigned-coach-instructions">
                               {run.comments ? `"${run.comments}"` : 'Execute smoothly and comfortably.'}
                             </p>
                           </div>

@@ -186,7 +186,7 @@ export const TrainingLogTab: React.FC<Props> = ({
         {logViewMode === 'calendar' && (
           <div className="flex items-center gap-2">
             <span className="text-xxs font-mono text-muted uppercase">Volume:</span>
-            <span className="font-mono text-xs font-bold text-white">
+            <span className="font-mono text-xs font-bold text-primary">
               {monthStats.totalDist} {distanceUnit.toUpperCase()}
             </span>
             <span className="text-muted text-xs">·</span>
@@ -569,7 +569,7 @@ export const TrainingLogTab: React.FC<Props> = ({
                             onClick={() => onEditRun && onEditRun(r)}
                             title="Click to edit this run in pop-up menu"
                           >
-                            <span className="font-mono text-xs font-semibold text-white">
+                            <span className="font-mono text-xs font-semibold text-primary">
                               {r.distance} {r.distanceUnit.toUpperCase()}
                             </span>
                             <span className="font-mono text-xxs text-muted">

@@ -73,14 +73,14 @@ export const GoogleAuthModal: React.FC<Props> = ({
           <button type="button" className="btn-modal-close" onClick={onClose}>✕</button>
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body log-run-body">
           {/* Current Profile Display */}
           <div className="current-user-card">
             <div className="user-avatar-circle">
               {currentUser.name.slice(0, 1).toUpperCase()}
             </div>
             <div>
-              <p className="font-semibold text-white text-sm">{currentUser.name}</p>
+              <p className="font-semibold text-primary text-sm">{currentUser.name}</p>
               <p className="text-xs text-secondary font-mono">{currentUser.email}</p>
               <span className="badge-xs badge-safe mt-1 inline-block uppercase font-mono">
                 {currentUser.role} Account
@@ -176,7 +176,7 @@ export const GoogleAuthModal: React.FC<Props> = ({
                     onClose();
                   }}
                 >
-                  <span className="text-xs font-semibold text-white">{u.name}</span>
+                  <span className="text-xs font-semibold text-primary">{u.name}</span>
                   <span className="text-xxs text-secondary font-mono">{u.email}</span>
                 </button>
               ))}

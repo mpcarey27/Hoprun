@@ -195,7 +195,7 @@ export const WorkoutsTab: React.FC<Props> = ({
                 style={{ borderLeftColor: runColor }}
               >
                 <div className="activity-card-header">
-                  <div>
+                  <div className="activity-card-meta">
                     <span className="activity-date font-mono">{dateDisplay}</span>
                     <span
                       className="activity-type-badge font-mono text-xs"
@@ -204,34 +204,34 @@ export const WorkoutsTab: React.FC<Props> = ({
                       {w.runType.replace('_', ' ').toUpperCase()} (×{w.multiplier})
                     </span>
                     {w.athleteName && (
-                      <span className="badge-safe text-xxs font-mono ml-2">
+                      <span className="badge-safe text-xxs font-mono">
                         ATHLETE: {w.athleteName.toUpperCase()}
                       </span>
                     )}
                     {w.isPlanAssigned && (
-                      <span className="badge-safe text-xxs font-mono ml-1.5">
+                      <span className="badge-safe text-xxs font-mono">
                         COACH ASSIGNED
                       </span>
                     )}
                     {w.plannedDistance && (
                       <span
-                        className={`badge-compliance badge-compliance-${calculateCompliance(w.plannedDistance, w.distance).status} text-xxs font-mono ml-1.5`}
+                        className={`badge-compliance badge-compliance-${calculateCompliance(w.plannedDistance, w.distance).status} text-xxs font-mono`}
                       >
                         {calculateCompliance(w.plannedDistance, w.distance).percent}% EXEC
                       </span>
                     )}
                     {w.feeling && (
-                      <span className="badge-feeling text-xxs ml-1.5">
+                      <span className="badge-feeling text-xxs">
                         {w.feeling.toUpperCase()}
                       </span>
                     )}
                     {w.rpe && (
-                      <span className="badge-rpe text-xxs font-mono ml-1.5">
+                      <span className="badge-rpe text-xxs font-mono">
                         RPE {w.rpe}/10
                       </span>
                     )}
                     {w.shoeName && (
-                      <span className="badge-shoe text-xxs ml-1.5">
+                      <span className="badge-shoe text-xxs">
                         👟 {w.shoeName}
                       </span>
                     )}

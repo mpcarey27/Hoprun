@@ -307,7 +307,7 @@ export const AnalyticsTab: React.FC<Props> = ({
             {(customStartDate || customEndDate) && (
               <button
                 type="button"
-                className="text-xs text-secondary hover:text-white underline mt-3"
+                className="text-xs text-secondary hover:text-primary underline mt-3 cursor-pointer transition-colors"
                 onClick={() => {
                   setCustomStartDate('');
                   setCustomEndDate('');
@@ -497,7 +497,7 @@ export const AnalyticsTab: React.FC<Props> = ({
 
                     <div className="athlete-kpi-box">
                       <span className="kpi-mini-label">Window Mileage</span>
-                      <span className="kpi-mini-val font-mono text-white">
+                      <span className="kpi-mini-val font-mono text-primary font-bold">
                         {totalDist.toFixed(1)}{' '}
                         <span className="text-xxs font-normal text-muted">{distanceUnit.toUpperCase()}</span>
                       </span>
@@ -599,7 +599,7 @@ export const AnalyticsTab: React.FC<Props> = ({
 
             <div className="kpi-card">
               <span className="kpi-label">Total Distance</span>
-              <span className="kpi-val font-mono text-white">
+              <span className="kpi-val font-mono text-primary font-bold">
                 {displayWeeks.reduce((acc, w) => acc + (distanceUnit === 'mi' ? w.totalMiles : w.totalKm), 0).toFixed(1)}{' '}
                 <span className="text-xs font-normal text-muted">{distanceUnit.toUpperCase()}</span>
               </span>

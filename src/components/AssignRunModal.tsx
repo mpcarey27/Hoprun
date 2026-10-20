@@ -266,7 +266,7 @@ export const AssignRunModal: React.FC<Props> = ({
         {/* Modal Header */}
         <div className="modal-header">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
               <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">
                 Coach Center
               </span>
@@ -304,7 +304,7 @@ export const AssignRunModal: React.FC<Props> = ({
           </button>
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body log-run-body">
           {successMessage && (
             <div className="inweek-ribbon inweek-ribbon-optimal mb-4">
               <span className="font-mono text-sm font-bold text-success">
@@ -349,14 +349,7 @@ export const AssignRunModal: React.FC<Props> = ({
                       <button
                         key={user.id}
                         type="button"
-                        className={`p-2.5 rounded text-left transition-all cursor-pointer ${
-                          isSelected
-                            ? 'bg-accent text-white font-bold'
-                            : 'bg-surface hover:border-accent text-primary'
-                        }`}
-                        style={{
-                          border: isSelected ? '1.5px solid var(--color-accent)' : '1px solid var(--border-subtle)',
-                        }}
+                        className={`athlete-select-card ${isSelected ? 'active font-bold' : ''}`}
                         onClick={() => setSelectedAthleteId(user.id)}
                       >
                         <div className="flex items-center gap-2 mb-1">
@@ -681,7 +674,7 @@ export const AssignRunModal: React.FC<Props> = ({
                               )}
                             </div>
                             {run.comments && (
-                              <p className="text-xs text-muted font-sans italic w-full mt-1">
+                              <p className="text-xs text-muted font-sans italic w-full mt-1 break-words">
                                 {run.comments}
                               </p>
                             )}

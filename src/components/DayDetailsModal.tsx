@@ -76,7 +76,7 @@ export const DayDetailsModal: React.FC<Props> = ({
           </button>
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body log-run-body">
           {/* Day Totals Summary Strip */}
           <div className="day-quick-metrics mb-4">
             <div className="quick-metric">
@@ -151,7 +151,7 @@ export const DayDetailsModal: React.FC<Props> = ({
                       className="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2"
                       style={{ borderBottom: '1px solid var(--border-subtle)' }}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <span className="run-badge-tag font-mono text-xs font-bold">
                           Run #{idx + 1}
                         </span>

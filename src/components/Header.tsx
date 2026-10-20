@@ -261,7 +261,7 @@ export const Header: React.FC<Props> = ({
                     {currentUser.name.slice(0, 1).toUpperCase()}
                   </div>
                   <div>
-                    <strong className="text-white text-sm block">{currentUser.name}</strong>
+                    <strong className="text-primary text-sm block">{currentUser.name}</strong>
                     <span className="text-muted text-xs">{currentUser.email}</span>
                   </div>
                 </div>
@@ -271,7 +271,7 @@ export const Header: React.FC<Props> = ({
                 {/* Role Switcher */}
                 <div className="settings-item">
                   <div className="settings-item-label">
-                    <span className="text-xs font-medium text-white">Active Mode</span>
+                    <span className="text-xs font-medium text-primary">Active Mode</span>
                   </div>
                   <button
                     type="button"
@@ -285,7 +285,7 @@ export const Header: React.FC<Props> = ({
                 {/* Theme Mode Switcher */}
                 <div className="settings-item">
                   <div className="settings-item-label">
-                    <span className="text-xs font-medium text-white">Appearance</span>
+                    <span className="text-xs font-medium text-primary">Appearance</span>
                   </div>
                   <div className="segmented-unit-control">
                     <button
@@ -308,7 +308,7 @@ export const Header: React.FC<Props> = ({
                 {/* Distance Units Switcher */}
                 <div className="settings-item">
                   <div className="settings-item-label">
-                    <span className="text-xs font-medium text-white">Distance Unit</span>
+                    <span className="text-xs font-medium text-primary">Distance Unit</span>
                   </div>
                   <div className="segmented-unit-control">
                     <button
@@ -331,7 +331,7 @@ export const Header: React.FC<Props> = ({
                 {/* Training Week Start */}
                 <div className="settings-item">
                   <div className="settings-item-label">
-                    <span className="text-xs font-medium text-white">Week Starts On</span>
+                    <span className="text-xs font-medium text-primary">Week Starts On</span>
                   </div>
                   <select
                     className="settings-select"

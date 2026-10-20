@@ -159,7 +159,7 @@ export const QuickLogPresetsModal: React.FC<Props> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="modal-body log-run-body space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-secondary m-0">
               Customize up to <strong>7 quick-log buttons</strong> for your regular routes and staple workouts.
@@ -194,7 +194,7 @@ export const QuickLogPresetsModal: React.FC<Props> = ({
                       </span>
                       <button
                         type="button"
-                        className="text-xxs text-muted hover:text-white"
+                        className="text-xxs text-muted hover:text-primary transition-colors cursor-pointer"
                         onClick={() => setEditingIndex(null)}
                       >
                         Cancel
@@ -348,7 +348,7 @@ export const QuickLogPresetsModal: React.FC<Props> = ({
                 </span>
                 <button
                   type="button"
-                  className="text-xxs text-muted hover:text-white"
+                  className="text-xxs text-muted hover:text-primary transition-colors cursor-pointer"
                   onClick={() => setIsAdding(false)}
                 >
                   Cancel
@@ -424,7 +424,7 @@ export const QuickLogPresetsModal: React.FC<Props> = ({
             staples.length < 7 && (
               <button
                 type="button"
-                className="w-full py-2.5 rounded border border-dashed border-subtle hover:border-accent text-xs font-mono text-accent text-center bg-transparent cursor-pointer transition-colors"
+                className="btn-add-preset-dashed"
                 onClick={() => setIsAdding(true)}
               >
                 + Add Preset Option ({staples.length}/7 used)
@@ -443,7 +443,7 @@ export const QuickLogPresetsModal: React.FC<Props> = ({
         <div className="modal-footer flex items-center justify-between">
           <button
             type="button"
-            className="text-xs text-muted hover:text-white underline bg-transparent border-0 cursor-pointer font-mono"
+            className="text-xs text-muted hover:text-primary underline bg-transparent border-0 cursor-pointer font-mono transition-colors"
             onClick={handleResetDefaults}
           >
             Reset Defaults

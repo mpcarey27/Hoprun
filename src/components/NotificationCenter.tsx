@@ -48,13 +48,13 @@ export const NotificationCenter: React.FC<Props> = ({
         <div className="notif-dropdown">
           <div className="notif-dropdown-header">
             <div>
-              <h4 className="text-xs uppercase font-mono font-bold text-white">Athlete Activity Alerts</h4>
+              <h4 className="text-xs uppercase font-mono font-bold text-primary">Athlete Activity Alerts</h4>
               <span className="text-xxs text-muted">Completed & edited workout notices</span>
             </div>
             {notifications.length > 0 && (
               <button
                 type="button"
-                className="text-xxs text-secondary hover:text-white underline"
+                className="text-xxs text-secondary hover:text-primary underline cursor-pointer transition-colors"
                 onClick={onClearAll}
               >
                 Clear all
@@ -80,13 +80,13 @@ export const NotificationCenter: React.FC<Props> = ({
                     <span className="text-xxs text-muted font-mono">{formatTimeAgo(n.timestamp)}</span>
                   </div>
 
-                  <p className="notif-title">
+                  <p className="notif-title break-words">
                     <strong>{n.athleteName}</strong>{' '}
                     {n.type === 'edited' ? 'modified' : 'finished'} <strong>{n.runType}</strong> ({n.distance} {n.unit}) on {n.date}
                   </p>
 
                   {n.comment && (
-                    <p className="notif-comment">
+                    <p className="notif-comment break-words">
                       "{n.comment}"
                     </p>
                   )}

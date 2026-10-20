@@ -269,7 +269,7 @@ export const AdminPlanModal: React.FC<Props> = ({
           <button type="button" className="btn-modal-close" onClick={onClose}>✕</button>
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body log-run-body">
           {assignDirectSuccess && (
             <div className="inweek-ribbon inweek-ribbon-optimal mb-3">
               <span className="font-mono text-sm font-bold text-success">
@@ -307,14 +307,7 @@ export const AdminPlanModal: React.FC<Props> = ({
                   <button
                     key={user.id}
                     type="button"
-                    className={`p-2 rounded text-left transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-accent text-white font-bold'
-                        : 'bg-surface hover:border-accent text-primary'
-                    }`}
-                    style={{
-                      border: isSelected ? '1.5px solid var(--color-accent)' : '1px solid var(--border-subtle)',
-                    }}
+                    className={`athlete-select-card ${isSelected ? 'active font-bold' : ''}`}
                     onClick={() => setTargetAthleteId(user.id)}
                   >
                     <div className="flex items-center gap-1.5 mb-0.5">
@@ -428,13 +421,13 @@ export const AdminPlanModal: React.FC<Props> = ({
             </div>
             <div className="plan-stat">
               <span className="plan-stat-label">Week {activeWeekTab + 1} Workload</span>
-              <span className="plan-stat-val font-mono text-white">
+              <span className="plan-stat-val font-mono text-primary font-bold">
                 {currentTabAcuteLoad.toFixed(1)} ({currentTabMiles.toFixed(1)} mi)
               </span>
             </div>
             <div className="plan-stat">
               <span className="plan-stat-label">Coach</span>
-              <span className="plan-stat-val text-white">{activePlan.coachName}</span>
+              <span className="plan-stat-val text-primary font-bold">{activePlan.coachName}</span>
             </div>
           </div>
 
@@ -457,7 +450,7 @@ export const AdminPlanModal: React.FC<Props> = ({
           {/* 7 Days Grid for Active Week */}
           <div className="plan-days-container">
             <div className="plan-days-header-strip">
-              <span className="text-xs font-mono font-bold text-white uppercase">
+              <span className="text-xs font-mono font-bold text-primary uppercase">
                 Week {activeWeekTab + 1}
               </span>
               <span className="text-xxs text-muted font-mono">
