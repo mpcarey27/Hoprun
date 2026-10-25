@@ -15,6 +15,8 @@ import {
   getDayName,
   getUserQuickStaples,
   formatStapleLabel,
+  formatTimeOfDay,
+  getSmartDefaultTitle,
 } from '../utils/calculations';
 import { ROSTER_USERS } from '../utils/storage';
 import { StravaTimePacePicker } from './StravaTimePacePicker';
@@ -73,12 +75,23 @@ export const LogRunModal: React.FC<Props> = ({
     return ROSTER_USERS.find((u) => u.id === athleteId) || currentUser;
   }, [athleteId, currentUser]);
 
+  const defaultShoe = useMemo(() => {
+    return shoes.find((s) => !s.isRetired && s.isDefault) || shoes.find((s) => !s.isRetired);
+  }, [shoes]);
+
+  const [title, setTitle] = useState<string>(() => runToEdit?.title ?? '');
+  const [startTime, setStartTime] = useState<string>(() => {
+    if (runToEdit?.startTime) return runToEdit.startTime;
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
+
   const [distance, setDistance] = useState<number>(() => runToEdit?.distance ?? 5.0);
   const [unit, setUnit] = useState<DistanceUnit>(() => runToEdit?.distanceUnit ?? distanceUnit);
   const [runType, setRunType] = useState<string>(() => runToEdit?.runType ?? 'easy');
   const [comments, setComments] = useState<string>(() => runToEdit?.comments ?? '');
   const [completed, setCompleted] = useState<boolean>(() => runToEdit?.completed ?? true);
-  const [shoeId, setShoeId] = useState<string>(() => runToEdit?.shoeId ?? '');
+  const [shoeId, setShoeId] = useState<string>(() => runToEdit?.shoeId ?? (defaultShoe ? defaultShoe.id : ''));
 
   // Subjective effort & feeling
   const [rpe, setRpe] = useState<number | undefined>(() => runToEdit?.rpe);
@@ -105,6 +118,8 @@ export const LogRunModal: React.FC<Props> = ({
   useEffect(() => {
     if (isOpen) {
       if (runToEdit) {
+        setTitle(runToEdit.title || '');
+        setStartTime(runToEdit.startTime || '');
         setDate(runToEdit.workoutDate);
         setAthleteId(runToEdit.athleteId || currentUser.id);
         setDistance(runToEdit.distance);
@@ -112,7 +127,7 @@ export const LogRunModal: React.FC<Props> = ({
         setRunType(runToEdit.runType);
         setComments(runToEdit.comments || '');
         setCompleted(runToEdit.completed);
-        setShoeId(runToEdit.shoeId || '');
+        setShoeId(runToEdit.shoeId || (defaultShoe ? defaultShoe.id : ''));
         setRpe(runToEdit.rpe);
         setFeeling(runToEdit.feeling);
         setDurationSeconds(runToEdit.durationSeconds);
@@ -120,6 +135,9 @@ export const LogRunModal: React.FC<Props> = ({
         setPaceSeconds(runToEdit.paceSeconds);
         setPaceFormatted(runToEdit.paceFormatted);
       } else {
+        setTitle('');
+        const now = new Date();
+        setStartTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
         setDate(defaultDate || todayStr);
         setAthleteId(
           isCoach && selectedAthleteFilter && selectedAthleteFilter !== 'all'
@@ -131,7 +149,7 @@ export const LogRunModal: React.FC<Props> = ({
         setRunType('easy');
         setComments('');
         setCompleted(true);
-        setShoeId('');
+        setShoeId(defaultShoe ? defaultShoe.id : '');
         setRpe(undefined);
         setFeeling(undefined);
         setDurationSeconds(undefined);
@@ -142,7 +160,7 @@ export const LogRunModal: React.FC<Props> = ({
       setConfirmDelete(false);
       setToastMessage('');
     }
-  }, [isOpen, runToEdit, defaultDate, todayStr, distanceUnit, currentUser.id, isCoach, selectedAthleteFilter]);
+  }, [isOpen, runToEdit, defaultDate, todayStr, distanceUnit, currentUser.id, isCoach, selectedAthleteFilter, defaultShoe]);
 
   // Derived load calculation
   const multiplier = getRunTypeMultiplier(runType);
@@ -184,6 +202,7 @@ export const LogRunModal: React.FC<Props> = ({
     if (!date || distance <= 0) return;
 
     const selectedShoe = shoes.find((s) => s.id === shoeId);
+    const finalTitle = title.trim() || getSmartDefaultTitle(startTime, runType);
 
     const baseTime = Date.now();
     const updatedRun: WorkoutRun = {
@@ -197,6 +216,8 @@ export const LogRunModal: React.FC<Props> = ({
       load,
       comments: comments.trim(),
       completed,
+      title: finalTitle,
+      startTime: startTime || undefined,
       isPlanAssigned: runToEdit?.isPlanAssigned ?? false,
       assignedByCoachId: runToEdit?.assignedByCoachId,
       assignedByCoachName: runToEdit?.assignedByCoachName,
@@ -344,31 +365,69 @@ export const LogRunModal: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Date Picker */}
+            {/* Workout Title (Strava Benchmark) */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
-                  Date
+                  Activity Title
                 </label>
-                <span className="text-xs font-mono text-primary font-bold">
-                  {formattedDay} ({getDayName(date)})
+                <span className="text-xxs font-mono text-muted">
+                  Default: {getSmartDefaultTitle(startTime, runType)}
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <input
+                type="text"
+                className="input-field text-xs font-semibold w-full"
+                placeholder={getSmartDefaultTitle(startTime, runType)}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+
+            {/* Date & Start Time Picker */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                    Date
+                  </label>
+                  <span className="text-xs font-mono text-primary font-bold">
+                    {formattedDay} ({getDayName(date)})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="input-field text-xs font-mono flex-1"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="btn-filter-pill text-xs font-mono py-1 px-2.5"
+                    onClick={() => setDate(todayStr)}
+                  >
+                    Today
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                    Start Time
+                  </label>
+                  <span className="text-xs font-mono text-primary font-bold">
+                    {formatTimeOfDay(startTime) || 'Not set'}
+                  </span>
+                </div>
                 <input
-                  type="date"
-                  className="input-field text-xs font-mono flex-1"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
+                  type="time"
+                  className="input-field text-xs font-mono w-full"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
                 />
-                <button
-                  type="button"
-                  className="btn-filter-pill text-xs font-mono py-1 px-2.5"
-                  onClick={() => setDate(todayStr)}
-                >
-                  Today
-                </button>
               </div>
             </div>
 
@@ -470,9 +529,16 @@ export const LogRunModal: React.FC<Props> = ({
             {/* Running Shoe / Gear Selector */}
             {shoes && shoes.length > 0 && (
               <div>
-                <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                  Running Shoe / Gear
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                    Running Shoe / Gear
+                  </label>
+                  {defaultShoe && (
+                    <span className="text-xxs font-mono text-accent">
+                      Default: {defaultShoe.name}
+                    </span>
+                  )}
+                </div>
                 <select
                   className="input-field text-xs font-mono w-full"
                   value={shoeId}
@@ -481,7 +547,7 @@ export const LogRunModal: React.FC<Props> = ({
                   <option value="">No shoe selected</option>
                   {shoes.map((s) => (
                     <option key={s.id} value={s.id}>
-                      👟 {s.name} ({s.totalMiles.toFixed(1)} / {s.maxMiles} mi)
+                      👟 {s.name} {s.isDefault ? '★ (Default)' : ''} ({s.totalMiles.toFixed(1)} / {s.maxMiles} mi)
                     </option>
                   ))}
                 </select>

@@ -66,6 +66,15 @@ export const SettingsTab: React.FC<Props> = ({
     onUpdateSettings({ shoes: updated });
   };
 
+  const handleSetDefaultShoe = (shoeId: string) => {
+    const currentShoes = settings.shoes || [];
+    const updated = currentShoes.map((s) => ({
+      ...s,
+      isDefault: s.id === shoeId,
+    }));
+    onUpdateSettings({ shoes: updated });
+  };
+
   // Quick log presets modal state
   const [isPresetsModalOpen, setIsPresetsModalOpen] = useState(false);
 
@@ -232,6 +241,39 @@ export const SettingsTab: React.FC<Props> = ({
           </div>
         </section>
 
+        {/* Weekly Mileage Target (Strava Benchmark) */}
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div>
+              <h2 className="settings-card-title">Weekly Mileage Target</h2>
+              <p className="settings-card-desc">
+                Set your weekly goal distance to track progress in the athletic progress ring.
+              </p>
+            </div>
+          </div>
+          <div className="settings-row-control">
+            <div>
+              <span className="text-secondary text-sm block">Weekly Target</span>
+              <span className="text-muted text-xs">Current unit: {settings.distanceUnit.toUpperCase()}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                max="250"
+                step="5"
+                className="input font-mono w-24 text-center"
+                value={settings.weeklyMileageTarget ?? 35}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  onUpdateSettings({ weeklyMileageTarget: isNaN(val) ? 0 : val });
+                }}
+              />
+              <span className="font-mono text-sm font-semibold text-primary">{settings.distanceUnit.toUpperCase()} / wk</span>
+            </div>
+          </div>
+        </section>
+
         {/* User Role & Profile */}
         <section className="settings-card">
           <div className="settings-card-header">
@@ -385,6 +427,7 @@ export const SettingsTab: React.FC<Props> = ({
             shoes={settings.shoes || []}
             onAddShoe={handleAddShoe}
             onRetireShoe={handleRetireShoe}
+            onSetDefaultShoe={handleSetDefaultShoe}
           />
         </section>
       </div>

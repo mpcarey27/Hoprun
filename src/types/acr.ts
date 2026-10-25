@@ -22,6 +22,8 @@ export interface WorkoutRun {
   load: number; // distance * multiplier
   comments: string; // "how I felt, how workout went"
   completed: boolean;
+  title?: string; // e.g. "Morning 10 Miler", "Threshold Repeats"
+  startTime?: string; // e.g. "07:30" or "17:45"
   isPlanAssigned?: boolean;
   planId?: string;
   planDayIndex?: number;
@@ -64,6 +66,7 @@ export interface RunningShoe {
   maxMiles: number; // default 400
   isRetired: boolean;
   dateAdded: string;
+  isDefault?: boolean; // automatically tagged on new runs
 }
 
 export interface QuickLogStaple {
@@ -156,4 +159,5 @@ export interface AppSettings {
   targetRace?: TargetRace;
   shoes?: RunningShoe[];
   userQuickStaples?: Record<string, QuickLogStaple[]>;
+  weeklyMileageTarget?: number; // e.g. 40.0 miles
 }

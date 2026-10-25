@@ -560,6 +560,8 @@ export const App: React.FC = () => {
             onDeleteWorkout={handleDeleteRun}
             targetRace={settings.targetRace}
             onToggleComplete={(run) => handleAthleteToggleComplete(run, !run.completed)}
+            weeklyMileageTarget={settings.weeklyMileageTarget}
+            activeWeekStartDate={activeWeekStartDate}
           />
         )}
 

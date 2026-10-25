@@ -9,6 +9,10 @@ import {
   formatPace,
   calculateCompliance,
   formatDate,
+  formatTimeOfDay,
+  calculateRelativeStimulus,
+  getWeekStartDate,
+  addDays,
 } from '../utils/calculations';
 import { RaceCountdownBanner } from './RaceCountdownBanner';
 
@@ -21,6 +25,8 @@ interface Props {
   onDeleteWorkout: (id: string) => void;
   targetRace?: TargetRace;
   onToggleComplete?: (run: WorkoutRun) => void;
+  weeklyMileageTarget?: number;
+  activeWeekStartDate?: string;
 }
 
 export const WorkoutsTab: React.FC<Props> = ({
@@ -32,6 +38,8 @@ export const WorkoutsTab: React.FC<Props> = ({
   onDeleteWorkout,
   targetRace,
   onToggleComplete,
+  weeklyMileageTarget,
+  activeWeekStartDate,
 }) => {
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -76,6 +84,26 @@ export const WorkoutsTab: React.FC<Props> = ({
     };
   }, [workouts, distanceUnit]);
 
+  // Current Week Mileage & Weekly Goal calculation
+  const currentWeekMiles = useMemo(() => {
+    const weekStart = activeWeekStartDate || getWeekStartDate(todayStr, 1);
+    const weekEnd = addDays(weekStart, 6);
+    return workouts
+      .filter((w) => w.workoutDate >= weekStart && w.workoutDate <= weekEnd)
+      .reduce((sum, w) => sum + convertDistance(w.distance, w.distanceUnit, distanceUnit), 0);
+  }, [workouts, activeWeekStartDate, todayStr, distanceUnit]);
+
+  const weeklyTarget = weeklyMileageTarget || 35.0;
+  const progressPercent = Math.min(100, Math.round((currentWeekMiles / weeklyTarget) * 100));
+
+  // Average daily load for relative stimulus calculations
+  const avgDailyLoad = useMemo(() => {
+    if (workouts.length === 0) return 10.0;
+    const totalL = workouts.reduce((acc, w) => acc + w.load, 0);
+    const uniqueDays = new Set(workouts.map((w) => w.workoutDate)).size;
+    return uniqueDays > 0 ? totalL / uniqueDays : 10.0;
+  }, [workouts]);
+
   return (
     <div className="tab-container">
       {/* Target Race Countdown Banner (If Configured) */}
@@ -86,14 +114,14 @@ export const WorkoutsTab: React.FC<Props> = ({
       )}
 
       {/* Strava-Style Top Banner / Summary */}
-      <div className="strava-summary-bar flex items-center justify-between">
+      <div className="strava-summary-bar flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="strava-profile-stat">
             <span className="strava-stat-label">Activities</span>
             <span className="strava-stat-val font-mono whitespace-nowrap">{workouts.length}</span>
           </div>
           <div className="strava-profile-stat">
-            <span className="strava-stat-label">Distance</span>
+            <span className="strava-stat-label">Total Dist</span>
             <span className="strava-stat-val font-mono whitespace-nowrap">
               {totalDistance.toFixed(1)}{' '}
               <span className="text-xs text-muted font-normal">{distanceUnit.toUpperCase()}</span>
@@ -120,6 +148,39 @@ export const WorkoutsTab: React.FC<Props> = ({
             <span className="strava-stat-val font-mono text-primary font-bold whitespace-nowrap">
               {totalLoad.toFixed(1)}
             </span>
+          </div>
+
+          {/* Strava Weekly Goal Progress Ring */}
+          <div className="weekly-goal-chip flex items-center gap-2.5 py-1 px-3 rounded-full bg-surface-subtle border border-subtle">
+            <div className="relative w-7 h-7 flex items-center justify-center">
+              <svg className="w-7 h-7 transform -rotate-90" viewBox="0 0 36 36">
+                <path
+                  className="text-muted/20"
+                  strokeWidth="3.5"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path
+                  className="text-accent"
+                  strokeDasharray={`${progressPercent}, 100`}
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  stroke="currentColor"
+                  fill="none"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <span className="absolute text-xxs font-mono font-bold text-primary">{progressPercent}%</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xxs uppercase tracking-wider text-muted font-mono font-bold leading-none">
+                Weekly Target
+              </span>
+              <span className="font-mono text-xs font-bold text-primary leading-tight">
+                {currentWeekMiles.toFixed(1)} <span className="text-muted font-normal text-xxs">/ {weeklyTarget} {distanceUnit.toUpperCase()}</span>
+              </span>
+            </div>
           </div>
         </div>
 
@@ -174,13 +235,30 @@ export const WorkoutsTab: React.FC<Props> = ({
       {/* Activities Feed */}
       <div className="activity-feed">
         {filtered.length === 0 ? (
-          <div className="empty-feed-card text-center py-6">
-            <p className="text-secondary font-medium text-sm">No recorded workouts found.</p>
+          <div className="empty-feed-card text-center py-10 px-4 rounded-2xl bg-surface border border-subtle">
+            <div className="text-3xl mb-2">👟</div>
+            <h4 className="text-primary font-bold text-base mb-1">No recorded activities</h4>
+            <p className="text-secondary text-xs max-w-sm mx-auto mb-4">
+              {searchQuery || filterType !== 'all'
+                ? 'No workouts match the active filter or search query.'
+                : 'Start logging your workouts to track acute:chronic workload ratios and prevent injury.'}
+            </p>
+            {onLogRun && (
+              <button
+                type="button"
+                className="btn-action-primary py-2 px-5 text-xs font-bold rounded-full inline-flex items-center gap-1.5 shadow-sm"
+                onClick={onLogRun}
+              >
+                <span>+</span>
+                <span>Log First Run</span>
+              </button>
+            )}
           </div>
         ) : (
           filtered.map((w) => {
             const runColor = getRunTypeColor(w.runType);
             const distInPref = convertDistance(w.distance, w.distanceUnit, distanceUnit);
+            const stimulus = calculateRelativeStimulus(w.load, avgDailyLoad);
 
             const [year, month, day] = w.workoutDate.split('-').map(Number);
             const dateObj = new Date(year, month - 1, day);
@@ -190,8 +268,10 @@ export const WorkoutsTab: React.FC<Props> = ({
               day: 'numeric',
               year: 'numeric',
             });
+            const timeDisplay = w.startTime ? formatTimeOfDay(w.startTime) : '';
 
             const defaultTitle = `${w.runType.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())} Run`;
+            const cardTitle = w.title || defaultTitle;
 
             return (
               <article
@@ -240,7 +320,15 @@ export const WorkoutsTab: React.FC<Props> = ({
                         </span>
 
                         <span className="activity-date font-mono text-xs text-muted whitespace-nowrap">
-                          {dateDisplay}
+                          {dateDisplay} {timeDisplay && `• ${timeDisplay}`}
+                        </span>
+
+                        {/* Strava-Style Relative Effort Stimulus Badge */}
+                        <span
+                          className={`badge-stimulus badge-stimulus-${stimulus.level} text-xxs font-mono whitespace-nowrap`}
+                          title={stimulus.description}
+                        >
+                          {stimulus.label.toUpperCase()}
                         </span>
 
                         {w.plannedDistance && (
@@ -316,7 +404,7 @@ export const WorkoutsTab: React.FC<Props> = ({
 
                     {/* Workout Card Title */}
                     <h3 className={`activity-card-title ${w.completed ? 'title-done' : ''}`}>
-                      {defaultTitle}
+                      {cardTitle}
                     </h3>
 
                     {/* Dedicated Metrics Box (like Stride: rounded-2xl bg-surface-elevated/70 p-3.5 border border-subtle) */}

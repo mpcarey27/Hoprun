@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   firstDayOfWeek: 1, // Monday
   warningThreshold: 1.2,
   themeMode: 'dark',
+  weeklyMileageTarget: 35.0,
   shoes: [
     {
       id: 'shoe_default_1',
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
       maxMiles: 400,
       isRetired: false,
       dateAdded: '2026-09-01',
+      isDefault: true,
     },
   ],
 };

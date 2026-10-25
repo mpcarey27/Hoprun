@@ -19,8 +19,11 @@ import {
   getQuickLogStaples,
   getUserQuickStaples,
   formatStapleLabel,
+  formatTimeOfDay,
+  getSmartDefaultTitle,
+  calculateRelativeStimulus,
 } from '../src/utils/calculations';
-import type { WorkoutRun, WeekWorkload, UserProfile, QuickLogStaple } from '../src/types/acr';
+import type { WorkoutRun, WeekWorkload, UserProfile, QuickLogStaple, RunningShoe } from '../src/types/acr';
 
 describe('ACWR Calculations (TDD Core Science)', () => {
   it('test_calculateRunLoad_multipliers() - exact workload values', () => {
@@ -951,6 +954,91 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(runWithGear.shoeName).toBe('Nike Pegasus 40');
       expect(runWithGear.rpe).toBe(6);
       expect(runWithGear.feeling).toBe('great');
+    });
+
+    it('test_formatTimeOfDay() - converts 24h to 12h AM/PM strings', () => {
+      expect(formatTimeOfDay('07:30')).toBe('7:30 AM');
+      expect(formatTimeOfDay('12:00')).toBe('12:00 PM');
+      expect(formatTimeOfDay('18:45')).toBe('6:45 PM');
+      expect(formatTimeOfDay('00:15')).toBe('12:15 AM');
+      expect(formatTimeOfDay('')).toBe('');
+    });
+
+    it('test_getSmartDefaultTitle() - generates time-of-day contextual titles', () => {
+      expect(getSmartDefaultTitle('07:00', 'easy')).toBe('Morning Easy Run');
+      expect(getSmartDefaultTitle('13:30', 'tempo')).toBe('Afternoon Tempo');
+      expect(getSmartDefaultTitle('18:15', 'long_run')).toBe('Evening Long Run');
+      expect(getSmartDefaultTitle('21:00', 'intervals')).toBe('Night Intervals');
+    });
+
+    it('test_calculateRelativeStimulus() - categorizes athletic workload stimulus', () => {
+      // With average daily load of 15.0
+      const avg = 15.0;
+      const low = calculateRelativeStimulus(5.0, avg);
+      expect(low.level).toBe('low');
+      expect(low.label).toBe('Low Stimulus');
+
+      const opt = calculateRelativeStimulus(15.0, avg);
+      expect(opt.level).toBe('optimal');
+      expect(opt.label).toBe('Optimal');
+
+      const key = calculateRelativeStimulus(25.0, avg);
+      expect(key.level).toBe('key');
+      expect(key.label).toBe('Key Session');
+
+      // Baseline fallback when no history
+      expect(calculateRelativeStimulus(4.0).level).toBe('low');
+      expect(calculateRelativeStimulus(12.0).level).toBe('optimal');
+      expect(calculateRelativeStimulus(20.0).level).toBe('key');
+    });
+
+    it('test_defaultShoe_autoAssignment() - selects shoe marked as default', () => {
+      const shoes: RunningShoe[] = [
+        {
+          id: 'shoe_1',
+          name: 'Racing Flat',
+          totalMiles: 50,
+          maxMiles: 250,
+          isRetired: false,
+          dateAdded: '2026-09-01',
+          isDefault: false,
+        },
+        {
+          id: 'shoe_2',
+          name: 'Daily Trainer (Nike Pegasus)',
+          totalMiles: 150,
+          maxMiles: 400,
+          isRetired: false,
+          dateAdded: '2026-09-01',
+          isDefault: true,
+        },
+      ];
+
+      const defaultShoe = shoes.find((s) => !s.isRetired && s.isDefault);
+      expect(defaultShoe).toBeDefined();
+      expect(defaultShoe?.id).toBe('shoe_2');
+      expect(defaultShoe?.name).toBe('Daily Trainer (Nike Pegasus)');
+    });
+
+    it('test_workoutRun_titleAndStartTime_fields() - saves custom title and start time', () => {
+      const customRun: WorkoutRun = {
+        id: 'run_morning_tempo',
+        workoutDate: '2026-10-25',
+        runOrder: 1,
+        title: 'Morning Threshold 8 Miler',
+        startTime: '07:15',
+        distance: 8.0,
+        distanceUnit: 'mi',
+        runType: 'tempo',
+        multiplier: 2.0,
+        load: 16.0,
+        comments: 'Felt great at 6:15/mi tempo pace',
+        completed: true,
+      };
+
+      expect(customRun.title).toBe('Morning Threshold 8 Miler');
+      expect(customRun.startTime).toBe('07:15');
+      expect(formatTimeOfDay(customRun.startTime)).toBe('7:15 AM');
     });
   });
 });

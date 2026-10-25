@@ -6,6 +6,7 @@ interface Props {
   shoes: RunningShoe[];
   onAddShoe: (shoe: RunningShoe) => void;
   onRetireShoe: (shoeId: string) => void;
+  onSetDefaultShoe?: (shoeId: string) => void;
   selectedShoeId?: string;
   onSelectShoe?: (shoeId: string | undefined) => void;
   mode?: 'manage' | 'select';
@@ -15,6 +16,7 @@ export const ShoeMileageTracker: React.FC<Props> = ({
   shoes = [],
   onAddShoe,
   onRetireShoe,
+  onSetDefaultShoe,
   selectedShoeId,
   onSelectShoe,
   mode = 'manage',
@@ -60,7 +62,7 @@ export const ShoeMileageTracker: React.FC<Props> = ({
               const wear = calculateShoeWear(s.totalMiles, s.maxMiles);
               return (
                 <option key={s.id} value={s.id}>
-                  {s.name} ({s.totalMiles.toFixed(1)} / {s.maxMiles} mi - {wear.percent}%)
+                  {s.name} {s.isDefault ? '★ (Default)' : ''} ({s.totalMiles.toFixed(1)} / {s.maxMiles} mi - {wear.percent}%)
                 </option>
               );
             })}
@@ -164,6 +166,9 @@ export const ShoeMileageTracker: React.FC<Props> = ({
                     {shoe.brand && (
                       <span className="shoe-brand-tag text-xs text-muted">{shoe.brand}</span>
                     )}
+                    {shoe.isDefault && (
+                      <span className="badge badge-accent text-xs font-semibold">★ Default Trainer</span>
+                    )}
                     {shoe.isRetired ? (
                       <span className="badge badge-secondary text-xs">Retired</span>
                     ) : wear.status === 'replace' ? (
@@ -195,7 +200,17 @@ export const ShoeMileageTracker: React.FC<Props> = ({
                   </div>
                 </div>
 
-                <div className="shoe-actions-col">
+                <div className="shoe-actions-col flex items-center gap-2">
+                  {!shoe.isRetired && !shoe.isDefault && onSetDefaultShoe && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-xs font-mono"
+                      onClick={() => onSetDefaultShoe(shoe.id)}
+                      title="Set as your default shoe for all new runs"
+                    >
+                      Make Default
+                    </button>
+                  )}
                   {!shoe.isRetired && (
                     <button
                       type="button"

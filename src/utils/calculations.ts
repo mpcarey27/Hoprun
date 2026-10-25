@@ -721,5 +721,79 @@ export function formatStapleLabel(staple: {
   return `${staple.distance.toFixed(1)} ${staple.unit} ${typeName}`;
 }
 
+/**
+ * Formats a 24-hour time string (e.g. "07:30", "18:45") into a clean 12-hour format ("7:30 AM", "6:45 PM").
+ */
+export function formatTimeOfDay(timeStr?: string): string {
+  if (!timeStr) return '';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return timeStr;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h) || isNaN(m)) return timeStr;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const displayH = h % 12 === 0 ? 12 : h % 12;
+  return `${displayH}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+/**
+ * Generates an intelligent Strava-style workout title based on start time and run category.
+ */
+export function getSmartDefaultTitle(timeStr?: string, runTypeStr: string = 'easy'): string {
+  let timeOfDay = 'Morning';
+  if (timeStr) {
+    const h = parseInt(timeStr.slice(0, 2), 10);
+    if (!isNaN(h)) {
+      if (h >= 12 && h < 17) timeOfDay = 'Afternoon';
+      else if (h >= 17 && h < 21) timeOfDay = 'Evening';
+      else if (h >= 21 || h < 5) timeOfDay = 'Night';
+    }
+  } else {
+    const currentH = new Date().getHours();
+    if (currentH >= 12 && currentH < 17) timeOfDay = 'Afternoon';
+    else if (currentH >= 17 && currentH < 21) timeOfDay = 'Evening';
+    else if (currentH >= 21 || currentH < 5) timeOfDay = 'Night';
+  }
+
+  const cleanType = runTypeStr.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  if (runTypeStr === 'long_run') return `${timeOfDay} Long Run`;
+  if (runTypeStr === 'tempo') return `${timeOfDay} Tempo`;
+  if (runTypeStr === 'intervals') return `${timeOfDay} Intervals`;
+  return `${timeOfDay} ${cleanType} Run`;
+}
+
+export type StimulusLevel = 'low' | 'optimal' | 'key';
+
+export interface RelativeStimulusInfo {
+  label: string;
+  level: StimulusLevel;
+  description: string;
+}
+
+/**
+ * Calculates athletic relative stimulus for a given workout load relative to typical daily training stress.
+ */
+export function calculateRelativeStimulus(runLoad: number, avgDailyLoad?: number): RelativeStimulusInfo {
+  if (!avgDailyLoad || avgDailyLoad <= 0) {
+    if (runLoad < 6) {
+      return { label: 'Low Stimulus', level: 'low', description: 'Recovery / Shakeout' };
+    }
+    if (runLoad <= 14) {
+      return { label: 'Optimal', level: 'optimal', description: 'Aerobic Maintenance' };
+    }
+    return { label: 'Key Session', level: 'key', description: 'High Training Stimulus' };
+  }
+
+  const ratio = runLoad / avgDailyLoad;
+  if (ratio < 0.65) {
+    return { label: 'Low Stimulus', level: 'low', description: 'Recovery / Light Base' };
+  }
+  if (ratio <= 1.35) {
+    return { label: 'Optimal', level: 'optimal', description: 'Target Training Zone' };
+  }
+  return { label: 'Key Session', level: 'key', description: 'Key Focus Session' };
+}
+
+
 
 

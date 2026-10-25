@@ -1862,10 +1862,65 @@ button:focus-visible {
 .badge-compliance,
 .badge-feeling,
 .badge-rpe,
-.badge-shoe {
+.badge-shoe,
+.badge-stimulus {
   border-radius: 9999px !important;
   padding: 0.2rem 0.55rem !important;
   white-space: nowrap !important;
+}
+
+.badge-stimulus {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+}
+
+.badge-stimulus-low {
+  background-color: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+[data-theme="light"] .badge-stimulus-low {
+  background-color: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+.badge-stimulus-optimal {
+  background-color: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+[data-theme="light"] .badge-stimulus-optimal {
+  background-color: rgba(5, 150, 105, 0.1);
+  color: #047857;
+  border-color: rgba(5, 150, 105, 0.25);
+}
+
+.badge-stimulus-key {
+  background-color: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+[data-theme="light"] .badge-stimulus-key {
+  background-color: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+  border-color: rgba(217, 119, 6, 0.3);
+}
+
+.weekly-goal-chip {
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.weekly-goal-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-accent);
 }
 
 .activity-actions {

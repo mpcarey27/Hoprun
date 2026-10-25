@@ -6,6 +6,7 @@ import {
   getMonthCalendarWeeks,
   convertDistance,
   formatDate,
+  formatTimeOfDay,
 } from '../utils/calculations';
 import { DayDetailsModal } from './DayDetailsModal';
 
@@ -32,8 +33,8 @@ export const TrainingLogTab: React.FC<Props> = ({
   onEditRun,
   onLogRun,
 }) => {
-  // View Modes: 'calendar' (Big Month Calendar), 'week' (Week Breakdown), 'table' (Monthly Table)
-  const [logViewMode, setLogViewMode] = useState<'calendar' | 'week' | 'table'>('calendar');
+  // View Modes: 'calendar' (Big Month Calendar) or 'week' (Week Breakdown)
+  const [logViewMode, setLogViewMode] = useState<'calendar' | 'week'>('calendar');
 
   const todayStr = useMemo(() => formatDate(new Date()), []);
 
@@ -138,26 +139,9 @@ export const TrainingLogTab: React.FC<Props> = ({
   const currentWeek =
     weeks.find((w) => w.startDate === activeWeekStartDate) || weeks[weeks.length - 1];
 
-  // Month groups for table view
-  const monthGroups = useMemo(() => {
-    const groups: Record<string, WeekWorkload[]> = {};
-    for (const w of weeks) {
-      const monthKey = w.startDate.slice(0, 7);
-      if (!groups[monthKey]) groups[monthKey] = [];
-      groups[monthKey].push(w);
-    }
-    return groups;
-  }, [weeks]);
-
-  const monthKeys = Object.keys(monthGroups).sort().reverse();
-  const [selectedTableMonthKey, setSelectedTableMonthKey] = useState<string>(
-    monthKeys[0] || `${calYear}-${String(calMonth).padStart(2, '0')}`
-  );
-  const selectedMonthWeeks = monthGroups[selectedTableMonthKey] || [];
-
   return (
     <div className="tab-container">
-      {/* View Switcher: Big Calendar View vs Week Breakdown vs Monthly Table */}
+      {/* View Switcher: Big Calendar View vs Week Breakdown */}
       <div className="log-top-bar">
         <div className="log-mode-buttons">
           <button
@@ -172,14 +156,7 @@ export const TrainingLogTab: React.FC<Props> = ({
             className={`btn-log-mode ${logViewMode === 'week' ? 'active' : ''}`}
             onClick={() => setLogViewMode('week')}
           >
-            Week
-          </button>
-          <button
-            type="button"
-            className={`btn-log-mode ${logViewMode === 'table' ? 'active' : ''}`}
-            onClick={() => setLogViewMode('table')}
-          >
-            Table
+            Week Breakdown
           </button>
         </div>
 
@@ -215,28 +192,6 @@ export const TrainingLogTab: React.FC<Props> = ({
             >
               Next →
             </button>
-          </div>
-        )}
-
-        {logViewMode === 'table' && (
-          <div className="month-selector">
-            <span className="text-xxs text-muted uppercase font-mono mr-2">Month:</span>
-            <select
-              className="select-field font-mono text-xs"
-              value={selectedTableMonthKey}
-              onChange={(e) => setSelectedTableMonthKey(e.target.value)}
-            >
-              {monthKeys.map((mk) => {
-                const [yr, mo] = mk.split('-');
-                const d = new Date(Number(yr), Number(mo) - 1, 1);
-                const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-                return (
-                  <option key={mk} value={mk}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
           </div>
         )}
       </div>
@@ -569,11 +524,21 @@ export const TrainingLogTab: React.FC<Props> = ({
                             onClick={() => onEditRun && onEditRun(r)}
                             title="Click to edit this run in pop-up menu"
                           >
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="font-bold text-xs text-primary truncate">
+                                {r.title || `${r.runType.replace('_', ' ')} Run`}
+                              </span>
+                              {r.startTime && (
+                                <span className="font-mono text-xxs text-muted whitespace-nowrap">
+                                  {formatTimeOfDay(r.startTime)}
+                                </span>
+                              )}
+                            </div>
                             <span className="font-mono text-xs font-semibold text-primary whitespace-nowrap">
                               {r.distance} {r.distanceUnit.toUpperCase()}
                             </span>
-                            <span className="font-mono text-xxs text-muted">
-                              {r.runType.replace('_', ' ')} (load: {r.load})
+                            <span className="font-mono text-xxs text-muted block">
+                              {r.runType.replace('_', ' ')} (load: {r.load.toFixed(1)})
                             </span>
                           </div>
                         );
@@ -591,113 +556,6 @@ export const TrainingLogTab: React.FC<Props> = ({
                 </div>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          VIEW 3: MONTHLY TABLE VIEW
-         ========================================================================= */}
-      {logViewMode === 'table' && (
-        <div className="month-matrix-view animate-in">
-          <div className="table-responsive">
-            <table className="acr-table">
-              <thead>
-                <tr>
-                  <th>Training Week</th>
-                  <th>Dates</th>
-                  <th>Total Distance</th>
-                  <th>Acute Workload</th>
-                  <th>4-Wk Chronic Baseline</th>
-                  <th>ACR Ratio</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedMonthWeeks.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="text-center text-muted py-6">
-                      No training data logged for this month.
-                    </td>
-                  </tr>
-                ) : (
-                  selectedMonthWeeks.map((w) => {
-                    const isExceeded = w.acr !== null && w.acr > warningThreshold;
-
-                    return (
-                      <tr
-                        key={w.startDate}
-                        className={isExceeded ? 'row-exceeded' : ''}
-                      >
-                        <td className="font-mono font-semibold">
-                          Week #{w.weekNumber}
-                        </td>
-                        <td className="font-mono text-xs">
-                          {w.startDate} → {w.endDate}
-                        </td>
-                        <td className="font-mono">
-                          {distanceUnit === 'mi'
-                            ? `${w.totalMiles.toFixed(1)} mi`
-                            : `${w.totalKm.toFixed(1)} km`}
-                        </td>
-                        <td className="font-mono font-semibold text-primary">
-                          {w.acuteWorkload.toFixed(1)}
-                        </td>
-                        <td className="font-mono text-warning">
-                          {w.chronicWorkload !== null
-                            ? w.chronicWorkload.toFixed(1)
-                            : '—'}
-                        </td>
-                        <td className="font-mono font-bold">
-                          {w.acr !== null ? (
-                            <span
-                              className={
-                                isExceeded ? 'text-danger' : 'text-success'
-                              }
-                            >
-                              {w.acr.toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="text-muted text-xs">Need 4w</span>
-                          )}
-                        </td>
-                        <td>
-                          {w.status === 'warning' && (
-                            <span className="badge-danger text-xs">
-                              ⚠️ Warning (&gt; 1.2)
-                            </span>
-                          )}
-                          {w.status === 'safe' && (
-                            <span className="badge-safe text-xs">✓ Optimal</span>
-                          )}
-                          {w.status === 'deload' && (
-                            <span className="badge-muted text-xs">Deload</span>
-                          )}
-                          {w.status === 'baseline' && (
-                            <span className="badge-muted text-xs">
-                              Baseline building
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn-table-edit"
-                            onClick={() => {
-                              onSelectWeekStart(w.startDate);
-                              setLogViewMode('week');
-                            }}
-                          >
-                            View Week Breakdown →
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
           </div>
         </div>
       )}

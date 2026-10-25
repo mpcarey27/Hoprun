@@ -7,6 +7,7 @@ import {
   formatDuration,
   formatPace,
   calculateCompliance,
+  formatTimeOfDay,
 } from '../utils/calculations';
 
 interface Props {
@@ -224,6 +225,17 @@ export const DayDetailsModal: React.FC<Props> = ({
                         </span>
                       </div>
                     </div>
+
+                    {run.title && (
+                      <h4 className="font-bold text-sm text-primary mb-2">
+                        {run.title}
+                        {run.startTime && (
+                          <span className="text-muted font-normal text-xs font-mono ml-2">
+                            • {formatTimeOfDay(run.startTime)}
+                          </span>
+                        )}
+                      </h4>
+                    )}
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
                       <div className="p-2 rounded" style={{ backgroundColor: 'var(--bg-surface-subtle)' }}>
