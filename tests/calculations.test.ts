@@ -992,32 +992,45 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(calculateRelativeStimulus(20.0).level).toBe('key');
     });
 
-    it('test_defaultShoe_autoAssignment() - selects shoe marked as default', () => {
-      const shoes: RunningShoe[] = [
+    it('test_lastUsedShoe_autoAssignment() - auto assigns shoe from most recent workout', () => {
+      const athleteWorkouts: WorkoutRun[] = [
         {
-          id: 'shoe_1',
-          name: 'Racing Flat',
-          totalMiles: 50,
-          maxMiles: 250,
-          isRetired: false,
-          dateAdded: '2026-09-01',
-          isDefault: false,
+          id: 'run_1',
+          workoutDate: '2026-10-22',
+          runOrder: 1,
+          distance: 5.0,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 1.0,
+          load: 5.0,
+          completed: true,
+          shoeId: 'shoe_ghost',
+          shoeName: 'Brooks Ghost 15',
         },
         {
-          id: 'shoe_2',
-          name: 'Daily Trainer (Nike Pegasus)',
-          totalMiles: 150,
-          maxMiles: 400,
-          isRetired: false,
-          dateAdded: '2026-09-01',
-          isDefault: true,
+          id: 'run_2',
+          workoutDate: '2026-10-24',
+          runOrder: 1,
+          distance: 10.0,
+          distanceUnit: 'mi',
+          runType: 'long_run',
+          multiplier: 1.2,
+          load: 12.0,
+          completed: true,
+          shoeId: 'shoe_superblast',
+          shoeName: 'Asics Superblast 2',
         },
       ];
 
-      const defaultShoe = shoes.find((s) => !s.isRetired && s.isDefault);
-      expect(defaultShoe).toBeDefined();
-      expect(defaultShoe?.id).toBe('shoe_2');
-      expect(defaultShoe?.name).toBe('Daily Trainer (Nike Pegasus)');
+      // Sorting newest first determines the auto-assigned shoe for the next run
+      const sorted = [...athleteWorkouts].sort((a, b) => {
+        const cmp = b.workoutDate.localeCompare(a.workoutDate);
+        if (cmp !== 0) return cmp;
+        return (b.runOrder ?? 1) - (a.runOrder ?? 1);
+      });
+
+      const mostRecentShoeId = sorted[0]?.shoeId;
+      expect(mostRecentShoeId).toBe('shoe_superblast');
     });
 
     it('test_workoutRun_titleAndStartTime_fields() - saves custom title and start time', () => {

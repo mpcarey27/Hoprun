@@ -66,15 +66,6 @@ export const SettingsTab: React.FC<Props> = ({
     onUpdateSettings({ shoes: updated });
   };
 
-  const handleSetDefaultShoe = (shoeId: string) => {
-    const currentShoes = settings.shoes || [];
-    const updated = currentShoes.map((s) => ({
-      ...s,
-      isDefault: s.id === shoeId,
-    }));
-    onUpdateSettings({ shoes: updated });
-  };
-
   // Quick log presets modal state
   const [isPresetsModalOpen, setIsPresetsModalOpen] = useState(false);
 
@@ -427,7 +418,6 @@ export const SettingsTab: React.FC<Props> = ({
             shoes={settings.shoes || []}
             onAddShoe={handleAddShoe}
             onRetireShoe={handleRetireShoe}
-            onSetDefaultShoe={handleSetDefaultShoe}
           />
         </section>
       </div>

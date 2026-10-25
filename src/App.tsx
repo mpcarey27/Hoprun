@@ -653,6 +653,7 @@ export const App: React.FC = () => {
         onSaveRun={handleSaveModalRun}
         onDeleteRun={handleDeleteModalRun}
         shoes={settings.shoes || []}
+        allWorkouts={workouts}
         userQuickStaplesMap={settings.userQuickStaples}
         onSaveUserStaples={handleSaveUserStaples}
         selectedAthleteFilter={selectedAthleteFilter}

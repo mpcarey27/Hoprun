@@ -34,6 +34,7 @@ interface Props {
   onSaveRun: (run: WorkoutRun) => void;
   onDeleteRun?: (runId: string) => void;
   shoes?: RunningShoe[];
+  allWorkouts?: WorkoutRun[];
   userQuickStaplesMap?: Record<string, QuickLogStaple[]>;
   onSaveUserStaples?: (userId: string, staples: QuickLogStaple[]) => void;
   selectedAthleteFilter?: string;
@@ -50,6 +51,7 @@ export const LogRunModal: React.FC<Props> = ({
   onSaveRun,
   onDeleteRun,
   shoes = [],
+  allWorkouts = [],
   userQuickStaplesMap,
   onSaveUserStaples,
   selectedAthleteFilter,
@@ -75,9 +77,28 @@ export const LogRunModal: React.FC<Props> = ({
     return ROSTER_USERS.find((u) => u.id === athleteId) || currentUser;
   }, [athleteId, currentUser]);
 
-  const defaultShoe = useMemo(() => {
-    return shoes.find((s) => !s.isRetired && s.isDefault) || shoes.find((s) => !s.isRetired);
-  }, [shoes]);
+  // Find the shoe used on the most recent run for this athlete
+  const lastUsedShoeId = useMemo(() => {
+    if (!allWorkouts || allWorkouts.length === 0 || !shoes || shoes.length === 0) return '';
+    const activeShoeIds = new Set(shoes.filter((s) => !s.isRetired).map((s) => s.id));
+    const athleteRunsWithShoe = allWorkouts
+      .filter(
+        (w) =>
+          (w.athleteId === targetAthlete.id || !w.athleteId) &&
+          w.shoeId &&
+          activeShoeIds.has(w.shoeId)
+      )
+      .sort((a, b) => {
+        const cmp = b.workoutDate.localeCompare(a.workoutDate);
+        if (cmp !== 0) return cmp;
+        return (b.runOrder ?? 1) - (a.runOrder ?? 1);
+      });
+    return athleteRunsWithShoe[0]?.shoeId || '';
+  }, [allWorkouts, targetAthlete.id, shoes]);
+
+  const lastUsedShoe = useMemo(() => {
+    return shoes.find((s) => s.id === lastUsedShoeId);
+  }, [shoes, lastUsedShoeId]);
 
   const [title, setTitle] = useState<string>(() => runToEdit?.title ?? '');
   const [startTime, setStartTime] = useState<string>(() => {
@@ -91,7 +112,10 @@ export const LogRunModal: React.FC<Props> = ({
   const [runType, setRunType] = useState<string>(() => runToEdit?.runType ?? 'easy');
   const [comments, setComments] = useState<string>(() => runToEdit?.comments ?? '');
   const [completed, setCompleted] = useState<boolean>(() => runToEdit?.completed ?? true);
-  const [shoeId, setShoeId] = useState<string>(() => runToEdit?.shoeId ?? (defaultShoe ? defaultShoe.id : ''));
+  const [shoeId, setShoeId] = useState<string>(() => {
+    if (runToEdit?.shoeId) return runToEdit.shoeId;
+    return lastUsedShoeId || (shoes.find((s) => !s.isRetired)?.id ?? '');
+  });
 
   // Subjective effort & feeling
   const [rpe, setRpe] = useState<number | undefined>(() => runToEdit?.rpe);
@@ -127,7 +151,7 @@ export const LogRunModal: React.FC<Props> = ({
         setRunType(runToEdit.runType);
         setComments(runToEdit.comments || '');
         setCompleted(runToEdit.completed);
-        setShoeId(runToEdit.shoeId || (defaultShoe ? defaultShoe.id : ''));
+        setShoeId(runToEdit.shoeId || '');
         setRpe(runToEdit.rpe);
         setFeeling(runToEdit.feeling);
         setDurationSeconds(runToEdit.durationSeconds);
@@ -149,7 +173,7 @@ export const LogRunModal: React.FC<Props> = ({
         setRunType('easy');
         setComments('');
         setCompleted(true);
-        setShoeId(defaultShoe ? defaultShoe.id : '');
+        setShoeId(lastUsedShoeId || (shoes.find((s) => !s.isRetired)?.id ?? ''));
         setRpe(undefined);
         setFeeling(undefined);
         setDurationSeconds(undefined);
@@ -160,7 +184,7 @@ export const LogRunModal: React.FC<Props> = ({
       setConfirmDelete(false);
       setToastMessage('');
     }
-  }, [isOpen, runToEdit, defaultDate, todayStr, distanceUnit, currentUser.id, isCoach, selectedAthleteFilter, defaultShoe]);
+  }, [isOpen, runToEdit, defaultDate, todayStr, distanceUnit, currentUser.id, isCoach, selectedAthleteFilter, lastUsedShoeId, shoes]);
 
   // Derived load calculation
   const multiplier = getRunTypeMultiplier(runType);
@@ -526,16 +550,16 @@ export const LogRunModal: React.FC<Props> = ({
               compact
             />
 
-            {/* Running Shoe / Gear Selector */}
+            {/* Running Shoe / Gear Selector with Last-Run Auto-Assignment */}
             {shoes && shoes.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
                     Running Shoe / Gear
                   </label>
-                  {defaultShoe && (
+                  {lastUsedShoe && (
                     <span className="text-xxs font-mono text-accent">
-                      Default: {defaultShoe.name}
+                      Auto-assigned from last run ({lastUsedShoe.name})
                     </span>
                   )}
                 </div>
@@ -545,11 +569,14 @@ export const LogRunModal: React.FC<Props> = ({
                   onChange={(e) => setShoeId(e.target.value)}
                 >
                   <option value="">No shoe selected</option>
-                  {shoes.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      👟 {s.name} {s.isDefault ? '★ (Default)' : ''} ({s.totalMiles.toFixed(1)} / {s.maxMiles} mi)
-                    </option>
-                  ))}
+                  {shoes.map((s) => {
+                    const isLastUsed = s.id === lastUsedShoeId;
+                    return (
+                      <option key={s.id} value={s.id}>
+                        👟 {s.name} ({s.totalMiles.toFixed(1)} / {s.maxMiles} mi){isLastUsed ? ' — (Last Run)' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             )}
