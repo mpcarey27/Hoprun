@@ -18,7 +18,7 @@ export const InWeekWarningBanner: React.FC<Props> = ({
           <span className="ribbon-badge">OPTIMAL</span>
           <span className="ribbon-metrics">
             Projected ACR: <strong className="font-mono text-primary font-bold">{prediction.projectedAcr !== null ? prediction.projectedAcr.toFixed(2) : '—'}</strong>
-            <span className="text-muted text-xs ml-1.5">(Ceiling: {warningThreshold.toFixed(2)})</span>
+            <span className="ribbon-ceiling text-muted text-xs">(Ceiling: {warningThreshold.toFixed(2)})</span>
           </span>
           {prediction.remainingSafeLoad !== null && (
             <span className="ribbon-budget font-mono">

@@ -506,18 +506,23 @@ export const App: React.FC = () => {
       <main className="main-content">
         {/* Coach Admin Athlete Roster Bar (Only visible in Coach Mode) */}
         {currentUser.role === 'coach' && (
-          <div className="mb-4 p-3 rounded bg-surface border border-subtle">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="badge-safe font-mono text-xxs font-bold">
-                COACH MODE
-              </span>
-              <span className="text-xs font-mono font-bold text-primary">
-                Roster
+          <div className="coach-roster-bar mb-4 p-3.5 rounded-2xl bg-surface border border-subtle">
+            <div className="coach-roster-header flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="badge-safe font-mono text-xxs font-bold">
+                  COACH MODE
+                </span>
+                <span className="text-xs font-mono font-bold text-primary">
+                  Athlete Roster
+                </span>
+              </div>
+              <span className="text-xxs text-muted font-mono hidden sm:inline">
+                Filter feed by athlete
               </span>
             </div>
 
             {/* Roster Filter Pills */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="coach-roster-pills flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 className={`btn-filter-pill ${selectedAthleteFilter === 'all' ? 'active' : ''}`}

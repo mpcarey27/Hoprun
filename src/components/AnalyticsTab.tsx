@@ -6,7 +6,12 @@ import { MileageBarChart } from './Charts/MileageBarChart';
 import { ACRTachometerDial } from './Charts/ACRTachometerDial';
 import { exportWorkloadToCsv } from '../utils/csvExport';
 import { ROSTER_USERS, DEFAULT_USER } from '../utils/storage';
-import { buildWeeklyWorkloadData } from '../utils/calculations';
+import {
+  buildWeeklyWorkloadData,
+  convertDistance,
+  formatDurationStrava,
+  formatPace,
+} from '../utils/calculations';
 
 export type GraphViewMode = 'acr' | 'workload' | 'mileage' | 'all';
 
@@ -140,10 +145,27 @@ export const AnalyticsTab: React.FC<Props> = ({
       const currentWeekForAthlete =
         fullWeeks.find((w) => w.startDate === activeWeekStartDate) || fullWeeks[fullWeeks.length - 1];
 
-      const totalDist = athleteDisplayWeeks.reduce(
-        (acc, w) => acc + (distanceUnit === 'mi' ? w.totalMiles : w.totalKm),
-        0
-      );
+      // Filter athlete workouts within the selected window
+      const athleteWindowWorkouts =
+        windowOption === 'all'
+          ? athleteWorkouts
+          : athleteDisplayWeeks.length === 0
+          ? []
+          : athleteWorkouts.filter((w) => {
+              const minDate = athleteDisplayWeeks[0].startDate;
+              const maxDate = athleteDisplayWeeks[athleteDisplayWeeks.length - 1].endDate;
+              return w.workoutDate >= minDate && w.workoutDate <= maxDate;
+            });
+
+      let aDist = 0;
+      let aLoad = 0;
+      let aDur = 0;
+      for (const w of athleteWindowWorkouts) {
+        aDist += convertDistance(w.distance, w.distanceUnit, distanceUnit);
+        aLoad += w.load;
+        if (w.durationSeconds) aDur += w.durationSeconds;
+      }
+      const aAvgPace = aDist > 0 && aDur > 0 ? Math.round(aDur / aDist) : null;
 
       return {
         athlete,
@@ -152,7 +174,11 @@ export const AnalyticsTab: React.FC<Props> = ({
         displayWeeks: athleteDisplayWeeks,
         latestWeek,
         currentWeek: currentWeekForAthlete,
-        totalDist,
+        totalDist: aDist,
+        activityCount: athleteWindowWorkouts.length,
+        totalLoad: aLoad,
+        totalDurationSecs: aDur,
+        avgPaceSecs: aAvgPace,
       };
     });
   }, [
@@ -166,6 +192,58 @@ export const AnalyticsTab: React.FC<Props> = ({
     activeWeekStartDate,
     distanceUnit,
   ]);
+
+  // Workouts for the selected athlete / view in Mode 2
+  const activeAthleteWorkouts = useMemo(() => {
+    if (selectedAthleteFilter && selectedAthleteFilter !== 'all') {
+      return allWorkouts.filter(
+        (w) => w.athleteId === selectedAthleteFilter || w.athleteName === selectedAthleteFilter
+      );
+    }
+    if (currentUser.role === 'runner') {
+      return allWorkouts.filter(
+        (w) =>
+          w.athleteId === currentUser.id ||
+          w.athleteName === currentUser.name ||
+          (!w.athleteId && !w.isPlanAssigned)
+      );
+    }
+    return allWorkouts;
+  }, [allWorkouts, selectedAthleteFilter, currentUser]);
+
+  // Filter workouts according to the selected time window in Mode 2
+  const windowWorkouts = useMemo(() => {
+    if (windowOption === 'all') {
+      return activeAthleteWorkouts;
+    }
+    if (displayWeeks.length === 0) {
+      return [];
+    }
+    const minDate = displayWeeks[0]?.startDate;
+    const maxDate = displayWeeks[displayWeeks.length - 1]?.endDate;
+    if (!minDate || !maxDate) return [];
+    return activeAthleteWorkouts.filter((w) => w.workoutDate >= minDate && w.workoutDate <= maxDate);
+  }, [activeAthleteWorkouts, windowOption, displayWeeks]);
+
+  // Calculate cumulative volume & performance metrics in Mode 2
+  const cumulativeStats = useMemo(() => {
+    let dist = 0;
+    let load = 0;
+    let dur = 0;
+    for (const w of windowWorkouts) {
+      dist += convertDistance(w.distance, w.distanceUnit, distanceUnit);
+      load += w.load;
+      if (w.durationSeconds) dur += w.durationSeconds;
+    }
+    const pace = dist > 0 && dur > 0 ? Math.round(dur / dist) : null;
+    return {
+      activityCount: windowWorkouts.length,
+      totalDistance: dist,
+      totalLoad: load,
+      totalDurationSecs: dur,
+      avgPaceSecs: pace,
+    };
+  }, [windowWorkouts, distanceUnit]);
 
   const viewLabels: Record<GraphViewMode, { title: string; badge: string; desc: string }> = {
     acr: {
@@ -502,6 +580,34 @@ export const AnalyticsTab: React.FC<Props> = ({
                         <span className="text-xxs font-normal text-muted">{distanceUnit.toUpperCase()}</span>
                       </span>
                     </div>
+
+                    <div className="athlete-kpi-box">
+                      <span className="kpi-mini-label">Activities</span>
+                      <span className="kpi-mini-val font-mono text-primary font-bold">
+                        {item.activityCount}
+                      </span>
+                    </div>
+
+                    <div className="athlete-kpi-box">
+                      <span className="kpi-mini-label">Total Time</span>
+                      <span className="kpi-mini-val font-mono text-primary">
+                        {item.totalDurationSecs > 0 ? formatDurationStrava(item.totalDurationSecs) : '—'}
+                      </span>
+                    </div>
+
+                    <div className="athlete-kpi-box">
+                      <span className="kpi-mini-label">Avg Pace</span>
+                      <span className="kpi-mini-val font-mono text-accent">
+                        {item.avgPaceSecs ? formatPace(item.avgPaceSecs, distanceUnit) : '—'}
+                      </span>
+                    </div>
+
+                    <div className="athlete-kpi-box">
+                      <span className="kpi-mini-label">Total Workload</span>
+                      <span className="kpi-mini-val font-mono text-primary font-bold">
+                        {item.totalLoad.toFixed(1)}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Athlete Graph Display (Respecting Select View) */}
@@ -603,6 +709,65 @@ export const AnalyticsTab: React.FC<Props> = ({
                 {displayWeeks.reduce((acc, w) => acc + (distanceUnit === 'mi' ? w.totalMiles : w.totalKm), 0).toFixed(1)}{' '}
                 <span className="text-xs font-normal text-muted">{distanceUnit.toUpperCase()}</span>
               </span>
+            </div>
+          </div>
+
+          {/* Cumulative Training Statistics & Performance Volume */}
+          <div className="analytics-cumulative-card">
+            <div className="analytics-cumulative-header">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-primary uppercase font-mono tracking-wider">
+                  Cumulative Training Statistics
+                </span>
+                <span className="badge-safe text-xxs font-mono font-semibold">
+                  {windowOption === 'all' ? 'All-Time Totals' : `Window: ${windowOption.toUpperCase()}`}
+                </span>
+              </div>
+              <span className="text-xxs text-muted font-mono">
+                {cumulativeStats.activityCount} recorded {cumulativeStats.activityCount === 1 ? 'activity' : 'activities'}
+              </span>
+            </div>
+
+            <div className="analytics-cumulative-grid">
+              <div className="analytics-stat-box">
+                <span className="stat-label">Total Activities</span>
+                <span className="stat-val font-mono text-primary font-bold">
+                  {cumulativeStats.activityCount}
+                </span>
+              </div>
+
+              <div className="analytics-stat-box">
+                <span className="stat-label">Total Distance</span>
+                <span className="stat-val font-mono text-primary font-bold">
+                  {cumulativeStats.totalDistance.toFixed(1)}{' '}
+                  <span className="stat-unit text-muted font-normal text-xs">{distanceUnit.toUpperCase()}</span>
+                </span>
+              </div>
+
+              <div className="analytics-stat-box">
+                <span className="stat-label">Total Time</span>
+                <span className="stat-val font-mono text-primary font-bold">
+                  {cumulativeStats.totalDurationSecs > 0
+                    ? formatDurationStrava(cumulativeStats.totalDurationSecs)
+                    : '—'}
+                </span>
+              </div>
+
+              <div className="analytics-stat-box">
+                <span className="stat-label">Average Pace</span>
+                <span className="stat-val font-mono text-accent font-bold">
+                  {cumulativeStats.avgPaceSecs
+                    ? formatPace(cumulativeStats.avgPaceSecs, distanceUnit)
+                    : '—'}
+                </span>
+              </div>
+
+              <div className="analytics-stat-box">
+                <span className="stat-label">Total Workload</span>
+                <span className="stat-val font-mono text-primary font-bold">
+                  {cumulativeStats.totalLoad.toFixed(1)}
+                </span>
+              </div>
             </div>
           </div>
 

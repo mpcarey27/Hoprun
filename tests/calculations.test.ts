@@ -1054,6 +1054,178 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(formatTimeOfDay(customRun.startTime)).toBe('7:15 AM');
     });
   });
+
+  describe('Analytics Cumulative Training Statistics & Home Feed Refinement', () => {
+    it('test_cumulativeStats_calculation() - calculates total volume and average pace', () => {
+      const workouts: WorkoutRun[] = [
+        {
+          id: 'w1',
+          workoutDate: '2026-10-19',
+          runOrder: 1,
+          distance: 5.0,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3,
+          load: 15.0,
+          durationSeconds: 2025, // 33m 45s -> 6:45 /mi
+          comments: '',
+          completed: true,
+        },
+        {
+          id: 'w2',
+          workoutDate: '2026-10-21',
+          runOrder: 1,
+          distance: 5.0,
+          distanceUnit: 'mi',
+          runType: 'tempo',
+          multiplier: 2,
+          load: 10.0,
+          durationSeconds: 1800, // 30m 00s -> 6:00 /mi
+          comments: '',
+          completed: true,
+        },
+      ];
+
+      // Calculate cumulative metrics
+      let totalDist = 0;
+      let totalLoad = 0;
+      let totalDur = 0;
+      for (const w of workouts) {
+        totalDist += convertDistance(w.distance, w.distanceUnit, 'mi');
+        totalLoad += w.load;
+        if (w.durationSeconds) totalDur += w.durationSeconds;
+      }
+      const avgPaceSecs = totalDist > 0 && totalDur > 0 ? Math.round(totalDur / totalDist) : null;
+
+      expect(workouts.length).toBe(2);
+      expect(totalDist).toBe(10.0);
+      expect(totalLoad).toBe(25.0);
+      expect(totalDur).toBe(3825);
+      expect(formatDurationStrava(totalDur)).toBe('1h 3m 45s');
+      expect(avgPaceSecs).toBe(383); // 382.5 rounded -> 383s = 6:23 /mi
+      expect(formatPace(avgPaceSecs, 'mi')).toBe('6:23 /mi');
+    });
+
+    it('test_cumulativeStats_empty_workouts() - handles zero workouts safely', () => {
+      const workouts: WorkoutRun[] = [];
+      let totalDist = 0;
+      let totalLoad = 0;
+      let totalDur = 0;
+      for (const w of workouts) {
+        totalDist += convertDistance(w.distance, w.distanceUnit, 'mi');
+        totalLoad += w.load;
+        if (w.durationSeconds) totalDur += w.durationSeconds;
+      }
+      const avgPaceSecs = totalDist > 0 && totalDur > 0 ? Math.round(totalDur / totalDist) : null;
+
+      expect(workouts.length).toBe(0);
+      expect(totalDist).toBe(0);
+      expect(totalLoad).toBe(0);
+      expect(totalDur).toBe(0);
+      expect(avgPaceSecs).toBeNull();
+    });
+
+    it('test_cumulativeStats_mixedUnits_convertsProperly() - converts km runs to mi preferences', () => {
+      const workouts: WorkoutRun[] = [
+        {
+          id: 'w1',
+          workoutDate: '2026-10-20',
+          runOrder: 1,
+          distance: 10.0,
+          distanceUnit: 'km', // ~6.21371 mi
+          runType: 'easy',
+          multiplier: 3,
+          load: 18.64,
+          durationSeconds: 3000,
+          comments: '',
+          completed: true,
+        },
+      ];
+
+      const distInMi = convertDistance(workouts[0].distance, workouts[0].distanceUnit, 'mi');
+      expect(Number(distInMi.toFixed(2))).toBe(6.21);
+      const paceSecs = Math.round(3000 / distInMi);
+      expect(formatPace(paceSecs, 'mi')).toBe('8:03 /mi');
+    });
+
+    it('test_cumulativeStats_timeWindow_filtering() - filters workouts by date window', () => {
+      const workouts: WorkoutRun[] = [
+        { id: 'w1', workoutDate: '2026-09-01', runOrder: 1, distance: 5, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 15, completed: true },
+        { id: 'w2', workoutDate: '2026-10-15', runOrder: 1, distance: 6, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 18, completed: true },
+        { id: 'w3', workoutDate: '2026-10-22', runOrder: 1, distance: 7, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 21, completed: true },
+      ];
+
+      const windowStart = '2026-10-12';
+      const windowEnd = '2026-10-25';
+      const filtered = workouts.filter((w) => w.workoutDate >= windowStart && w.workoutDate <= windowEnd);
+
+      expect(filtered.length).toBe(2);
+      expect(filtered.map((w) => w.id)).toEqual(['w2', 'w3']);
+      const windowDist = filtered.reduce((acc, w) => acc + w.distance, 0);
+      expect(windowDist).toBe(13);
+    });
+
+    it('test_cumulativeStats_emptyWindow_doesNotLeakAllHistory() - returns empty when window contains no workouts', () => {
+      const allWorkouts: WorkoutRun[] = [
+        { id: 'w1', workoutDate: '2025-05-10', runOrder: 1, distance: 5, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 15, durationSeconds: 2000, completed: true },
+        { id: 'w2', workoutDate: '2025-06-15', runOrder: 1, distance: 6, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 18, durationSeconds: 2400, completed: true },
+      ];
+
+      // Window in 2026 where zero workouts exist
+      const displayWeeks: { startDate: string; endDate: string }[] = [];
+      const windowOption = 'ytd';
+
+      const windowWorkouts =
+        windowOption === 'all'
+          ? allWorkouts
+          : displayWeeks.length === 0
+          ? []
+          : allWorkouts.filter(
+              (w) => w.workoutDate >= displayWeeks[0].startDate && w.workoutDate <= displayWeeks[displayWeeks.length - 1].endDate
+            );
+
+      let dist = 0;
+      let load = 0;
+      let dur = 0;
+      for (const w of windowWorkouts) {
+        dist += convertDistance(w.distance, w.distanceUnit, 'mi');
+        load += w.load;
+        if (w.durationSeconds) dur += w.durationSeconds;
+      }
+      const pace = dist > 0 && dur > 0 ? Math.round(dur / dist) : null;
+
+      expect(windowWorkouts.length).toBe(0);
+      expect(dist).toBe(0);
+      expect(load).toBe(0);
+      expect(dur).toBe(0);
+      expect(pace).toBeNull();
+    });
+
+    it('test_cumulativeStats_coachMode_individualAthleteAggregation() - isolates athlete volume and pace', () => {
+      const athleteWorkouts: WorkoutRun[] = [
+        { id: 'w1', athleteId: 'runner_1', workoutDate: '2026-10-18', runOrder: 1, distance: 4, distanceUnit: 'mi', runType: 'easy', multiplier: 3, load: 12, durationSeconds: 1600, completed: true },
+        { id: 'w2', athleteId: 'runner_1', workoutDate: '2026-10-20', runOrder: 1, distance: 6, distanceUnit: 'mi', runType: 'tempo', multiplier: 2, load: 12, durationSeconds: 2160, completed: true },
+      ];
+
+      let aDist = 0;
+      let aLoad = 0;
+      let aDur = 0;
+      for (const w of athleteWorkouts) {
+        aDist += convertDistance(w.distance, w.distanceUnit, 'mi');
+        aLoad += w.load;
+        if (w.durationSeconds) aDur += w.durationSeconds;
+      }
+      const aAvgPace = aDist > 0 && aDur > 0 ? Math.round(aDur / aDist) : null;
+
+      expect(athleteWorkouts.length).toBe(2);
+      expect(aDist).toBe(10);
+      expect(aLoad).toBe(24);
+      expect(aDur).toBe(3760);
+      expect(formatDurationStrava(aDur)).toBe('1h 2m 40s');
+      expect(aAvgPace).toBe(376); // 376s = 6:16 /mi
+      expect(formatPace(aAvgPace, 'mi')).toBe('6:16 /mi');
+    });
+  });
 });
 
 

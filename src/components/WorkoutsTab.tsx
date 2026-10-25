@@ -5,7 +5,6 @@ import {
   getRunTypeColor,
   convertDistance,
   formatDuration,
-  formatDurationStrava,
   formatPace,
   calculateCompliance,
   formatDate,
@@ -65,25 +64,6 @@ export const WorkoutsTab: React.FC<Props> = ({
     });
   }, [sortedWorkouts, filterType, searchQuery]);
 
-  // Total stats memoized
-  const { totalDistance, totalLoad, totalDurationSecs, avgPaceSecs } = useMemo(() => {
-    let dist = 0;
-    let load = 0;
-    let dur = 0;
-    for (const w of workouts) {
-      dist += convertDistance(w.distance, w.distanceUnit, distanceUnit);
-      load += w.load;
-      if (w.durationSeconds) dur += w.durationSeconds;
-    }
-    const pace = dist > 0 && dur > 0 ? Math.round(dur / dist) : null;
-    return {
-      totalDistance: dist,
-      totalLoad: load,
-      totalDurationSecs: dur,
-      avgPaceSecs: pace,
-    };
-  }, [workouts, distanceUnit]);
-
   // Current Week Mileage & Weekly Goal calculation
   const currentWeekMiles = useMemo(() => {
     const weekStart = activeWeekStartDate || getWeekStartDate(todayStr, 1);
@@ -113,88 +93,66 @@ export const WorkoutsTab: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Strava-Style Top Banner / Summary */}
-      <div className="strava-summary-bar flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="strava-profile-stat">
-            <span className="strava-stat-label">Activities</span>
-            <span className="strava-stat-val font-mono whitespace-nowrap">{workouts.length}</span>
-          </div>
-          <div className="strava-profile-stat">
-            <span className="strava-stat-label">Total Dist</span>
-            <span className="strava-stat-val font-mono whitespace-nowrap">
-              {totalDistance.toFixed(1)}{' '}
-              <span className="text-xs text-muted font-normal">{distanceUnit.toUpperCase()}</span>
+      {/* Feed Header: Title, Weekly Target Progress, and Primary Action */}
+      <div className="feed-header-bar">
+        <div className="feed-header-left">
+          <div className="feed-title-row">
+            <h2 className="feed-title">Activities</h2>
+            <span className="feed-count-chip font-mono">
+              {workouts.length} {workouts.length === 1 ? 'workout' : 'workouts'}
             </span>
           </div>
-          {totalDurationSecs > 0 && (
-            <div className="strava-profile-stat">
-              <span className="strava-stat-label">Time</span>
-              <span className="strava-stat-val font-mono whitespace-nowrap">
-                {formatDurationStrava(totalDurationSecs)}
-              </span>
-            </div>
-          )}
-          {avgPaceSecs && avgPaceSecs > 0 && (
-            <div className="strava-profile-stat">
-              <span className="strava-stat-label">Avg Pace</span>
-              <span className="strava-stat-val font-mono text-accent whitespace-nowrap">
-                {formatPace(avgPaceSecs, distanceUnit)}
-              </span>
-            </div>
-          )}
-          <div className="strava-profile-stat">
-            <span className="strava-stat-label">Workload</span>
-            <span className="strava-stat-val font-mono text-primary font-bold whitespace-nowrap">
-              {totalLoad.toFixed(1)}
-            </span>
-          </div>
+          <p className="feed-subtitle">
+            Recent running sessions and workload progression
+          </p>
+        </div>
 
-          {/* Strava Weekly Goal Progress Ring */}
-          <div className="weekly-goal-chip flex items-center gap-2.5 py-1 px-3 rounded-full bg-surface-subtle border border-subtle">
-            <div className="relative w-7 h-7 flex items-center justify-center">
-              <svg className="w-7 h-7 transform -rotate-90" viewBox="0 0 36 36">
+        <div className="feed-header-right">
+          {/* Sleek Weekly Target Progress Module */}
+          <div
+            className={`weekly-target-widget ${progressPercent >= 100 ? 'target-completed' : ''}`}
+            title={`Weekly Target: ${currentWeekMiles.toFixed(1)} / ${weeklyTarget} ${distanceUnit.toUpperCase()} completed (${progressPercent}%)`}
+          >
+            <div className="target-progress-ring">
+              <svg className="target-ring-svg" viewBox="0 0 36 36">
                 <path
-                  className="text-muted/20"
+                  className="ring-track"
                   strokeWidth="3.5"
-                  stroke="currentColor"
                   fill="none"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
                 <path
-                  className="text-accent"
+                  className="ring-fill"
                   strokeDasharray={`${progressPercent}, 100`}
                   strokeWidth="3.5"
                   strokeLinecap="round"
-                  stroke="currentColor"
                   fill="none"
                   d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
               </svg>
-              <span className="absolute text-xxs font-mono font-bold text-primary">{progressPercent}%</span>
+              <span className="ring-percentage font-mono">{progressPercent}%</span>
             </div>
-            <div className="flex flex-col">
-              <span className="text-xxs uppercase tracking-wider text-muted font-mono font-bold leading-none">
-                Weekly Target
-              </span>
-              <span className="font-mono text-xs font-bold text-primary leading-tight">
-                {currentWeekMiles.toFixed(1)} <span className="text-muted font-normal text-xxs">/ {weeklyTarget} {distanceUnit.toUpperCase()}</span>
+            <div className="target-details">
+              <span className="target-label font-mono">Weekly Target</span>
+              <span className="target-numbers font-mono">
+                {currentWeekMiles.toFixed(1)}{' '}
+                <span className="target-goal">/ {weeklyTarget} {distanceUnit.toUpperCase()}</span>
               </span>
             </div>
           </div>
-        </div>
 
-        {onLogRun && (
-          <button
-            type="button"
-            className="btn-action-primary flex items-center gap-1.5 py-2 px-4 text-xs font-bold rounded-full shadow-sm"
-            onClick={onLogRun}
-            title="Log a new run with popup menu"
-          >
-            <span className="text-sm font-bold leading-none">+</span>
-            <span>Log Run</span>
-          </button>
-        )}
+          {onLogRun && (
+            <button
+              type="button"
+              className="btn-action-primary btn-log-run-header"
+              onClick={onLogRun}
+              title="Log a new run with popup menu"
+            >
+              <span className="btn-plus-icon leading-none">+</span>
+              <span>Log Run</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter & Search Bar */}
@@ -223,13 +181,38 @@ export const WorkoutsTab: React.FC<Props> = ({
           })}
         </div>
 
-        <input
-          type="text"
-          className="search-input font-mono text-xs"
-          placeholder="Search workouts..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+        <div className="search-input-wrapper">
+          <svg
+            className="search-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            className="search-input font-mono text-xs"
+            placeholder="Search workouts..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              className="search-clear-btn"
+              onClick={() => setSearchQuery('')}
+              title="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Activities Feed */}
