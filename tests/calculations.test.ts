@@ -35,6 +35,9 @@ import {
   saveStoredUser,
   loadStoredUser,
   clearStoredUser,
+  loadLastRememberedUser,
+  saveUserStravaConnection,
+  loadUserStravaConnection,
 } from '../src/utils/storage';
 import {
   parseTCXContent,
@@ -1380,6 +1383,66 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
         expect(match?.name).toBe('Jenny Runner');
       } finally {
         Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true });
+      }
+    });
+
+    it('test_keepSignedIn_and_perUserStravaConnectionBackup() - persists session across localStorage/sessionStorage and backs up Strava connection per user', async () => {
+      const localMap = new Map<string, string>();
+      const sessionMap = new Map<string, string>();
+      const mockLocal = {
+        getItem: (k: string) => localMap.get(k) || null,
+        setItem: (k: string, v: string) => localMap.set(k, v),
+        removeItem: (k: string) => localMap.delete(k),
+        clear: () => localMap.clear(),
+      };
+      const mockSession = {
+        getItem: (k: string) => sessionMap.get(k) || null,
+        setItem: (k: string, v: string) => sessionMap.set(k, v),
+        removeItem: (k: string) => sessionMap.delete(k),
+        clear: () => sessionMap.clear(),
+      };
+      const origLocal = globalThis.localStorage;
+      const origSession = globalThis.sessionStorage;
+      Object.defineProperty(globalThis, 'localStorage', { value: mockLocal, configurable: true });
+      Object.defineProperty(globalThis, 'sessionStorage', { value: mockSession, configurable: true });
+
+      try {
+        // 1. keepSignedIn = true -> stored in both localStorage and sessionStorage
+        saveStoredUser(COACH_PROFILE, true);
+        expect(localMap.has('acr_user_v2')).toBe(true);
+        expect(sessionMap.has('acr_user_v2')).toBe(true);
+        expect(loadStoredUser()?.email).toBe(COACH_EMAIL);
+        expect(loadLastRememberedUser()?.name).toBe('Michael Carey');
+
+        // 2. keepSignedIn = false -> removed from localStorage, kept in sessionStorage
+        saveStoredUser(COACH_PROFILE, false);
+        expect(localMap.has('acr_user_v2')).toBe(false);
+        expect(sessionMap.has('acr_user_v2')).toBe(true);
+        expect(loadStoredUser()?.email).toBe(COACH_EMAIL);
+        // When tab closes (sessionStorage cleared), user is logged out, but lastRememberedUser remains
+        sessionMap.clear();
+        expect(loadStoredUser()).toBeNull();
+        expect(loadLastRememberedUser()?.email).toBe(COACH_EMAIL);
+
+        // 3. Per-user Strava connection backup & restore
+        saveUserStravaConnection(COACH_EMAIL, {
+          stravaConnected: true,
+          stravaClientId: '123456',
+          stravaClientSecret: 'secret_abc',
+          stravaAccessToken: 'tok_xyz',
+          stravaRefreshToken: 'ref_xyz',
+          stravaExpiresAt: 1999999999,
+          stravaAthleteName: 'Michael Carey',
+        });
+
+        const restored = await loadUserStravaConnection(COACH_EMAIL);
+        expect(restored).not.toBeNull();
+        expect(restored?.stravaConnected).toBe(true);
+        expect(restored?.stravaAccessToken).toBe('tok_xyz');
+        expect(restored?.stravaRefreshToken).toBe('ref_xyz');
+      } finally {
+        Object.defineProperty(globalThis, 'localStorage', { value: origLocal, configurable: true });
+        Object.defineProperty(globalThis, 'sessionStorage', { value: origSession, configurable: true });
       }
     });
   });

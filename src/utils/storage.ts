@@ -15,6 +15,9 @@ const STORAGE_KEYS = {
   SETTINGS: 'acr_settings_v2',
   ROSTER: 'acr_roster_v2',
   AUTH_USERS: 'hop_run_auth_users_v1',
+  KEEP_SIGNED_IN: 'hop_run_keep_signed_in_v1',
+  LAST_USER: 'hop_run_last_user_v1',
+  USER_STRAVA: 'hop_run_user_strava_v1',
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -318,7 +321,17 @@ export function saveStoredSettings(settings: AppSettings): void {
 
 export function loadStoredUser(): UserProfile | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.USER);
+    let raw =
+      typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function'
+        ? localStorage.getItem(STORAGE_KEYS.USER)
+        : null;
+    if (
+      !raw &&
+      typeof sessionStorage !== 'undefined' &&
+      typeof sessionStorage?.getItem === 'function'
+    ) {
+      raw = sessionStorage.getItem(STORAGE_KEYS.USER);
+    }
     if (raw) {
       const parsed: UserProfile = JSON.parse(raw);
       if (parsed.id === 'user_default_1' || parsed.name === 'Runner') {
@@ -336,24 +349,186 @@ export function loadStoredUser(): UserProfile | null {
   return null;
 }
 
+export function loadLastRememberedUser(): UserProfile | null {
+  try {
+    if (typeof localStorage === 'undefined' || typeof localStorage?.getItem !== 'function') {
+      return null;
+    }
+    const raw = localStorage.getItem(STORAGE_KEYS.LAST_USER);
+    if (!raw) return null;
+    const parsed: UserProfile = JSON.parse(raw);
+    if (isCoachEmail(parsed.email)) {
+      return parsed;
+    }
+    return { ...parsed, role: 'runner' };
+  } catch {
+    return null;
+  }
+}
+
 export function clearStoredUser(): void {
   try {
-    localStorage.removeItem(STORAGE_KEYS.USER);
+    if (typeof localStorage !== 'undefined' && typeof localStorage?.removeItem === 'function') {
+      localStorage.removeItem(STORAGE_KEYS.USER);
+    }
+    if (
+      typeof sessionStorage !== 'undefined' &&
+      typeof sessionStorage?.removeItem === 'function'
+    ) {
+      sessionStorage.removeItem(STORAGE_KEYS.USER);
+    }
   } catch (e) {
     console.error('Error clearing user:', e);
   }
 }
 
-export function saveStoredUser(user: UserProfile): void {
+export function saveStoredUser(user: UserProfile, keepSignedIn?: boolean): void {
   try {
     // Role protection: careyer1234@gmail.com is strictly the only coach profile
     const safeUser: UserProfile = isCoachEmail(user.email)
       ? user
       : { ...user, role: 'runner' };
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(safeUser));
+    const serialized = JSON.stringify(safeUser);
+
+    const hasLocal =
+      typeof localStorage !== 'undefined' && typeof localStorage?.setItem === 'function';
+    const hasSession =
+      typeof sessionStorage !== 'undefined' && typeof sessionStorage?.setItem === 'function';
+
+    const shouldKeep =
+      keepSignedIn !== undefined
+        ? keepSignedIn
+        : hasLocal
+          ? localStorage.getItem(STORAGE_KEYS.KEEP_SIGNED_IN) !== 'false'
+          : true;
+
+    if (hasLocal) {
+      localStorage.setItem(STORAGE_KEYS.KEEP_SIGNED_IN, shouldKeep ? 'true' : 'false');
+      localStorage.setItem(STORAGE_KEYS.LAST_USER, serialized);
+      if (shouldKeep) {
+        localStorage.setItem(STORAGE_KEYS.USER, serialized);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.USER);
+      }
+    }
+
+    if (hasSession) {
+      sessionStorage.setItem(STORAGE_KEYS.USER, serialized);
+    }
   } catch (e) {
     console.error('Error saving user:', e);
   }
+}
+
+/**
+ * Persists a user's Strava connection both locally (per-email) and to Cloudflare D1
+ * so their Strava connection stays permanently linked across sessions, domains, and devices.
+ */
+export function saveUserStravaConnection(
+  email: string,
+  settings: Partial<AppSettings>
+): void {
+  if (!email) return;
+  const cleanEmail = email.trim().toLowerCase();
+  try {
+    if (typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function') {
+      const raw = localStorage.getItem(STORAGE_KEYS.USER_STRAVA);
+      const map: Record<string, Partial<AppSettings>> = raw ? JSON.parse(raw) : {};
+      map[cleanEmail] = {
+        ...(map[cleanEmail] || {}),
+        stravaConnected: settings.stravaConnected,
+        stravaClientId: settings.stravaClientId,
+        stravaClientSecret: settings.stravaClientSecret,
+        stravaAccessToken: settings.stravaAccessToken,
+        stravaRefreshToken: settings.stravaRefreshToken,
+        stravaExpiresAt: settings.stravaExpiresAt,
+        stravaAthleteName: settings.stravaAthleteName,
+        stravaAutoSync: settings.stravaAutoSync ?? true,
+        stravaLastSyncTime: settings.stravaLastSyncTime,
+      };
+      localStorage.setItem(STORAGE_KEYS.USER_STRAVA, JSON.stringify(map));
+    }
+  } catch {
+    // Ignore local storage error
+  }
+
+  // Also sync to Cloudflare D1 in the background
+  if (typeof fetch === 'function') {
+    fetch('/api/strava-connection', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: cleanEmail,
+        stravaConnected: Boolean(settings.stravaConnected),
+        clientId: settings.stravaClientId || '',
+        clientSecret: settings.stravaClientSecret || '',
+        accessToken: settings.stravaAccessToken || '',
+        refreshToken: settings.stravaRefreshToken || '',
+        expiresAt: settings.stravaExpiresAt || 0,
+        athleteName: settings.stravaAthleteName || '',
+      }),
+    }).catch(() => {});
+  }
+}
+
+/**
+ * Loads a user's saved Strava connection from per-email localStorage or Cloudflare D1.
+ */
+export async function loadUserStravaConnection(
+  email: string
+): Promise<Partial<AppSettings> | null> {
+  if (!email) return null;
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    if (typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function') {
+      const raw = localStorage.getItem(STORAGE_KEYS.USER_STRAVA);
+      if (raw) {
+        const map: Record<string, Partial<AppSettings>> = JSON.parse(raw);
+        const localEntry = map[cleanEmail];
+        if (
+          localEntry &&
+          localEntry.stravaConnected &&
+          (localEntry.stravaAccessToken || localEntry.stravaRefreshToken)
+        ) {
+          return localEntry;
+        }
+      }
+    }
+  } catch {
+    // Ignore local read error
+  }
+
+  // Fallback to Cloudflare D1 API
+  if (typeof fetch === 'function') {
+    try {
+      const res = await fetch(
+        `/api/strava-connection?email=${encodeURIComponent(cleanEmail)}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const conn = data?.connection;
+        if (conn && (conn.access_token || conn.refresh_token)) {
+          const restored: Partial<AppSettings> = {
+            stravaConnected: true,
+            stravaClientId: conn.client_id || undefined,
+            stravaClientSecret: conn.client_secret || undefined,
+            stravaAccessToken: conn.access_token || undefined,
+            stravaRefreshToken: conn.refresh_token || undefined,
+            stravaExpiresAt: conn.expires_at ? Number(conn.expires_at) : undefined,
+            stravaAthleteName: conn.athlete_name || undefined,
+            stravaAutoSync: true,
+          };
+          saveUserStravaConnection(cleanEmail, restored);
+          return restored;
+        }
+      }
+    } catch {
+      // Offline mode
+    }
+  }
+
+  return null;
 }
 
 // Background sync with Cloudflare Pages Functions / D1 API

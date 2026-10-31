@@ -10,6 +10,7 @@ import {
   saveStoredAuthUser,
   addAthleteToRoster,
   saveStoredUser,
+  loadLastRememberedUser,
 } from '../utils/storage';
 
 interface Props {
@@ -21,10 +22,12 @@ export const LoginPage: React.FC<Props> = ({
   onLoginSuccess,
   inviteCoachEmail,
 }) => {
+  const [lastRememberedUser] = useState<UserProfile | null>(() => loadLastRememberedUser());
   const [mode, setMode] = useState<'signin' | 'signup'>(inviteCoachEmail ? 'signup' : 'signin');
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
+  const [email, setEmail] = useState(() => lastRememberedUser?.email || '');
+  const [name, setName] = useState(() => lastRememberedUser?.name || '');
   const [password, setPassword] = useState('');
+  const [keepSignedIn, setKeepSignedIn] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
 
@@ -63,7 +66,7 @@ export const LoginPage: React.FC<Props> = ({
           role: determineUserRole(existing.email),
           avatarUrl: existing.avatarUrl || '',
         };
-        saveStoredUser(loggedInUser);
+        saveStoredUser(loggedInUser, keepSignedIn);
         onLoginSuccess(loggedInUser);
       } else {
         // First-time sign in with this email: create their profile on the fly
@@ -81,7 +84,7 @@ export const LoginPage: React.FC<Props> = ({
         if (role === 'runner') {
           addAthleteToRoster(newUser);
         }
-        saveStoredUser(newUser);
+        saveStoredUser(newUser, keepSignedIn);
         onLoginSuccess(newUser);
       }
     } else {
@@ -101,7 +104,7 @@ export const LoginPage: React.FC<Props> = ({
       if (role === 'runner') {
         addAthleteToRoster(newUser);
       }
-      saveStoredUser(newUser);
+      saveStoredUser(newUser, keepSignedIn);
       onLoginSuccess(newUser);
     }
   };
@@ -130,13 +133,13 @@ export const LoginPage: React.FC<Props> = ({
     if (role === 'runner') {
       addAthleteToRoster(newUser);
     }
-    saveStoredUser(newUser);
+    saveStoredUser(newUser, keepSignedIn);
     setIsGoogleModalOpen(false);
     onLoginSuccess(newUser);
   };
 
   const handleQuickLogin = (user: UserProfile) => {
-    saveStoredUser(user);
+    saveStoredUser(user, keepSignedIn);
     onLoginSuccess(user);
   };
 
@@ -188,6 +191,20 @@ export const LoginPage: React.FC<Props> = ({
             <p className="text-xs text-primary leading-normal">
               Coach Michael Carey (<span className="font-mono text-accent">{COACH_EMAIL}</span>) has invited you to join the team! Sign in or create your profile below to join the roster.
             </p>
+          </div>
+        )}
+
+        {/* 1-Click Returning User Welcome Back Button */}
+        {lastRememberedUser && (
+          <div className="mb-3">
+            <button
+              type="button"
+              className="btn-action-primary w-full py-2.5 px-3 text-xs font-bold rounded-lg flex items-center justify-between shadow-sm"
+              onClick={() => handleQuickLogin(lastRememberedUser)}
+            >
+              <span>Welcome back — Continue as {lastRememberedUser.name}</span>
+              <span>→</span>
+            </button>
           </div>
         )}
 
@@ -319,6 +336,23 @@ export const LoginPage: React.FC<Props> = ({
               Any password is accepted with no length or symbol restrictions.
             </span>
           </div>
+
+          <label className="flex items-start gap-2.5 p-2.5 rounded-lg bg-surface-subtle border border-subtle cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-emerald-500"
+              checked={keepSignedIn}
+              onChange={(e) => setKeepSignedIn(e.target.checked)}
+            />
+            <span className="flex flex-col">
+              <span className="text-xs font-semibold text-primary">
+                Keep me signed in on this device
+              </span>
+              <span className="text-xxs text-muted">
+                Stays logged in and auto-syncs Strava every time you open Hop Run
+              </span>
+            </span>
+          </label>
 
           <button
             type="submit"
@@ -488,6 +522,23 @@ export const LoginPage: React.FC<Props> = ({
                   </span>
                 )}
               </div>
+
+              <label className="flex items-start gap-2 p-2 rounded bg-surface-subtle border border-subtle cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-emerald-500"
+                  checked={keepSignedIn}
+                  onChange={(e) => setKeepSignedIn(e.target.checked)}
+                />
+                <span className="flex flex-col">
+                  <span className="text-xs font-semibold text-primary">
+                    Keep me signed in on this device
+                  </span>
+                  <span className="text-xxs text-muted">
+                    Stays logged in and auto-syncs Strava every time you open Hop Run
+                  </span>
+                </span>
+              </label>
 
               <div className="modal-footer flex items-center justify-end gap-2 pt-2">
                 <button

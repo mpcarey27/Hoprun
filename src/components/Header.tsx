@@ -35,6 +35,7 @@ interface Props {
   onSignOut?: () => void;
   onOpenStravaConnect?: () => void;
   stravaConnected?: boolean;
+  isStravaAutoSyncing?: boolean;
 }
 
 export const Header: React.FC<Props> = ({
@@ -61,6 +62,7 @@ export const Header: React.FC<Props> = ({
   onSignOut,
   onOpenStravaConnect,
   stravaConnected = false,
+  isStravaAutoSyncing = false,
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const settingsMenuRef = React.useRef<HTMLDivElement>(null);
@@ -245,7 +247,11 @@ export const Header: React.FC<Props> = ({
                 <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7.01 13.828h4.172" />
               </svg>
               <span className="desktop-only-text font-bold">
-                {stravaConnected ? 'Strava Synced' : 'Sync Strava'}
+                {isStravaAutoSyncing
+                  ? 'Syncing Strava...'
+                  : stravaConnected
+                    ? 'Strava Synced'
+                    : 'Sync Strava'}
               </span>
               {stravaConnected && <span className="strava-dot-live">●</span>}
             </button>

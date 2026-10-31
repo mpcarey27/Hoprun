@@ -201,6 +201,80 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
     }
 
+    // Persistent Strava Connection Backup (GET & POST /api/strava-connection)
+    if (path.startsWith('strava-connection')) {
+      if (!env.DB) {
+        return new Response(
+          JSON.stringify({ success: true, connection: null, message: 'D1 not bound' }),
+          { headers: corsHeaders }
+        );
+      }
+
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS strava_connections (
+          user_email TEXT PRIMARY KEY,
+          client_id TEXT,
+          client_secret TEXT,
+          access_token TEXT,
+          refresh_token TEXT,
+          expires_at INTEGER,
+          athlete_name TEXT,
+          updated_at TEXT
+        )`
+      ).run();
+
+      if (method === 'GET') {
+        const email = (url.searchParams.get('email') || '').trim().toLowerCase();
+        if (!email) {
+          return new Response(JSON.stringify({ connection: null }), { headers: corsHeaders });
+        }
+        const connection = await env.DB.prepare(
+          'SELECT * FROM strava_connections WHERE user_email = ?'
+        )
+          .bind(email)
+          .first();
+        return new Response(JSON.stringify({ connection: connection || null }), {
+          headers: corsHeaders,
+        });
+      }
+
+      if (method === 'POST') {
+        const body: any = await request.json();
+        const email = (body.email || '').trim().toLowerCase();
+        if (!email) {
+          return new Response(JSON.stringify({ error: 'Missing email' }), {
+            status: 400,
+            headers: corsHeaders,
+          });
+        }
+        if (body.stravaConnected === false) {
+          await env.DB.prepare('DELETE FROM strava_connections WHERE user_email = ?')
+            .bind(email)
+            .run();
+          return new Response(JSON.stringify({ success: true, disconnected: true }), {
+            headers: corsHeaders,
+          });
+        }
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO strava_connections (
+            user_email, client_id, client_secret, access_token, refresh_token, expires_at, athlete_name, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+          .bind(
+            email,
+            body.clientId || '',
+            body.clientSecret || '',
+            body.accessToken || '',
+            body.refreshToken || '',
+            body.expiresAt || 0,
+            body.athleteName || '',
+            new Date().toISOString()
+          )
+          .run();
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+      }
+    }
+
     // Garmin Connect Cloud Integration (OAuth 2.0 & Webhooks)
     if (path.startsWith('garmin')) {
       const subpath = path.replace(/^garmin\/?/, '');

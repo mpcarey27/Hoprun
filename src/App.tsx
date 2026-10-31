@@ -27,6 +27,8 @@ import {
   COACH_PROFILE,
   COACH_ATHLETE_PROFILE,
   isCoachEmail,
+  saveUserStravaConnection,
+  loadUserStravaConnection,
 } from './utils/storage';
 import {
   buildWeeklyWorkloadData,
@@ -313,9 +315,10 @@ export const App: React.FC = () => {
     parseUrlPlan();
   }, [plans]);
 
-  // Automatically re-sync Strava every time the user opens the app (and on tab visibility focus)
+  // Automatically re-sync Strava every time the user opens the app (and on tab visibility / window focus)
   const lastAutoSyncTimeRef = useRef<number>(0);
   const isAutoSyncingRef = useRef<boolean>(false);
+  const [isStravaAutoSyncing, setIsStravaAutoSyncing] = useState<boolean>(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -324,44 +327,83 @@ export const App: React.FC = () => {
     }
 
     const runAutoStravaSync = async () => {
-      const freshSettings = loadStoredSettings();
-      const isConnected = Boolean(
+      if (isAutoSyncingRef.current) return;
+
+      let freshSettings = loadStoredSettings();
+      let isConnected = Boolean(
         (settings.stravaConnected || freshSettings.stravaConnected) &&
           (settings.stravaAccessToken ||
             freshSettings.stravaAccessToken ||
             settings.stravaRefreshToken ||
             freshSettings.stravaRefreshToken)
       );
+
+      // Restore per-user Strava connection from local backup or Cloudflare D1 if missing
+      if (!isConnected && currentUser.email) {
+        const restored = await loadUserStravaConnection(currentUser.email);
+        if (
+          restored &&
+          restored.stravaConnected &&
+          (restored.stravaAccessToken || restored.stravaRefreshToken)
+        ) {
+          freshSettings = { ...freshSettings, ...restored };
+          handleUpdateSettings(restored);
+          isConnected = true;
+        }
+      }
+
       if (!isConnected || isAutoSyncingRef.current) return;
 
       const accessToken = settings.stravaAccessToken || freshSettings.stravaAccessToken || '';
       const refreshToken = settings.stravaRefreshToken || freshSettings.stravaRefreshToken;
       const clientId = settings.stravaClientId || freshSettings.stravaClientId;
       const clientSecret = settings.stravaClientSecret || freshSettings.stravaClientSecret;
+      const expiresAt = settings.stravaExpiresAt || freshSettings.stravaExpiresAt;
 
       if (!accessToken && !(refreshToken && clientId && clientSecret)) return;
 
       isAutoSyncingRef.current = true;
+      setIsStravaAutoSyncing(true);
       lastAutoSyncTimeRef.current = Date.now();
 
       try {
         let activeToken = accessToken;
-        if (!activeToken && refreshToken && clientId && clientSecret) {
-          const refreshed = await refreshStravaToken(clientId, clientSecret, refreshToken);
-          activeToken = refreshed.access_token;
-          handleUpdateSettings({
-            stravaAccessToken: refreshed.access_token,
-            stravaRefreshToken: refreshed.refresh_token,
-            stravaExpiresAt: refreshed.expires_at,
-          });
+        let activeRefreshToken = refreshToken;
+        const nowEpochSec = Math.floor(Date.now() / 1000);
+        const isExpiredOrExpiringSoon = Boolean(expiresAt && nowEpochSec >= expiresAt - 300);
+
+        if (
+          (!activeToken || isExpiredOrExpiringSoon) &&
+          activeRefreshToken &&
+          clientId &&
+          clientSecret
+        ) {
+          try {
+            const refreshed = await refreshStravaToken(
+              clientId,
+              clientSecret,
+              activeRefreshToken
+            );
+            activeToken = refreshed.access_token;
+            activeRefreshToken = refreshed.refresh_token;
+            handleUpdateSettings({
+              stravaConnected: true,
+              stravaAccessToken: refreshed.access_token,
+              stravaRefreshToken: refreshed.refresh_token,
+              stravaExpiresAt: refreshed.expires_at,
+            });
+          } catch {
+            // Fall through to fetchStravaActivities which will attempt refresh on 401 if needed
+          }
         }
 
         const activities = await fetchStravaActivities(activeToken, 1, 200, {
           clientId,
           clientSecret,
-          refreshToken,
+          refreshToken: activeRefreshToken,
           onTokenRefreshed: (tokenData) => {
             handleUpdateSettings({
+              stravaConnected: true,
               stravaAccessToken: tokenData.access_token,
               stravaRefreshToken: tokenData.refresh_token,
               stravaExpiresAt: tokenData.expires_at,
@@ -401,12 +443,13 @@ export const App: React.FC = () => {
         console.warn('Background Strava auto-sync skipped or failed:', err);
       } finally {
         isAutoSyncingRef.current = false;
+        setIsStravaAutoSyncing(false);
       }
     };
 
     runAutoStravaSync();
 
-    const handleVisibilityChange = () => {
+    const handleVisibilityOrFocus = () => {
       if (
         document.visibilityState === 'visible' &&
         Date.now() - lastAutoSyncTimeRef.current >= 60_000
@@ -415,11 +458,13 @@ export const App: React.FC = () => {
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
     };
-  }, [currentUser?.id, settings.stravaConnected]);
+  }, [currentUser?.id, currentUser?.email, settings.stravaConnected]);
 
   // Coach Athlete Roster Filter ('all' or specific athlete id)
   const [selectedAthleteFilter, setSelectedAthleteFilter] = useState<string>('all');
@@ -704,6 +749,16 @@ export const App: React.FC = () => {
     setSettings((prev) => {
       const updated = { ...prev, ...newSettings };
       saveStoredSettings(updated);
+      if (
+        currentUser?.email &&
+        ('stravaConnected' in newSettings ||
+          'stravaAccessToken' in newSettings ||
+          'stravaRefreshToken' in newSettings ||
+          'stravaClientId' in newSettings ||
+          'stravaClientSecret' in newSettings)
+      ) {
+        saveUserStravaConnection(currentUser.email, updated);
+      }
       return updated;
     });
   };
@@ -873,6 +928,7 @@ export const App: React.FC = () => {
         onSignOut={handleSignOut}
         onOpenStravaConnect={() => setIsStravaModalOpen(true)}
         stravaConnected={Boolean(settings.stravaConnected)}
+        isStravaAutoSyncing={isStravaAutoSyncing}
       />
 
       <main className="main-content">

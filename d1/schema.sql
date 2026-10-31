@@ -68,3 +68,14 @@ CREATE TABLE IF NOT EXISTS settings (
   warning_threshold REAL DEFAULT 1.2,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS strava_connections (
+  user_email TEXT PRIMARY KEY,
+  client_id TEXT,
+  client_secret TEXT,
+  access_token TEXT,
+  refresh_token TEXT,
+  expires_at INTEGER,
+  athlete_name TEXT,
+  updated_at TEXT
+);
