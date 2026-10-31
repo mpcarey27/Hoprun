@@ -12,13 +12,18 @@ export const MILES_TO_KM = 1.609344;
 export const KM_TO_MILES = 0.621371;
 
 export const DEFAULT_RUN_TYPES: RunTypeDefinition[] = [
-  { id: 'mod_workout', name: 'Mod workout', multiplier: 7.0, color: '#ef4444' }, // Red
   { id: 'easy', name: 'Easy', multiplier: 3.0, color: '#06b6d4' }, // Cyan
   { id: 'long_run', name: 'Long run', multiplier: 3.0, color: '#10b981' }, // Green
-  { id: 'day_off', name: 'Day off', multiplier: 0.0, color: '#64748b' }, // Gray
-  { id: 'race', name: 'Race', multiplier: 8.0, color: '#f97316' }, // Orange
-  { id: 'fartlek', name: 'Fartlek', multiplier: 5.0, color: '#84cc16' }, // Lime/light green
+  { id: 'hills_easy', name: 'Hills + easy', multiplier: 4.0, color: '#5ea4b0' }, // Slate Teal
+  { id: 'fartlek', name: 'Fartlek', multiplier: 5.0, color: '#4d932c' }, // Forest Green
+  { id: 'fartlek_double', name: 'Fartlek Double', multiplier: 5.5, color: '#84cc16' }, // Light Green
+  { id: 'threshold_work', name: 'Threshold work', multiplier: 5.5, color: '#f472b6' }, // Pink
+  { id: 'threshold_double', name: 'Threshold double', multiplier: 6.0, color: '#c084fc' }, // Mauve / Rose
   { id: 'double_threshold', name: 'Double Threshold', multiplier: 6.0, color: '#a855f7' }, // Purple
+  { id: 'mod_workout', name: 'Mod workout', multiplier: 7.0, color: '#ef4444' }, // Red
+  { id: 'mod_double', name: 'Mod double', multiplier: 7.5, color: '#991b1b' }, // Dark Red / Maroon
+  { id: 'race', name: 'Race', multiplier: 8.0, color: '#f97316' }, // Orange
+  { id: 'day_off', name: 'Day off', multiplier: 0.0, color: '#ec4899' }, // Magenta / Rest
 ];
 
 const RUN_TYPES_MAP = new Map<string, RunTypeDefinition>(

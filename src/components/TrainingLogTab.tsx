@@ -540,6 +540,11 @@ export const TrainingLogTab: React.FC<Props> = ({
                             <span className="font-mono text-xxs text-muted block">
                               {r.runType.replace('_', ' ')} (load: {r.load.toFixed(1)})
                             </span>
+                            {r.comments && (
+                              <p className="day-workout-notes-preview mt-1">
+                                💬 {r.comments}
+                              </p>
+                            )}
                           </div>
                         );
                       })

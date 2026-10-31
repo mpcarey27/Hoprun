@@ -225,14 +225,44 @@ export const LogRunModal: React.FC<Props> = ({
     e.preventDefault();
     if (!date || distance <= 0) return;
 
+    // When editing a past/existing run: ONLY allow changing runType (+ derived multiplier/load) and comments.
+    // Everything else about the run stays strictly the same.
+    if (isEditMode && runToEdit) {
+      const updatedMultiplier = getRunTypeMultiplier(runType);
+      const updatedLoad = calculateRunLoad(
+        runToEdit.distance,
+        runToEdit.distanceUnit,
+        updatedMultiplier
+      );
+
+      const updatedPastRun: WorkoutRun = {
+        ...runToEdit,
+        runType,
+        multiplier: updatedMultiplier,
+        load: updatedLoad,
+        comments: comments.trim(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      onSaveRun(updatedPastRun);
+      setToastMessage(
+        `✓ Updated run type to ${runType.replace('_', ' ')} & saved comments!`
+      );
+
+      setTimeout(() => {
+        onClose();
+      }, 500);
+      return;
+    }
+
     const selectedShoe = shoes.find((s) => s.id === shoeId);
     const finalTitle = title.trim() || getSmartDefaultTitle(startTime, runType);
 
     const baseTime = Date.now();
     const updatedRun: WorkoutRun = {
-      id: runToEdit?.id || `run_${baseTime}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `run_${baseTime}_${Math.random().toString(36).slice(2, 6)}`,
       workoutDate: date,
-      runOrder: runToEdit?.runOrder ?? 1,
+      runOrder: 1,
       distance,
       distanceUnit: unit,
       runType,
@@ -242,9 +272,7 @@ export const LogRunModal: React.FC<Props> = ({
       completed,
       title: finalTitle,
       startTime: startTime || undefined,
-      isPlanAssigned: runToEdit?.isPlanAssigned ?? false,
-      assignedByCoachId: runToEdit?.assignedByCoachId,
-      assignedByCoachName: runToEdit?.assignedByCoachName,
+      isPlanAssigned: false,
       athleteId: targetAthlete.id,
       athleteName: targetAthlete.name,
       durationSeconds,
@@ -255,15 +283,13 @@ export const LogRunModal: React.FC<Props> = ({
       feeling,
       shoeId: selectedShoe ? selectedShoe.id : undefined,
       shoeName: selectedShoe ? selectedShoe.name : undefined,
-      plannedDistance: runToEdit?.plannedDistance,
+      source: 'manual',
       updatedAt: new Date().toISOString(),
     };
 
     onSaveRun(updatedRun);
     setToastMessage(
-      isEditMode
-        ? `✓ Changes saved for ${distance} ${unit.toUpperCase()} run!`
-        : `✓ Logged ${distance} ${unit.toUpperCase()} ${runType.replace('_', ' ')} run!`
+      `✓ Logged ${distance} ${unit.toUpperCase()} ${runType.replace('_', ' ')} run!`
     );
 
     setTimeout(() => {
@@ -285,7 +311,7 @@ export const LogRunModal: React.FC<Props> = ({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal-card modal-card-md animate-in"
+        className="modal-card modal-card-lg animate-in"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -293,14 +319,14 @@ export const LogRunModal: React.FC<Props> = ({
       >
         {/* Modal Header */}
         <div className="modal-header">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <span className="quick-add-plus-badge">{isEditMode ? '✎' : '+'}</span>
             <div>
-              <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">
-                {isEditMode ? 'Activity Editor' : 'Manual Activity Entry'}
+              <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold block">
+                {isEditMode ? 'Strava Edit Activity • Run Type & Notes' : 'Manual Activity Entry'}
               </span>
               <h2 id="log-run-modal-title" className="modal-title">
-                {isEditMode ? 'Edit Run' : 'Log Run'}
+                {isEditMode ? 'Edit Activity' : 'Log Run'}
               </h2>
             </div>
           </div>
@@ -314,7 +340,7 @@ export const LogRunModal: React.FC<Props> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
+        <form onSubmit={handleSubmit} className="log-run-form">
           {/* Scrollable Modal Content with Sleek Dedicated Scrollbar */}
           <div className="modal-body log-run-body space-y-4">
             {toastMessage && (
@@ -325,6 +351,180 @@ export const LogRunModal: React.FC<Props> = ({
               </div>
             )}
 
+            {isEditMode && runToEdit ? (
+              /* =========================================================================
+                 STRAVA-STYLE EDIT PAST RUN MODE:
+                 Only Run Type (e.g. Fartlek -> Easy) and Comments can be modified.
+                 All other metrics (distance, date, time, pace, HR, shoe) stay locked.
+                 ========================================================================= */
+              <div className="strava-edit-activity-shell">
+                {/* Top Activity Summary Header (Strava Edit Activity Header) */}
+                <div className="strava-edit-header-card">
+                  <div className="strava-edit-title-row">
+                    <div>
+                      <h3 className="strava-edit-run-title">
+                        {runToEdit.title ||
+                          `${runToEdit.runType.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())} Run`}
+                      </h3>
+                      <div className="strava-edit-meta-line">
+                        <span>
+                          📅 {formattedDay} ({getDayName(runToEdit.workoutDate)})
+                        </span>
+                        {runToEdit.startTime && (
+                          <span>• 🕒 {formatTimeOfDay(runToEdit.startTime)}</span>
+                        )}
+                        {runToEdit.athleteName && (
+                          <span>• 🏃 {runToEdit.athleteName}</span>
+                        )}
+                        {runToEdit.shoeName && (
+                          <span>• 👟 {runToEdit.shoeName}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {runToEdit.source === 'strava' && (
+                        <span className="badge-strava font-mono font-bold">
+                          🟠 STRAVA
+                        </span>
+                      )}
+                      <span className="badge-safe font-mono text-xxs font-bold">
+                        🔒 TELEMETRY LOCKED
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 4-Column Horizontal Strava Telemetry Strip */}
+                  <div className="strava-telemetry-strip">
+                    <div className="strava-telemetry-cell">
+                      <span className="strava-telemetry-label">Distance</span>
+                      <strong className="strava-telemetry-value">
+                        {runToEdit.distance} {runToEdit.distanceUnit.toUpperCase()}
+                      </strong>
+                    </div>
+
+                    <div className="strava-telemetry-cell">
+                      <span className="strava-telemetry-label">Moving Time</span>
+                      <strong className="strava-telemetry-value">
+                        {runToEdit.durationFormatted || '—'}
+                      </strong>
+                    </div>
+
+                    <div className="strava-telemetry-cell">
+                      <span className="strava-telemetry-label">Avg Pace</span>
+                      <strong className="strava-telemetry-value" style={{ color: 'var(--color-accent)' }}>
+                        {runToEdit.paceFormatted || '—'}
+                      </strong>
+                    </div>
+
+                    <div className="strava-telemetry-cell">
+                      <span className="strava-telemetry-label">Training Load</span>
+                      <strong className="strava-telemetry-value">
+                        {calculateRunLoad(
+                          runToEdit.distance,
+                          runToEdit.distanceUnit,
+                          multiplier
+                        ).toFixed(1)}{' '}
+                        <span className="text-xxs text-muted font-normal">
+                          (×{multiplier})
+                        </span>
+                      </strong>
+                    </div>
+                  </div>
+
+                  <p className="strava-edit-lock-note">
+                    GPS telemetry (distance, moving time, pace, and date) stays locked so your synced activity data remains intact. Below you can reclassify the <strong>Type of Run</strong> or add/read your <strong>Run Comments</strong>.
+                  </p>
+                </div>
+
+                {/* Section 1: Strava Workout / Run Type Selector */}
+                <div className="strava-edit-section">
+                  <div className="strava-section-header">
+                    <div>
+                      <h4 className="strava-section-title">1. Workout / Run Type</h4>
+                      <p className="strava-section-subtitle">
+                        Reclassify how this run counts toward your Acute:Chronic Workload Ratio (e.g., switch a Fartlek to an Easy run).
+                      </p>
+                    </div>
+                    {runType !== runToEdit.runType && (
+                      <span className="badge-safe font-mono text-xs font-bold">
+                        {runToEdit.runType.replace('_', ' ')} (×{getRunTypeMultiplier(runToEdit.runType)}) → {runType.replace('_', ' ')} (×{multiplier})
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="strava-run-type-grid">
+                    {DEFAULT_RUN_TYPES.map((t) => {
+                      const isSelected = runType === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          className={`strava-run-type-card ${isSelected ? 'active' : ''}`}
+                          style={{
+                            borderColor: isSelected ? t.color : undefined,
+                            backgroundColor: isSelected ? `${t.color}20` : undefined,
+                          }}
+                          onClick={() => setRunType(t.id)}
+                        >
+                          <div className="strava-run-type-left">
+                            <span
+                              className="chip-color-dot"
+                              style={{
+                                backgroundColor: t.color,
+                                width: '10px',
+                                height: '10px',
+                                flexShrink: 0,
+                              }}
+                            />
+                            <span className="strava-run-type-name">{t.name}</span>
+                          </div>
+                          <span className="strava-run-type-mult">×{t.multiplier}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Section 2: Strava Description & Run Comments */}
+                <div className="strava-edit-section">
+                  <div className="strava-section-header">
+                    <div>
+                      <h4 className="strava-section-title">2. Description &amp; Run Comments</h4>
+                      <p className="strava-section-subtitle">
+                        Write or review notes for this specific run — splits, how your legs felt, weather, or workout takeaways.
+                      </p>
+                    </div>
+                    <span className="text-xxs font-mono text-muted">
+                      Saved to this run
+                    </span>
+                  </div>
+
+                  {runToEdit.comments && (
+                    <div className="strava-saved-comment-box">
+                      <span className="strava-saved-comment-label">
+                        💬 Saved Comment on This Run
+                      </span>
+                      <p className="strava-saved-comment-text">
+                        {runToEdit.comments}
+                      </p>
+                    </div>
+                  )}
+
+                  <textarea
+                    rows={5}
+                    className="strava-comment-textarea"
+                    value={comments}
+                    onChange={(e) => setComments(e.target.value)}
+                    placeholder="How did it go? Share more about your activity, splits, how your legs felt, or coach notes so you can come back and read them anytime..."
+                  />
+                </div>
+              </div>
+            ) : (
+              /* =========================================================================
+                 LOG NEW RUN MODE (Full Form)
+                 ========================================================================= */
+              <>
             {/* 1-Tap Quick Staples Presets Strip */}
             <div className="p-2.5 rounded bg-surface border border-subtle">
               <div className="flex items-center justify-between mb-2">
@@ -629,6 +829,8 @@ export const LogRunModal: React.FC<Props> = ({
                     : `⚠️ Exceeds safe threshold by ${(load - safeRemainingBudget).toFixed(1)}`}
                 </span>
               </div>
+            )}
+              </>
             )}
           </div>
 

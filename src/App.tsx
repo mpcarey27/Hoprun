@@ -7,7 +7,6 @@ import type {
   AppSettings,
   DistanceUnit,
   DayOfWeek,
-  UserRole,
   ThemeMode,
   QuickLogStaple,
 } from './types/acr';
@@ -22,7 +21,12 @@ import {
   saveStoredSettings,
   loadStoredUser,
   saveStoredUser,
-  ROSTER_USERS,
+  clearStoredUser,
+  loadStoredRoster,
+  COACH_EMAIL,
+  COACH_PROFILE,
+  COACH_ATHLETE_PROFILE,
+  isCoachEmail,
 } from './utils/storage';
 import {
   buildWeeklyWorkloadData,
@@ -44,6 +48,14 @@ import { GoogleAuthModal } from './components/GoogleAuthModal';
 import { AssignRunModal } from './components/AssignRunModal';
 import { LogRunModal } from './components/LogRunModal';
 import { AssignedRunsModal } from './components/AssignedRunsModal';
+import { LoginPage } from './components/LoginPage';
+import { InviteAthletesModal } from './components/InviteAthletesModal';
+import { StravaConnectModal } from './components/StravaConnectModal';
+import {
+  exchangeStravaCode,
+  fetchStravaActivities,
+  normalizeStravaActivity,
+} from './utils/stravaSync';
 
 export const App: React.FC = () => {
   // Core state
@@ -53,7 +65,17 @@ export const App: React.FC = () => {
     loadStoredNotifications()
   );
   const [settings, setSettings] = useState<AppSettings>(() => loadStoredSettings());
-  const [currentUser, setCurrentUser] = useState<UserProfile>(() => loadStoredUser());
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => loadStoredUser());
+  const [roster, setRoster] = useState<UserProfile[]>(() => loadStoredRoster());
+
+  // URL Invite Parameter (?invite=careyer1234@gmail.com)
+  const [inviteCoachEmail] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('invite');
+    }
+    return null;
+  });
 
   // UI Navigation state: defaults to Workouts (Strava Activity Feed)
   const [activeTab, setActiveTab] = useState<ActiveNavTab>('workouts');
@@ -71,6 +93,8 @@ export const App: React.FC = () => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAssignRunOpen, setIsAssignRunOpen] = useState(false);
   const [isAssignedRunsOpen, setIsAssignedRunsOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isStravaModalOpen, setIsStravaModalOpen] = useState(false);
 
   // Strava-Style Log Run / Edit Run Pop-up Modal State
   const [isLogRunModalOpen, setIsLogRunModalOpen] = useState(false);
@@ -96,7 +120,7 @@ export const App: React.FC = () => {
 
   const handleSaveModalRun = (run: WorkoutRun) => {
     handleSaveRun(run);
-    if (currentUser.role === 'runner' && runToEdit) {
+    if (currentUser?.role === 'runner' && runToEdit) {
       handleAthleteEdit(run);
     }
   };
@@ -112,6 +136,70 @@ export const App: React.FC = () => {
       const compressedPayload = params.get('p');
       const planCode = params.get('plan') || params.get('code');
       const planData = params.get('data');
+
+      // 0. Strava OAuth Callback (?code=XYZ&scope=... or ?error=...)
+      const stravaCode = params.get('code');
+      const stravaError = params.get('error');
+      if (stravaError) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        console.warn('Strava authorization was cancelled or denied:', stravaError);
+        return;
+      }
+
+      if (stravaCode && (params.get('scope') !== null || params.has('scope'))) {
+        const freshSettings = loadStoredSettings();
+        const effectiveClientId = settings.stravaClientId || freshSettings.stravaClientId;
+        const effectiveClientSecret = settings.stravaClientSecret || freshSettings.stravaClientSecret;
+
+        if (effectiveClientId && effectiveClientSecret) {
+          try {
+            const tokenData = await exchangeStravaCode(
+              effectiveClientId,
+              effectiveClientSecret,
+              stravaCode
+            );
+            const athleteName = tokenData.athlete
+              ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
+              : currentUser?.name || 'Strava Athlete';
+
+            const activities = await fetchStravaActivities(tokenData.access_token, 1, 30);
+            const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
+            const unit = settings.distanceUnit || 'mi';
+
+            const normalizedWorkouts = activities.map((act) =>
+              normalizeStravaActivity(
+                act,
+                unit,
+                currentUser?.id || COACH_PROFILE.id,
+                currentUser?.name || athleteName,
+                defaultShoe?.id,
+                defaultShoe?.name
+              )
+            );
+
+            if (normalizedWorkouts.length > 0) {
+              handleBatchImportWorkouts(normalizedWorkouts);
+            }
+
+            handleUpdateSettings({
+              stravaConnected: true,
+              stravaAccessToken: tokenData.access_token,
+              stravaRefreshToken: tokenData.refresh_token,
+              stravaExpiresAt: tokenData.expires_at,
+              stravaAthleteName: athleteName,
+              stravaAutoSync: true,
+              stravaLastSyncTime: new Date().toISOString(),
+            });
+
+            // Clean URL query parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } catch (err) {
+            console.error('Strava OAuth callback error:', err);
+            setIsStravaModalOpen(true);
+          }
+        }
+        return;
+      }
 
       // 1. High-efficiency compressed plan from QR code
       if (compressedPayload) {
@@ -153,8 +241,9 @@ export const App: React.FC = () => {
 
   // Compute visible workouts based on role and athlete filter
   const visibleWorkouts = useMemo(() => {
+    if (!currentUser) return [];
     if (currentUser.role === 'runner') {
-      // Athlete (e.g. Rob) only has access to their own workouts
+      // Athlete (e.g. Rob, or Coach Michael Carey in athlete mode) only has access to their own workouts
       return workouts.filter(
         (w) =>
           w.athleteId === currentUser.id ||
@@ -210,16 +299,16 @@ export const App: React.FC = () => {
     // Ensure athlete identity is preserved or assigned
     const targetRun: WorkoutRun = { ...run };
     if (!targetRun.athleteId) {
-      if (currentUser.role === 'runner') {
+      if (currentUser?.role === 'runner') {
         targetRun.athleteId = currentUser.id;
         targetRun.athleteName = currentUser.name;
       } else if (selectedAthleteFilter !== 'all') {
-        const matched = ROSTER_USERS.find((u) => u.id === selectedAthleteFilter);
+        const matched = roster.find((u) => u.id === selectedAthleteFilter);
         targetRun.athleteId = selectedAthleteFilter;
         targetRun.athleteName = matched?.name || 'Athlete';
       } else {
-        targetRun.athleteId = currentUser.id;
-        targetRun.athleteName = currentUser.name;
+        targetRun.athleteId = currentUser?.id || COACH_PROFILE.id;
+        targetRun.athleteName = currentUser?.name || COACH_PROFILE.name;
       }
     }
 
@@ -245,9 +334,27 @@ export const App: React.FC = () => {
     });
   };
 
+  // Batch import workouts from Garmin or external files with deduplication
+  const handleBatchImportWorkouts = (newWorkouts: WorkoutRun[]) => {
+    setWorkouts((prev) => {
+      const existingSignatures = new Set(
+        prev.map((w) => `${w.athleteId || ''}_${w.workoutDate}_${w.distance.toFixed(1)}`)
+      );
+      const uniqueNew = newWorkouts.filter(
+        (nw) =>
+          !existingSignatures.has(
+            `${nw.athleteId || ''}_${nw.workoutDate}_${nw.distance.toFixed(1)}`
+          )
+      );
+      const updated = [...prev, ...uniqueNew];
+      saveStoredWorkouts(updated);
+      return updated;
+    });
+  };
+
   // Athlete editing from plan or input
   const handleAthleteEdit = (run: WorkoutRun) => {
-    if (currentUser.role === 'runner') {
+    if (currentUser?.role === 'runner') {
       const notif: CoachNotification = {
         id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         athleteId: currentUser.id,
@@ -293,7 +400,7 @@ export const App: React.FC = () => {
     };
     handleSaveRun(updatedRun);
 
-    if (currentUser.role === 'runner' && completed) {
+    if (currentUser?.role === 'runner' && completed) {
       const commentText = athleteComment?.trim()
         ? athleteComment.trim()
         : updatedRun.athleteComment?.trim() || '';
@@ -331,7 +438,7 @@ export const App: React.FC = () => {
     };
     handleSaveRun(runToSave);
 
-    if (currentUser.role === 'runner') {
+    if (currentUser?.role === 'runner') {
       const reasonText = editReason?.trim() || '';
       const notif: CoachNotification = {
         id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -359,6 +466,7 @@ export const App: React.FC = () => {
   // Count of pending assigned runs for the athlete today
   const todayStr = useMemo(() => formatDate(new Date()), []);
   const todayPendingAssignedCount = useMemo(() => {
+    if (!currentUser) return 0;
     return workouts.filter((w) => {
       const isForAthlete =
         w.athleteId === currentUser.id ||
@@ -407,10 +515,18 @@ export const App: React.FC = () => {
   };
 
   const handleToggleRole = () => {
-    const nextRole: UserRole = currentUser.role === 'coach' ? 'runner' : 'coach';
-    const updated: UserProfile = { ...currentUser, role: nextRole };
-    setCurrentUser(updated);
-    saveStoredUser(updated);
+    if (!currentUser) return;
+    if (isCoachEmail(currentUser.email)) {
+      // Toggle between Coach Michael Carey and Athlete Michael Carey
+      const nextUser = currentUser.role === 'coach' ? COACH_ATHLETE_PROFILE : COACH_PROFILE;
+      setCurrentUser(nextUser);
+      saveStoredUser(nextUser);
+    }
+  };
+
+  const handleSignOut = () => {
+    clearStoredUser();
+    setCurrentUser(null);
   };
 
   // Notification handlers
@@ -449,18 +565,35 @@ export const App: React.FC = () => {
     setIsPlanViewerOpen(true);
   };
 
-  // Coach recurring runs assignment handler
+  // Coach recurring runs & Google Sheet assignment handler
   const handleAssignRuns = (newRuns: WorkoutRun[], notificationText: string) => {
     setWorkouts((prev) => {
-      const updated = [...prev, ...newRuns];
+      const isSheetSync = newRuns.length > 0 && newRuns[0].source === 'google_sheets';
+      const targetAthId = newRuns[0]?.athleteId;
+      const targetPlanId = newRuns[0]?.planId;
+
+      // If syncing a Google Sheet for an athlete, replace previous uncompleted sheet workouts for that athlete/plan to prevent duplicates
+      const filteredPrev = isSheetSync
+        ? prev.filter(
+            (w) =>
+              !(
+                w.source === 'google_sheets' &&
+                w.athleteId === targetAthId &&
+                (!targetPlanId || w.planId === targetPlanId) &&
+                !w.completed
+              )
+          )
+        : prev;
+
+      const updated = [...filteredPrev, ...newRuns];
       saveStoredWorkouts(updated);
       return updated;
     });
 
     const notif: CoachNotification = {
       id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      athleteId: currentUser.id,
-      athleteName: currentUser.name,
+      athleteId: currentUser?.id || COACH_PROFILE.id,
+      athleteName: currentUser?.name || COACH_PROFILE.name,
       type: 'edited',
       date: newRuns[0]?.workoutDate || formatDate(new Date()),
       runType: newRuns[0]?.runType || 'easy',
@@ -477,6 +610,23 @@ export const App: React.FC = () => {
       return updated;
     });
   };
+
+  // Render Login Page if user is not authenticated
+  if (!currentUser) {
+    return (
+      <LoginPage
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setRoster(loadStoredRoster());
+          if (window.history.replaceState && inviteCoachEmail) {
+            const cleanUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, cleanUrl);
+          }
+        }}
+        inviteCoachEmail={inviteCoachEmail}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -501,6 +651,10 @@ export const App: React.FC = () => {
         onOpenQuickLog={() => handleOpenLogRun()}
         onOpenAssignedRuns={() => setIsAssignedRunsOpen(true)}
         pendingAssignedCount={todayPendingAssignedCount}
+        onOpenInvite={() => setIsInviteModalOpen(true)}
+        onSignOut={handleSignOut}
+        onOpenStravaConnect={() => setIsStravaModalOpen(true)}
+        stravaConnected={Boolean(settings.stravaConnected)}
       />
 
       <main className="main-content">
@@ -516,9 +670,34 @@ export const App: React.FC = () => {
                   Athlete Roster
                 </span>
               </div>
-              <span className="text-xxs text-muted font-mono hidden sm:inline">
-                Filter feed by athlete
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="btn-roster-invite"
+                  onClick={() => setIsPlanBuilderOpen(true)}
+                  title="Coach Only: Select an athlete and link their Google Sheet training plan"
+                  style={{
+                    background: 'rgba(16, 185, 129, 0.14)',
+                    borderColor: 'rgba(16, 185, 129, 0.4)',
+                    color: '#34d399',
+                  }}
+                >
+                  <span className="text-xs">📊</span>
+                  <span>Link Athlete Google Sheet</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn-roster-invite"
+                  onClick={() => setIsInviteModalOpen(true)}
+                  title="Send invite link to new athletes"
+                >
+                  <span className="text-xs">✉️</span>
+                  <span>Invite Athletes</span>
+                </button>
+                <span className="text-xxs text-muted font-mono hidden sm:inline">
+                  Filter feed by athlete
+                </span>
+              </div>
             </div>
 
             {/* Roster Filter Pills */}
@@ -530,7 +709,7 @@ export const App: React.FC = () => {
               >
                 All ({workouts.length})
               </button>
-              {ROSTER_USERS.map((user) => {
+              {roster.map((user) => {
                 const count = workouts.filter(
                   (w) => w.athleteId === user.id || w.athleteName === user.name
                 ).length;
@@ -540,7 +719,13 @@ export const App: React.FC = () => {
                     type="button"
                     className={`btn-filter-pill ${selectedAthleteFilter === user.id ? 'active' : ''}`}
                     onClick={() => setSelectedAthleteFilter(user.id)}
+                    title={
+                      user.googleSheetUrl
+                        ? `${user.name} — Linked to Google Sheet (${user.googleSheetTab || 'Sheet'})`
+                        : `${user.name}`
+                    }
                   >
+                    {user.googleSheetUrl ? '📊 ' : ''}
                     {user.name} ({count})
                   </button>
                 );
@@ -567,6 +752,8 @@ export const App: React.FC = () => {
             onToggleComplete={(run) => handleAthleteToggleComplete(run, !run.completed)}
             weeklyMileageTarget={settings.weeklyMileageTarget}
             activeWeekStartDate={activeWeekStartDate}
+            onOpenStravaConnect={() => setIsStravaModalOpen(true)}
+            stravaConnected={Boolean(settings.stravaConnected)}
           />
         )}
 
@@ -618,21 +805,27 @@ export const App: React.FC = () => {
             currentUser={currentUser}
             onToggleRole={handleToggleRole}
             onOpenAuth={() => setIsAuthModalOpen(true)}
+            onBatchImportWorkouts={handleBatchImportWorkouts}
+            onOpenStravaConnect={() => setIsStravaModalOpen(true)}
           />
         )}
       </main>
 
-      {/* Admin Plan Builder & QR Code Modal */}
-      <AdminPlanModal
-        isOpen={isPlanBuilderOpen}
-        onClose={() => setIsPlanBuilderOpen(false)}
-        currentUser={currentUser}
-        plans={plans}
-        onSavePlan={handleSavePlan}
-        distanceUnit={settings.distanceUnit}
-        onOpenAsAthlete={handleOpenAsAthlete}
-        onAssignRuns={handleAssignRuns}
-      />
+      {/* Coach-Only Plan Builder & Athlete Google Sheets Integration Modal */}
+      {currentUser.role === 'coach' && (
+        <AdminPlanModal
+          isOpen={isPlanBuilderOpen}
+          onClose={() => setIsPlanBuilderOpen(false)}
+          currentUser={currentUser}
+          plans={plans}
+          onSavePlan={handleSavePlan}
+          distanceUnit={settings.distanceUnit}
+          onOpenAsAthlete={handleOpenAsAthlete}
+          onAssignRuns={handleAssignRuns}
+          initialAthleteId={selectedAthleteFilter}
+          onRosterUpdated={setRoster}
+        />
+      )}
 
       {/* Coach Assign Run Modal */}
       <AssignRunModal
@@ -694,6 +887,24 @@ export const App: React.FC = () => {
         onClose={() => setIsAuthModalOpen(false)}
         currentUser={currentUser}
         onSwitchUser={handleSwitchUser}
+      />
+
+      {/* Coach Invite Athletes Modal */}
+      <InviteAthletesModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        coachEmail={COACH_EMAIL}
+        coachName={COACH_PROFILE.name}
+      />
+
+      {/* Strava Sync Modal */}
+      <StravaConnectModal
+        isOpen={isStravaModalOpen}
+        onClose={() => setIsStravaModalOpen(false)}
+        currentUser={currentUser}
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+        onImportRuns={handleBatchImportWorkouts}
       />
     </div>
   );

@@ -2951,6 +2951,8 @@ button:focus-visible {
   justify-content: center;
   padding: 1rem;
   z-index: 50;
+  overflow: hidden;
+  overscroll-behavior: contain;
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   animation: backdropFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -2966,23 +2968,26 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overscroll-behavior: contain;
   box-shadow: 0 20px 45px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-subtle);
   animation: modalCardIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .modal-card-md {
-  max-width: 620px;
+  max-width: 680px;
   width: 95vw;
 }
 
 .modal-card-lg {
-  max-width: 760px;
+  max-width: 780px;
   width: 95vw;
+  max-height: 88vh;
 }
 
 .modal-card-xl {
-  max-width: 840px;
+  max-width: 860px;
   width: 95vw;
+  max-height: 90vh;
 }
 
 .modal-header {
@@ -3037,10 +3042,14 @@ button:focus-visible {
 }
 
 .modal-body {
-  padding: 1.25rem 1.35rem;
+  padding: 1.35rem 1.5rem;
   overflow-y: auto;
   overflow-x: hidden; /* Guarantee zero horizontal scroll on modal */
+  overscroll-behavior: contain;
   flex: 1;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--border-muted) var(--bg-surface-subtle);
   scrollbar-gutter: stable;
@@ -3048,12 +3057,15 @@ button:focus-visible {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Dedicated prominent polished scrollbar for Run Logging modal */
+/* Dedicated prominent polished scrollbar for Run Logging & Editing modal */
 .log-run-body {
-  scrollbar-width: thin;
+  scrollbar-width: auto;
   scrollbar-color: var(--color-accent) var(--bg-surface-subtle);
   scrollbar-gutter: stable;
-  padding: 1.25rem 1.35rem;
+  padding: 1.5rem 1.65rem;
+  width: 100%;
+  box-sizing: border-box;
+  overscroll-behavior: contain;
 }
 
 /* High contrast mode accessibility overrides */
@@ -6820,6 +6832,261 @@ button:focus-visible {
   border-color: var(--color-accent);
 }
 
+/* ===================================================================
+   Hop Run — Authentication & Athlete Invitation System
+   =================================================================== */
+
+.login-screen-wrapper {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  background: var(--bg-app);
+  background-image: 
+    radial-gradient(circle at 50% 10%, var(--color-accent-subtle) 0%, transparent 60%),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
+}
+
+.login-card-container {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 2.25rem 2rem;
+  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.login-brand-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.login-brand-logo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.login-app-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.login-app-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.login-invite-banner {
+  background: var(--color-accent-subtle);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.btn-google-login-hero {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: #ffffff;
+  color: #1f2937;
+  font-weight: 600;
+  font-size: 0.925rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.btn-google-login-hero:hover {
+  background: #f8fafc;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+}
+
+.google-btn-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.login-tab-pills {
+  display: flex;
+  background: var(--bg-surface-elevated);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--border-subtle);
+}
+
+.login-tab-pill {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.825rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.login-tab-pill.active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.login-field label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.btn-login-submit {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--color-accent);
+  color: var(--btn-accent-text);
+  font-weight: 700;
+  font-size: 0.9rem;
+  border-radius: var(--radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-top: 0.5rem;
+}
+
+.btn-login-submit:hover {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+
+.btn-quick-login-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.btn-quick-login-chip:hover {
+  border-color: var(--color-accent);
+  background: var(--bg-surface-subtle);
+  transform: translateX(2px);
+}
+
+/* Header Invite & Athlete Switcher Badges */
+.btn-invite-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.8rem;
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-invite-header:hover {
+  background: var(--color-accent);
+  color: var(--btn-accent-text);
+}
+
+.btn-coach-view-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-coach-view-pill:hover {
+  background: rgba(245, 158, 11, 0.25);
+  border-color: #f59e0b;
+}
+
+.athlete-dot {
+  color: #10b981;
+  font-size: 0.65rem;
+}
+
+.btn-roster-invite {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: 0.725rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-roster-invite:hover {
+  background: var(--color-accent);
+  color: var(--btn-accent-text);
+  border-color: var(--color-accent);
+}
+
 /* Activity Card Badges */
 .badge-rpe {
   background: rgba(245, 158, 11, 0.16);
@@ -6872,6 +7139,646 @@ button:focus-visible {
   color: #38bdf8;
   border: 1px solid rgba(56, 189, 248, 0.3);
 }
+
+/* ===================================================================
+   Garmin Connect & Device Telemetry Styles
+   =================================================================== */
+
+.badge-garmin {
+  background: rgba(0, 124, 195, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(0, 124, 195, 0.35);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.badge-hr {
+  background: rgba(239, 68, 68, 0.14);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.badge-elevation {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.badge-garmin-device {
+  background: var(--bg-surface-subtle);
+  color: var(--color-accent);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.btn-garmin-upload {
+  padding: 0.4rem 0.85rem;
+  background: var(--color-accent);
+  color: var(--btn-accent-text);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-garmin-upload:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+}
+
+.btn-garmin-connect {
+  padding: 0.5rem 1rem;
+  background: #007cc3;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 124, 195, 0.3);
+}
+
+.btn-garmin-connect:hover {
+  background: #0066a2;
+  transform: translateY(-1px);
+}
+
+.garmin-batch-dropzone {
+  border: 2px dashed var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem 1.25rem;
+  text-align: center;
+  background: var(--bg-surface-elevated);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.garmin-batch-dropzone:hover,
+.garmin-batch-dropzone.dragging {
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+}
+
+/* Header Garmin Button */
+.btn-header-garmin {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  background: rgba(0, 124, 195, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(0, 124, 195, 0.35);
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-header-garmin:hover {
+  background: rgba(0, 124, 195, 0.24);
+  border-color: #38bdf8;
+}
+
+.btn-header-garmin.connected {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.btn-header-garmin.connected:hover {
+  background: rgba(16, 185, 129, 0.2);
+}
+
+.garmin-dot-live {
+  color: #10b981;
+  font-size: 0.6rem;
+  animation: pulse-live 2s infinite ease-in-out;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* Garmin Hero Banner in Workouts Feed */
+.garmin-hero-banner {
+  background: linear-gradient(135deg, rgba(0, 124, 195, 0.15) 0%, rgba(26, 35, 50, 0.95) 100%);
+  border: 1px solid rgba(0, 124, 195, 0.3);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+}
+
+.garmin-badge-icon-box {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 124, 195, 0.2);
+  border: 1px solid rgba(0, 124, 195, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.btn-garmin-banner-cta {
+  padding: 0.55rem 1.1rem;
+  background: #007cc3;
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 10px rgba(0, 124, 195, 0.35);
+}
+
+.btn-garmin-banner-cta:hover {
+  background: #0066a2;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 124, 195, 0.45);
+}
+
+.garmin-modal-logo-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: rgba(0, 124, 195, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+/* Strava Brand Integration (#FC4C02) */
+.btn-header-strava {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.8rem;
+  background: rgba(252, 76, 2, 0.12);
+  color: #ff6d2b;
+  border: 1px solid rgba(252, 76, 2, 0.35);
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-header-strava:hover {
+  background: rgba(252, 76, 2, 0.22);
+  border-color: #fc4c02;
+  color: #ff854d;
+  transform: translateY(-1px);
+}
+
+.btn-header-strava.connected {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.btn-header-strava.connected:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #34d399;
+}
+
+.strava-dot-live {
+  color: #10b981;
+  font-size: 0.6rem;
+  animation: pulse-live 2s infinite ease-in-out;
+}
+
+.badge-strava {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.5rem;
+  background: rgba(252, 76, 2, 0.15);
+  color: #ff7536;
+  border: 1px solid rgba(252, 76, 2, 0.3);
+  border-radius: var(--radius-full);
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+}
+
+/* Strava Hero Banner in Workouts Feed */
+.strava-hero-banner {
+  background: linear-gradient(135deg, rgba(252, 76, 2, 0.12) 0%, rgba(35, 25, 20, 0.95) 100%);
+  border: 1px solid rgba(252, 76, 2, 0.28);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.22);
+}
+
+.strava-badge-icon-box {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: rgba(252, 76, 2, 0.16);
+  border: 1px solid rgba(252, 76, 2, 0.36);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.btn-strava-banner-cta {
+  padding: 0.55rem 1.15rem;
+  background: #fc4c02;
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 10px rgba(252, 76, 2, 0.38);
+}
+
+.btn-strava-banner-cta:hover {
+  background: #e34100;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(252, 76, 2, 0.5);
+}
+
+.btn-strava-primary {
+  padding: 0.55rem 1.15rem;
+  background: #fc4c02;
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(252, 76, 2, 0.3);
+}
+
+.btn-strava-primary:hover {
+  background: #e34100;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(252, 76, 2, 0.45);
+}
+
+.btn-strava-tab {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.78rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-strava-tab.active {
+  background: rgba(252, 76, 2, 0.15);
+  border-color: rgba(252, 76, 2, 0.5);
+  color: #ff7536;
+  font-weight: 700;
+}
+
+/* ============================================================================
+   Core Layout Utilities & Strava-Inspired Edit Activity Modal Styles
+   ============================================================================ */
+.flex-col {
+  flex-direction: column;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.justify-end {
+  justify-content: flex-end;
+}
+
+.items-start {
+  align-items: flex-start;
+}
+
+.overflow-hidden {
+  overflow: hidden;
+}
+
+.block {
+  display: block;
+}
+
+.grid {
+  display: grid;
+}
+
+.grid-cols-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .sm\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  .md\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.space-y-4 > * + * {
+  margin-top: 1rem;
+}
+
+.space-y-3 > * + * {
+  margin-top: 0.75rem;
+}
+
+.space-y-2\.5 > * + * {
+  margin-top: 0.625rem;
+}
+
+.space-y-2 > * + * {
+  margin-top: 0.5rem;
+}
+
+.log-run-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Strava-Inspired Edit Activity Container */
+.strava-edit-activity-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1.35rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.strava-edit-header-card {
+  background: linear-gradient(145deg, var(--bg-surface-elevated) 0%, var(--bg-surface) 100%);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.strava-edit-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.strava-edit-run-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.25;
+  margin: 0 0 0.25rem 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.strava-edit-meta-line {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.strava-telemetry-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+}
+
+@media (max-width: 580px) {
+  .strava-telemetry-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.strava-telemetry-cell {
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.strava-telemetry-label {
+  font-size: 0.68rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.strava-telemetry-value {
+  font-size: 1.08rem;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.strava-edit-lock-note {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  margin: 0;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.strava-edit-section {
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.strava-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.strava-section-title {
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+  margin: 0;
+}
+
+.strava-section-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.strava-run-type-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.strava-run-type-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-md);
+  background-color: var(--bg-app);
+  border: 1.5px solid var(--border-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.strava-run-type-card:hover {
+  border-color: var(--border-muted);
+  background-color: var(--bg-surface);
+  transform: translateY(-1px);
+}
+
+.strava-run-type-card.active {
+  box-shadow: 0 0 0 1px currentColor;
+  font-weight: 700;
+}
+
+.strava-run-type-left {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.strava-run-type-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.strava-run-type-mult {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background-color: var(--bg-surface-elevated);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.strava-saved-comment-box {
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid #fc4c02;
+  border-radius: var(--radius-md);
+  padding: 0.95rem 1.1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.strava-saved-comment-label {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.strava-saved-comment-text {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  margin: 0;
+}
+
+.strava-comment-textarea {
+  width: 100%;
+  min-height: 135px;
+  padding: 0.9rem 1.05rem;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  background-color: var(--bg-app);
+  border: 1.5px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.strava-comment-textarea:focus {
+  outline: none;
+  border-color: #fc4c02;
+  box-shadow: 0 0 0 2px rgba(252, 76, 2, 0.2);
+}
+
+
+
+
+
 
 
 

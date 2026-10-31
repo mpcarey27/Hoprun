@@ -9,6 +9,8 @@ import type {
 import { ShoeMileageTracker } from './ShoeMileageTracker';
 import { QuickLogPresetsModal } from './QuickLogPresetsModal';
 import { getUserQuickStaples, formatStapleLabel, getRunTypeColor } from '../utils/calculations';
+import { isCoachEmail } from '../utils/storage';
+import type { WorkoutRun } from '../types/acr';
 
 interface Props {
   settings: AppSettings;
@@ -16,6 +18,8 @@ interface Props {
   currentUser: UserProfile;
   onToggleRole: () => void;
   onOpenAuth: () => void;
+  onBatchImportWorkouts?: (runs: WorkoutRun[]) => void;
+  onOpenStravaConnect?: () => void;
 }
 
 export const SettingsTab: React.FC<Props> = ({
@@ -24,6 +28,7 @@ export const SettingsTab: React.FC<Props> = ({
   currentUser,
   onToggleRole,
   onOpenAuth,
+  onOpenStravaConnect,
 }) => {
   const currentTheme = settings.themeMode || 'dark';
 
@@ -277,16 +282,22 @@ export const SettingsTab: React.FC<Props> = ({
             <div>
               <span className="text-secondary text-sm block">Active Mode</span>
               <span className="text-muted text-xs">
-                {currentUser.role === 'coach' ? 'Coach Mode' : 'Athlete Mode'}
+                {currentUser.role === 'coach' ? '👑 Head Coach Mode' : '🏃 Athlete Mode'}
               </span>
             </div>
-            <button
-              type="button"
-              className="btn-settings-pill"
-              onClick={onToggleRole}
-            >
-              Switch to {currentUser.role === 'coach' ? 'Athlete' : 'Coach'}
-            </button>
+            {isCoachEmail(currentUser.email) ? (
+              <button
+                type="button"
+                className="btn-settings-pill"
+                onClick={onToggleRole}
+              >
+                Switch to {currentUser.role === 'coach' ? '🏃 Athlete View' : '👑 Coach Profile'}
+              </button>
+            ) : (
+              <span className="text-xs font-mono text-muted px-2.5 py-1 bg-surface border border-subtle rounded">
+                Athlete Profile (Managed)
+              </span>
+            )}
           </div>
 
           <div className="settings-divider" />
@@ -304,6 +315,101 @@ export const SettingsTab: React.FC<Props> = ({
               Account & Sync
             </button>
           </div>
+        </section>
+
+        {/* Strava Sync Card (Garmin Cloud Bridge) */}
+        <section className="settings-card border-orange-500/20">
+          <div className="settings-card-header">
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🟠</span>
+                <div>
+                  <h2 className="settings-card-title flex items-center gap-2">
+                    Strava Sync
+                    <span className="text-xxs font-mono font-semibold px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                      Garmin Relay Bridge
+                    </span>
+                  </h2>
+                  <p className="settings-card-desc">
+                    Sync your Garmin watch runs seamlessly via Strava with zero wait time. Heart rate, pace, GPS distance, and watch model are automatically imported.
+                  </p>
+                </div>
+              </div>
+              {settings.stravaConnected && (
+                <span className="badge-strava font-mono text-xxs font-bold">CONNECTED</span>
+              )}
+            </div>
+          </div>
+
+          <div className="settings-row-control">
+            <div>
+              <span className="text-secondary text-sm block">Strava Connection</span>
+              <span className="text-muted text-xs">
+                {settings.stravaConnected
+                  ? `Linked as ${settings.stravaAthleteName || currentUser.name}${
+                      settings.stravaLastSyncTime
+                        ? ` • Last synced: ${new Date(settings.stravaLastSyncTime).toLocaleDateString()}`
+                        : ''
+                    }`
+                  : 'Connect your Strava account to automatically sync your Garmin runs.'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {settings.stravaConnected ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-settings-pill font-mono"
+                    onClick={onOpenStravaConnect}
+                  >
+                    Sync Now 🔄
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-settings-pill"
+                    style={{ color: 'var(--color-critical)' }}
+                    onClick={() => {
+                      onUpdateSettings({
+                        stravaConnected: false,
+                        stravaAccessToken: undefined,
+                        stravaRefreshToken: undefined,
+                        stravaAthleteName: undefined,
+                        stravaLastSyncTime: undefined,
+                      });
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-strava-primary font-mono text-xs font-bold"
+                  onClick={onOpenStravaConnect}
+                >
+                  Connect Strava 🟠
+                </button>
+              )}
+            </div>
+          </div>
+
+          {settings.stravaConnected && (
+            <>
+              <div className="settings-divider" />
+              <div className="settings-row-control">
+                <div>
+                  <span className="text-secondary text-sm block">Auto-Sync Workouts</span>
+                  <span className="text-muted text-xs">Automatically fetch latest activities upon loading feed</span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="settings-checkbox"
+                  checked={settings.stravaAutoSync ?? true}
+                  onChange={(e) => onUpdateSettings({ stravaAutoSync: e.target.checked })}
+                />
+              </div>
+            </>
+          )}
         </section>
 
         {/* Target Race & Periodization Goal */}

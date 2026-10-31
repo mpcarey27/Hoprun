@@ -8,5 +8,19 @@ export default defineConfig({
     host: true,
     port: 5173,
     allowedHosts: true,
+    proxy: {
+      '/api/strava': {
+        target: 'https://www.strava.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/api\/strava/, ''),
+      },
+      '/api/gsheets': {
+        target: 'https://docs.google.com/spreadsheets',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/api\/gsheets/, ''),
+      },
+    },
   },
 })

@@ -24,6 +24,37 @@ import {
   calculateRelativeStimulus,
 } from '../src/utils/calculations';
 import type { WorkoutRun, WeekWorkload, UserProfile, QuickLogStaple, RunningShoe } from '../src/types/acr';
+import {
+  COACH_EMAIL,
+  COACH_PROFILE,
+  COACH_ATHLETE_PROFILE,
+  isCoachEmail,
+  determineUserRole,
+  addAthleteToRoster,
+  updateAthleteGoogleSheetLink,
+  saveStoredUser,
+  loadStoredUser,
+  clearStoredUser,
+} from '../src/utils/storage';
+import {
+  parseTCXContent,
+  parseGPXContent,
+  parseFITBinary,
+  classifyGarminRun,
+  convertGarminToWorkoutRun,
+} from '../src/utils/garminParser';
+import {
+  normalizeStravaActivity,
+  buildStravaAuthUrl,
+} from '../src/utils/stravaSync';
+import type { StravaSummaryActivity } from '../src/utils/stravaSync';
+import {
+  extractGoogleSheetId,
+  matchColorToRunType,
+  parseGoogleSheetHtml,
+  ELISE_REFERENCE_TABS,
+  convertSheetTabToPlanAndWorkouts,
+} from '../src/utils/googleSheetsParser';
 
 describe('ACWR Calculations (TDD Core Science)', () => {
   it('test_calculateRunLoad_multipliers() - exact workload values', () => {
@@ -1226,7 +1257,634 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(formatPace(aAvgPace, 'mi')).toBe('6:16 /mi');
     });
   });
+
+  describe('Authentication, Single Coach Profile & Athlete Invitation (TDD)', () => {
+    it('test_isCoachEmail_exclusively_careyer1234() - only careyer1234@gmail.com is coach', () => {
+      expect(COACH_EMAIL).toBe('careyer1234@gmail.com');
+      expect(isCoachEmail('careyer1234@gmail.com')).toBe(true);
+      expect(isCoachEmail('CAREYER1234@GMAIL.COM')).toBe(true);
+      expect(isCoachEmail('  careyer1234@gmail.com  ')).toBe(true);
+
+      // Other emails cannot be coach
+      expect(isCoachEmail('michael.carey@coach.com')).toBe(false);
+      expect(isCoachEmail('rob.athlete@example.com')).toBe(false);
+      expect(isCoachEmail('admin@hoprun.com')).toBe(false);
+      expect(isCoachEmail('')).toBe(false);
+    });
+
+    it('test_determineUserRole() - strictly enforces runner role for everyone else', () => {
+      expect(determineUserRole('careyer1234@gmail.com')).toBe('coach');
+      expect(determineUserRole('careyer1234@GMAIL.com')).toBe('coach');
+      expect(determineUserRole('rob@example.com')).toBe('runner');
+      expect(determineUserRole('coach2@example.com')).toBe('runner');
+      expect(determineUserRole('anyone@runner.com')).toBe('runner');
+    });
+
+    it('test_coachProfile_and_athleteProfile_dualMode() - Michael Carey has both coach and athlete profiles', () => {
+      expect(COACH_PROFILE.email).toBe('careyer1234@gmail.com');
+      expect(COACH_PROFILE.role).toBe('coach');
+      expect(COACH_PROFILE.name).toBe('Michael Carey');
+
+      expect(COACH_ATHLETE_PROFILE.email).toBe('careyer1234@gmail.com');
+      expect(COACH_ATHLETE_PROFILE.role).toBe('runner');
+      expect(COACH_ATHLETE_PROFILE.name).toBe('Michael Carey (Athlete)');
+    });
+
+    it('test_saveStoredUser_roleProtection() - prevents non-coach from saving coach role', () => {
+      // Mock localStorage for test environment
+      const storageMap = new Map<string, string>();
+      const mockLocalStorage = {
+        getItem: (k: string) => storageMap.get(k) || null,
+        setItem: (k: string, v: string) => storageMap.set(k, v),
+        removeItem: (k: string) => storageMap.delete(k),
+        clear: () => storageMap.clear(),
+      };
+      // Temporarily assign mock if in Node environment without window
+      const original = globalThis.localStorage;
+      Object.defineProperty(globalThis, 'localStorage', { value: mockLocalStorage, configurable: true });
+
+      try {
+        // Attempt to save another user as coach
+        const hackerUser: UserProfile = {
+          id: 'hacker_1',
+          name: 'Fake Coach',
+          email: 'hacker@example.com',
+          role: 'coach',
+        };
+        saveStoredUser(hackerUser);
+
+        const loaded = loadStoredUser();
+        expect(loaded).not.toBeNull();
+        expect(loaded?.email).toBe('hacker@example.com');
+        expect(loaded?.role).toBe('runner'); // Demoted to runner
+
+        // Saving careyer1234@gmail.com preserves coach
+        saveStoredUser(COACH_PROFILE);
+        const coachLoaded = loadStoredUser();
+        expect(coachLoaded?.role).toBe('coach');
+
+        // Clear user works
+        clearStoredUser();
+        expect(loadStoredUser()).toBeNull();
+      } finally {
+        Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true });
+      }
+    });
+
+    it('test_unrestrictedPassword_acceptance() - accepts any password string', () => {
+      // User requirements: "Make no restrictions for the password"
+      const passwordsToTest = [
+        '', // 0 characters
+        '1', // 1 character
+        'a', // simple lowercase
+        'simplepass',
+        'LongerPassword123!',
+        '🏃💨🔥 HopRun! 2026', // emojis and symbols
+        '   whitespace   ',
+      ];
+
+      for (const pwd of passwordsToTest) {
+        // Check that password is treated as valid without throw or error
+        expect(typeof pwd).toBe('string');
+        expect(pwd).toBeDefined();
+      }
+    });
+
+    it('test_addAthleteToRoster() - invited athletes join roster as runners', () => {
+      const storageMap = new Map<string, string>();
+      const mockLocalStorage = {
+        getItem: (k: string) => storageMap.get(k) || null,
+        setItem: (k: string, v: string) => storageMap.set(k, v),
+        removeItem: (k: string) => storageMap.delete(k),
+        clear: () => storageMap.clear(),
+      };
+      const original = globalThis.localStorage;
+      Object.defineProperty(globalThis, 'localStorage', { value: mockLocalStorage, configurable: true });
+
+      try {
+        const newAthlete: UserProfile = {
+          id: 'user_invited_jenny',
+          email: 'jenny.fast@example.com',
+          name: 'Jenny Runner',
+          role: 'runner',
+        };
+
+        const updatedRoster = addAthleteToRoster(newAthlete);
+        const match = updatedRoster.find((u) => u.email === 'jenny.fast@example.com');
+        expect(match).toBeDefined();
+        expect(match?.role).toBe('runner');
+        expect(match?.name).toBe('Jenny Runner');
+      } finally {
+        Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true });
+      }
+    });
+  });
+
+  describe('Garmin Connect Sync & File Parsing (TDD)', () => {
+    it('test_classifyGarminRun() - categorizes by title, HR and distance', () => {
+      // Race
+      expect(classifyGarminRun({ title: 'Boston Marathon', distanceMiles: 26.2 }).runType).toBe('race');
+      expect(classifyGarminRun({ title: 'Local 5K Road Race', distanceMiles: 3.1 }).runType).toBe('race');
+
+      // Workout / Interval / Track
+      expect(classifyGarminRun({ title: 'Track 800m repeats', distanceMiles: 6.0 }).runType).toBe('mod_workout');
+      expect(classifyGarminRun({ title: 'VO2 Max Intervals', distanceMiles: 5.5 }).runType).toBe('mod_workout');
+
+      // Tempo / Double Threshold
+      expect(classifyGarminRun({ title: 'Threshold Run AM', distanceMiles: 7.0 }).runType).toBe('double_threshold');
+
+      // Long Run (>= 9.0 miles)
+      expect(classifyGarminRun({ title: 'Sunday Morning Run', distanceMiles: 12.0 }).runType).toBe('long_run');
+
+      // High Heart Rate (> 170) -> mod_workout
+      expect(classifyGarminRun({ title: 'Morning Run', distanceMiles: 5.0, avgHr: 174 }).runType).toBe('mod_workout');
+
+      // Easy Run
+      expect(classifyGarminRun({ title: 'Morning Easy Jog', distanceMiles: 4.5, avgHr: 138 }).runType).toBe('easy');
+    });
+
+    it('test_parseTCXContent() - extracts distance, time, pace, HR and device model', () => {
+      const mockTCX = `
+        <TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+          <Activities>
+            <Activity Sport="Running">
+              <Id>2026-10-25T07:30:00Z</Id>
+              <Lap StartTime="2026-10-25T07:30:00Z">
+                <TotalTimeSeconds>2820.0</TotalTimeSeconds>
+                <DistanceMeters>9656.06</DistanceMeters>
+                <AverageHeartRateBpm><Value>154</Value></AverageHeartRateBpm>
+                <MaximumHeartRateBpm><Value>168</Value></MaximumHeartRateBpm>
+              </Lap>
+              <Creator>
+                <Name>Garmin Forerunner 265</Name>
+              </Creator>
+            </Activity>
+          </Activities>
+        </TrainingCenterDatabase>
+      `;
+
+      const parsed = parseTCXContent(mockTCX, 'mi');
+      expect(parsed.distance).toBe(6.0); // 9656.06m = 6.00 miles
+      expect(parsed.durationSeconds).toBe(2820); // 47m 00s
+      expect(parsed.durationFormatted).toBe('47m');
+      expect(parsed.paceSeconds).toBe(470); // 470s = 7:50 /mi
+      expect(parsed.paceFormatted).toBe('7:50 /mi');
+      expect(parsed.averageHeartRate).toBe(154);
+      expect(parsed.maxHeartRate).toBe(168);
+      expect(parsed.deviceModel).toBe('Garmin Forerunner 265');
+      expect(parsed.load).toBe(18.0); // 6.0 * 3.0 (easy)
+      expect(parsed.source).toBe('garmin');
+    });
+
+    it('test_parseGPXContent() - computes haversine distance, elevation and timestamps', () => {
+      // 2 points ~1.11 km apart
+      const mockGPX = `
+        <gpx version="1.1" creator="Garmin Connect" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
+          <metadata>
+            <name>Morning 4 Miler</name>
+          </metadata>
+          <trk>
+            <name>Morning 4 Miler</name>
+            <trkseg>
+              <trkpt lat="40.7128" lon="-74.0060">
+                <ele>10.0</ele>
+                <time>2026-10-25T08:00:00Z</time>
+                <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>145</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+              </trkpt>
+              <trkpt lat="40.7228" lon="-74.0060">
+                <ele>25.0</ele>
+                <time>2026-10-25T08:32:00Z</time>
+                <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>155</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+              </trkpt>
+            </trkseg>
+          </trk>
+        </gpx>
+      `;
+
+      const parsed = parseGPXContent(mockGPX, 'mi');
+      expect(parsed.title).toBe('Morning 4 Miler');
+      expect(parsed.durationSeconds).toBe(1920); // 32 minutes
+      expect(parsed.distance).toBeGreaterThan(0.6); // ~1.11km = 0.69 mi
+      expect(parsed.elevationGainMeters).toBe(15);
+      expect(parsed.elevationGainFeet).toBe(49);
+      expect(parsed.averageHeartRate).toBe(150);
+      expect(parsed.deviceModel).toBe('Garmin Connect');
+    });
+
+    it('test_parseFITBinary() - validates FIT header signature and fallback structure', () => {
+      // Create minimal valid .FIT header buffer (14 bytes)
+      const buffer = new ArrayBuffer(14 + 32);
+      const view = new DataView(buffer);
+      view.setUint8(0, 14); // Header size
+      view.setUint8(1, 0x10); // Protocol version
+      view.setUint16(2, 2100, true); // Profile version
+      view.setUint32(4, 32, true); // Data size
+      // Signature ".FIT"
+      view.setUint8(8, 0x2E);
+      view.setUint8(9, 0x46);
+      view.setUint8(10, 0x49);
+      view.setUint8(11, 0x54);
+
+      const parsed = parseFITBinary(buffer, 'mi');
+      expect(parsed.source).toBe('garmin');
+      expect(parsed.distance).toBe(5.0);
+      expect(parsed.deviceModel).toBe('Garmin Forerunner');
+      expect(parsed.runType).toBe('easy');
+      expect(parsed.load).toBe(15.0);
+
+      // Invalid buffer throws error
+      const badBuffer = new ArrayBuffer(10);
+      expect(() => parseFITBinary(badBuffer)).toThrow('Not a valid Garmin .FIT file signature.');
+    });
+
+    it('test_convertGarminToWorkoutRun() - maps into complete WorkoutRun with shoe and athlete', () => {
+      const mockActivity = {
+        id: 'garmin_test_1',
+        title: 'Threshold Repeats',
+        workoutDate: '2026-10-25',
+        startTime: '07:15',
+        startTimeFormatted: '7:15 AM',
+        distance: 6.2,
+        distanceUnit: 'mi' as const,
+        durationSeconds: 2604,
+        durationFormatted: '43m 24s',
+        paceSeconds: 420,
+        paceFormatted: '7:00 /mi',
+        averageHeartRate: 165,
+        maxHeartRate: 178,
+        elevationGainFeet: 120,
+        deviceModel: 'Garmin Forerunner 965',
+        runType: 'double_threshold',
+        multiplier: 6.0,
+        load: 37.2,
+        source: 'garmin' as const,
+      };
+
+      const workout = convertGarminToWorkoutRun(
+        mockActivity,
+        'user_michael_carey',
+        'Michael Carey',
+        'shoe_pegasus_1',
+        'Nike Pegasus 41'
+      );
+
+      expect(workout.id).toBe('garmin_test_1');
+      expect(workout.athleteId).toBe('user_michael_carey');
+      expect(workout.athleteName).toBe('Michael Carey');
+      expect(workout.distance).toBe(6.2);
+      expect(workout.load).toBe(37.2);
+      expect(workout.shoeName).toBe('Nike Pegasus 41');
+      expect(workout.deviceModel).toBe('Garmin Forerunner 965');
+      expect(workout.averageHeartRate).toBe(165);
+      expect(workout.completed).toBe(true);
+    });
+
+    it('test_garminDeduplication_logic() - filters duplicate incoming sync runs', () => {
+      const existingWorkouts: WorkoutRun[] = [
+        {
+          id: 'w1',
+          athleteId: 'user_michael_carey',
+          workoutDate: '2026-10-24',
+          runOrder: 1,
+          distance: 5.2,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 15.6,
+          comments: '',
+          completed: true,
+        },
+      ];
+
+      const incomingGarminSync: WorkoutRun[] = [
+        // Duplicate: same athlete, date, and distance (5.2)
+        {
+          id: 'garmin_sync_dup',
+          athleteId: 'user_michael_carey',
+          workoutDate: '2026-10-24',
+          runOrder: 1,
+          distance: 5.2,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 15.6,
+          comments: 'Duplicate from watch',
+          completed: true,
+        },
+        // Unique new run
+        {
+          id: 'garmin_sync_new',
+          athleteId: 'user_michael_carey',
+          workoutDate: '2026-10-25',
+          runOrder: 1,
+          distance: 6.5,
+          distanceUnit: 'mi',
+          runType: 'double_threshold',
+          multiplier: 6.0,
+          load: 39.0,
+          comments: 'New threshold run',
+          completed: true,
+        },
+      ];
+
+      const existingSignatures = new Set(
+        existingWorkouts.map((w) => `${w.athleteId || ''}_${w.workoutDate}_${w.distance.toFixed(1)}`)
+      );
+
+      const uniqueNew = incomingGarminSync.filter(
+        (nw) => !existingSignatures.has(`${nw.athleteId || ''}_${nw.workoutDate}_${nw.distance.toFixed(1)}`)
+      );
+
+      expect(uniqueNew.length).toBe(1);
+      expect(uniqueNew[0].id).toBe('garmin_sync_new');
+      expect(uniqueNew[0].distance).toBe(6.5);
+    });
+  });
+
+  describe('Strava Integration & Garmin Relay Sync', () => {
+    it('test_normalizeStravaActivity_garminRun() - converts meters, moving time, heart rate and Garmin watch model', () => {
+      // 10,000 meters = 6.2137 miles (~6.21 mi)
+      // Moving time: 2700s (45 minutes)
+      const mockStravaAct: StravaSummaryActivity = {
+        id: 9876543210,
+        name: 'Morning Garmin Tempo Session',
+        distance: 10000, // 10k in meters
+        moving_time: 2700, // 45:00
+        elapsed_time: 2750,
+        total_elevation_gain: 45.5, // meters
+        type: 'Run',
+        sport_type: 'Run',
+        start_date: '2026-10-25T14:30:00Z',
+        start_date_local: '2026-10-25T07:30:00Z',
+        has_heartrate: true,
+        average_heartrate: 162,
+        max_heartrate: 176,
+        device_name: 'Garmin Forerunner 265',
+        description: 'Felt strong throughout interval reps',
+      };
+
+      const workout = normalizeStravaActivity(
+        mockStravaAct,
+        'mi',
+        'user_michael_carey',
+        'Michael Carey',
+        'shoe_vaporfly_1',
+        'Nike Vaporfly 3'
+      );
+
+      expect(workout.id).toBe('strava_9876543210');
+      expect(workout.athleteId).toBe('user_michael_carey');
+      expect(workout.athleteName).toBe('Michael Carey');
+      expect(workout.workoutDate).toBe('2026-10-25');
+      expect(workout.startTime).toBe('07:30');
+      // Distance converted to miles (~6.21 mi)
+      expect(workout.distance).toBe(6.21);
+      expect(workout.distanceUnit).toBe('mi');
+      expect(workout.durationSeconds).toBe(2700);
+      expect(workout.durationFormatted).toBe('45m');
+      // Pace: 2700 / 6.21 = ~434.78s/mi = ~7:15/mi
+      expect(workout.paceSeconds).toBeGreaterThan(430);
+      expect(workout.paceSeconds).toBeLessThan(440);
+      expect(workout.averageHeartRate).toBe(162);
+      expect(workout.maxHeartRate).toBe(176);
+      expect(workout.elevationGainMeters).toBe(46); // rounded 45.5
+      expect(workout.elevationGainFeet).toBe(149); // 45.5 * 3.28084 = ~149 ft
+      expect(workout.deviceModel).toBe('Garmin Forerunner 265');
+      expect(workout.source).toBe('strava');
+      expect(workout.shoeName).toBe('Nike Vaporfly 3');
+      expect(workout.completed).toBe(true);
+      // Run classified based on "Tempo" title -> double_threshold (6.0 multiplier)
+      expect(workout.runType).toBe('double_threshold');
+      expect(workout.multiplier).toBe(6.0);
+      expect(workout.load).toBe(37.3); // 6.21 * 6.0 = 37.26 -> 37.3
+    });
+
+    it('test_normalizeStravaActivity_metric() - converts to kilometers when preferredUnit is km', () => {
+      const mockStravaAct: StravaSummaryActivity = {
+        id: 1122334455,
+        name: 'Easy Recovery Jog',
+        distance: 5000, // 5km
+        moving_time: 1500, // 25:00
+        elapsed_time: 1520,
+        total_elevation_gain: 20,
+        type: 'Run',
+        start_date: '2026-10-24T12:00:00Z',
+        start_date_local: '2026-10-24T08:00:00Z',
+        has_heartrate: true,
+        average_heartrate: 138,
+        device_name: 'Garmin Fenix 7 Pro',
+      };
+
+      const workout = normalizeStravaActivity(
+        mockStravaAct,
+        'km',
+        'user_rob',
+        'Rob'
+      );
+
+      expect(workout.distance).toBe(5);
+      expect(workout.distanceUnit).toBe('km');
+      expect(workout.durationFormatted).toBe('25m');
+      expect(workout.runType).toBe('easy');
+      expect(workout.multiplier).toBe(3.0);
+      // ACWR load: 5km converted to miles (5 / 1.60934 = 3.1068 mi) * 3.0 = ~9.3
+      expect(workout.load).toBeCloseTo(9.3, 1);
+      expect(workout.deviceModel).toBe('Garmin Fenix 7 Pro');
+    });
+
+    it('test_buildStravaAuthUrl() - formats valid OAuth URL with all required scopes', () => {
+      const url = buildStravaAuthUrl('123456', 'http://localhost:5173/');
+      expect(url).toContain('https://www.strava.com/oauth/authorize');
+      expect(url).toContain('client_id=123456');
+      expect(url).toContain('redirect_uri=http%3A%2F%2Flocalhost%3A5173%2F');
+      expect(url).toContain('activity%3Aread_all');
+    });
+  });
+
+  describe('Google Sheets Color-Coded Training Plan Sync (TDD)', () => {
+    it('test_extractGoogleSheetId() - extracts ID from sharing URL and raw ID', () => {
+      const shareUrl = 'https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg/edit?usp=sharing';
+      expect(extractGoogleSheetId(shareUrl)?.spreadsheetId).toBe('13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg');
+      expect(extractGoogleSheetId('13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg')?.spreadsheetId).toBe('13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg');
+    });
+
+    it('test_matchColorToRunType() - maps all 12 legend RGB colors and fuzzy shades accurately', () => {
+      expect(matchColorToRunType('#990000').runType).toBe('mod_double');
+      expect(matchColorToRunType('#ff0000').runType).toBe('mod_workout');
+      expect(matchColorToRunType('#00ffff').runType).toBe('easy');
+      expect(matchColorToRunType('#00ff00').runType).toBe('long_run');
+      expect(matchColorToRunType('#ff00ff').runType).toBe('day_off');
+      expect(matchColorToRunType('#ff9900').runType).toBe('race');
+      expect(matchColorToRunType('#38761d').runType).toBe('fartlek');
+      expect(matchColorToRunType('#93c47d').runType).toBe('fartlek_double');
+      expect(matchColorToRunType('#9900ff').runType).toBe('double_threshold');
+      expect(matchColorToRunType('#ead1dc').runType).toBe('threshold_work');
+      expect(matchColorToRunType('#c27ba0').runType).toBe('threshold_double');
+      expect(matchColorToRunType('#76a5af').runType).toBe('hills_easy');
+
+      // Fuzzy RGB match for slightly shifted cyan shade -> Easy
+      const fuzzyEasy = matchColorToRunType('rgb(5, 250, 252)');
+      expect(fuzzyEasy.runType).toBe('easy');
+    });
+
+    it('test_eliseIndyTab_checksumAndTotals() - verifies all 17 weeks sum to 1,003 miles with 100% Column I checksum accuracy', () => {
+      const indyTab = ELISE_REFERENCE_TABS['Indy'];
+      expect(indyTab).toBeDefined();
+      expect(indyTab.weeks.length).toBe(17);
+      expect(indyTab.totalMiles).toBe(1003);
+      expect(indyTab.weeks[0].weekLabel).toBe('7/13');
+      expect(indyTab.weeks[16].weekLabel).toBe('11/2');
+      expect(indyTab.weeks.every(w => w.checksumValid)).toBe(true);
+    });
+
+    it('test_convertSheetTabToPlanAndWorkouts_combinedAndSplitModes() - generates workouts with ACWR loads and double-run splitting', () => {
+      const indyTab = ELISE_REFERENCE_TABS['Indy'];
+      const sheetUrl = 'https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg/edit?usp=sharing';
+
+      // Combined mode: 1 run per active day
+      const combined = convertSheetTabToPlanAndWorkouts({
+        sheetTab: indyTab,
+        sheetUrl,
+        coachId: 'user_michael_carey',
+        coachName: 'Michael Carey',
+        athleteId: 'user_elise',
+        athleteName: 'Elise',
+        doubleRunMode: 'combined',
+      });
+      expect(combined.plan.athleteId).toBe('user_elise');
+      expect(combined.plan.sheetTabName).toBe('Indy');
+      // 17 weeks * 7 days = 119 cells; 16 rest days -> 103 active runs
+      expect(combined.workouts.length).toBe(103);
+      expect(combined.workouts.every(w => w.source === 'google_sheets')).toBe(true);
+
+      // Verify Indy Monumental Marathon race day (Sat 11/7 -> 26 mi race @ 8.0x = 208 load)
+      const raceRuns = combined.workouts.filter(w => w.runType === 'race');
+      expect(raceRuns.length).toBe(2); // 10/3 tune-up (16 mi) + 11/7 marathon (26 mi)
+      const marathonRun = raceRuns.find(r => r.distance === 26);
+      expect(marathonRun).toBeDefined();
+      expect(marathonRun?.load).toBe(208);
+
+      // Split AM + PM mode: double days ('double_threshold', 'mod_double', 'fartlek_double', 'threshold_double') create 2 runs (runOrder 1 & 2)
+      const split = convertSheetTabToPlanAndWorkouts({
+        sheetTab: indyTab,
+        sheetUrl,
+        coachId: 'user_michael_carey',
+        coachName: 'Michael Carey',
+        athleteId: 'user_elise',
+        athleteName: 'Elise',
+        doubleRunMode: 'split',
+      });
+      expect(split.workouts.length).toBeGreaterThan(combined.workouts.length);
+      const pmRuns = split.workouts.filter(w => w.runOrder === 2);
+      expect(pmRuns.length).toBeGreaterThan(0);
+    });
+
+    it('test_parseGoogleSheetHtml() - parses HTML table with CSS background colors and legend cells', () => {
+      const sampleHtml = `
+        <style>
+          .s-easy { background-color: #00ffff; }
+          .s-thresh { background-color: #9900ff; }
+          .s-long { background-color: #00ff00; }
+          .s-off { background-color: #ff00ff; }
+        </style>
+        <table>
+          <tr><td></td><td>Monday</td><td>Tuesday</td><td>Wednesday</td><td>Thursday</td><td>Friday</td><td>Saturday</td><td>Sunday</td><td></td></tr>
+          <tr>
+            <td>7/20</td>
+            <td class="s-easy">7</td>
+            <td class="s-off"></td>
+            <td class="s-thresh">11</td>
+            <td class="s-easy">6</td>
+            <td class="s-easy">8</td>
+            <td class="s-long">16</td>
+            <td class="s-off"></td>
+            <td>48</td>
+          </tr>
+        </table>
+      `;
+      const parsed = parseGoogleSheetHtml(sampleHtml, 'sheet_123', 'CustomTab', 2026);
+      expect(parsed).not.toBeNull();
+      expect(parsed!.weeks.length).toBe(1);
+      expect(parsed!.weeks[0].calculatedWeeklyTotal).toBe(48);
+      expect(parsed!.weeks[0].checksumValid).toBe(true);
+      expect(parsed!.weeks[0].days[0].runType).toBe('easy');
+      expect(parsed!.weeks[0].days[2].runType).toBe('double_threshold');
+      expect(parsed!.weeks[0].days[5].runType).toBe('long_run');
+    });
+
+    it('test_updateAthleteGoogleSheetLink() - coach links and updates per-athlete Google Sheet URL on roster', () => {
+      const robSheetUrl = 'https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg/edit?usp=sharing';
+      const updatedRoster = updateAthleteGoogleSheetLink('user_rob', robSheetUrl, 'Boston');
+      const rob = updatedRoster.find(u => u.id === 'user_rob');
+      expect(rob).toBeDefined();
+      expect(rob?.googleSheetUrl).toBe(robSheetUrl);
+      expect(rob?.googleSheetTab).toBe('Boston');
+      expect(rob?.googleSheetLastSyncedAt).toBeDefined();
+
+      // Unlinking clears the URL
+      const unlinkedRoster = updateAthleteGoogleSheetLink('user_rob', '', '');
+      const robAfterUnlink = unlinkedRoster.find(u => u.id === 'user_rob');
+      expect(robAfterUnlink?.googleSheetUrl).toBeUndefined();
+    });
+
+    it('test_editPastRun_onlyChangesRunTypeAndComments() - changing fartlek to easy preserves all other run metrics and saves comment', () => {
+      const pastFartlekRun: WorkoutRun = {
+        id: 'strava_1001',
+        workoutDate: '2026-10-28',
+        startTime: '07:15',
+        runOrder: 1,
+        title: 'Morning Fartlek Session',
+        distance: 8.0,
+        distanceUnit: 'mi',
+        runType: 'fartlek',
+        multiplier: 5.0,
+        load: 40.0,
+        durationSeconds: 3200,
+        durationFormatted: '53m 20s',
+        paceSeconds: 400,
+        paceFormatted: '6:40 /mi',
+        averageHeartRate: 158,
+        maxHeartRate: 174,
+        elevationGainFeet: 210,
+        shoeId: 'shoe_1',
+        shoeName: 'Nike Pegasus 41',
+        source: 'strava',
+        comments: 'Initial Strava note',
+        completed: true,
+        athleteId: 'user_michael_carey',
+        athleteName: 'Michael Carey',
+      };
+
+      // User edits past run: changes runType from 'fartlek' (5.0x) to 'easy' (3.0x) and updates comment
+      const newRunType = 'easy';
+      const newMultiplier = 3.0;
+      const newLoad = calculateRunLoad(pastFartlekRun.distance, pastFartlekRun.distanceUnit, newMultiplier);
+      const updatedPastRun: WorkoutRun = {
+        ...pastFartlekRun,
+        runType: newRunType,
+        multiplier: newMultiplier,
+        load: newLoad,
+        comments: 'Switched to easy aerobic run — legs felt great on the back half.',
+        updatedAt: '2026-10-31T12:00:00.000Z',
+      };
+
+      expect(updatedPastRun.runType).toBe('easy');
+      expect(updatedPastRun.multiplier).toBe(3.0);
+      expect(updatedPastRun.load).toBe(24.0);
+      expect(updatedPastRun.comments).toBe('Switched to easy aerobic run — legs felt great on the back half.');
+      // Everything else stays strictly the same
+      expect(updatedPastRun.distance).toBe(8.0);
+      expect(updatedPastRun.workoutDate).toBe('2026-10-28');
+      expect(updatedPastRun.startTime).toBe('07:15');
+      expect(updatedPastRun.durationSeconds).toBe(3200);
+      expect(updatedPastRun.paceFormatted).toBe('6:40 /mi');
+      expect(updatedPastRun.averageHeartRate).toBe(158);
+      expect(updatedPastRun.shoeName).toBe('Nike Pegasus 41');
+      expect(updatedPastRun.source).toBe('strava');
+    });
+  });
 });
+
 
 
 

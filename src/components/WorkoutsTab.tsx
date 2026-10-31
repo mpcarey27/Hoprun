@@ -26,6 +26,8 @@ interface Props {
   onToggleComplete?: (run: WorkoutRun) => void;
   weeklyMileageTarget?: number;
   activeWeekStartDate?: string;
+  onOpenStravaConnect?: () => void;
+  stravaConnected?: boolean;
 }
 
 export const WorkoutsTab: React.FC<Props> = ({
@@ -39,6 +41,8 @@ export const WorkoutsTab: React.FC<Props> = ({
   onToggleComplete,
   weeklyMileageTarget,
   activeWeekStartDate,
+  onOpenStravaConnect,
+  stravaConnected = false,
 }) => {
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -215,6 +219,38 @@ export const WorkoutsTab: React.FC<Props> = ({
         </div>
       </div>
 
+      {/* Strava 1-Click Connect Banner */}
+      {!stravaConnected && onOpenStravaConnect && (
+        <div className="strava-hero-banner mb-4 p-3.5 rounded-2xl bg-surface border border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in">
+          <div className="flex items-center gap-3">
+            <div className="strava-badge-icon-box">
+              <svg viewBox="0 0 24 24" fill="#FC4C02" style={{ width: '22px', height: '22px' }} aria-hidden="true">
+                <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7.01 13.828h4.172" />
+              </svg>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <strong className="text-xs font-bold text-primary">Sync Your Runs via Strava</strong>
+                <span className="badge-strava font-mono text-xxs font-bold">STRAVA SYNC</span>
+              </div>
+              <p className="text-xxs text-secondary leading-normal">
+                Connect your Strava account to automatically sync your runs, pace, distance &amp; heart rate.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              type="button"
+              className="btn-strava-banner-cta font-mono text-xs font-bold whitespace-nowrap"
+              onClick={onOpenStravaConnect}
+              title="Connect your Strava account"
+            >
+              Connect Strava →
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Activities Feed */}
       <div className="activity-feed">
         {filtered.length === 0 ? (
@@ -357,6 +393,45 @@ export const WorkoutsTab: React.FC<Props> = ({
                             👟 {w.shoeName}
                           </span>
                         )}
+
+                        {/* Strava, Garmin & Google Sheets Device & Telemetry Badges */}
+                        {w.source === 'google_sheets' && (
+                          <span
+                            className="text-xxs font-mono whitespace-nowrap"
+                            style={{
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '6px',
+                              background: 'rgba(16, 185, 129, 0.14)',
+                              color: '#34d399',
+                              border: '1px solid rgba(16, 185, 129, 0.35)',
+                              fontWeight: 700,
+                            }}
+                            title="Synced from Color-Coded Google Sheet"
+                          >
+                            📊 SHEET PLAN
+                          </span>
+                        )}
+
+                        {w.source === 'strava' && (
+                          <span className="badge-strava text-xxs font-mono whitespace-nowrap" title="Synced from Strava">
+                            🟠 STRAVA
+                          </span>
+                        )}
+
+                        {w.averageHeartRate && (
+                          <span
+                            className="badge-hr text-xxs font-mono whitespace-nowrap"
+                            title={w.maxHeartRate ? `Avg: ${w.averageHeartRate} bpm, Max: ${w.maxHeartRate} bpm` : `${w.averageHeartRate} bpm avg`}
+                          >
+                            ❤️ {w.averageHeartRate} BPM
+                          </span>
+                        )}
+
+                        {w.elevationGainFeet !== undefined && w.elevationGainFeet > 0 && (
+                          <span className="badge-elevation text-xxs font-mono whitespace-nowrap" title={`${w.elevationGainFeet} ft elevation gain`}>
+                            ⛰️ +{w.elevationGainFeet} FT
+                          </span>
+                        )}
                       </div>
 
                       <div className="activity-actions">
@@ -370,9 +445,9 @@ export const WorkoutsTab: React.FC<Props> = ({
                               onEditWorkoutDate(w.workoutDate);
                             }
                           }}
-                          title="Edit this run individually in pop-up menu"
+                          title="Change run type or add/read comments on this run"
                         >
-                          Edit ✎
+                          Edit Type / Comment ✎
                         </button>
                         <button
                           type="button"
@@ -418,6 +493,16 @@ export const WorkoutsTab: React.FC<Props> = ({
                         </div>
                       )}
 
+                      {w.averageHeartRate && (
+                        <div className="activity-stat">
+                          <span className="activity-stat-label">Avg HR</span>
+                          <span className="activity-stat-val font-mono text-danger whitespace-nowrap">
+                            {w.averageHeartRate}{' '}
+                            <span className="activity-stat-unit text-xs text-muted font-normal">BPM</span>
+                          </span>
+                        </div>
+                      )}
+
                       <div className="activity-stat">
                         <span className="activity-stat-label">Workload</span>
                         <span className="activity-stat-val font-mono text-primary font-bold whitespace-nowrap">
@@ -437,13 +522,37 @@ export const WorkoutsTab: React.FC<Props> = ({
                       </div>
                     </div>
 
-                    {/* Runner Comments / Notes Box */}
-                    {w.comments && (
-                      <div className="activity-notes-box">
+                    {/* Runner Comments / Notes Section (Click to Read or Edit) */}
+                    {w.comments ? (
+                      <div
+                        className="activity-notes-box cursor-pointer"
+                        onClick={() => onEditRun && onEditRun(w)}
+                        title="Click to edit comment or run type"
+                      >
                         <svg className="notes-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                         </svg>
-                        <p className="activity-notes-text">{w.comments}</p>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <span className="text-xxs font-mono uppercase text-accent font-bold">
+                              Run Comment
+                            </span>
+                            <span className="text-xxs font-mono text-muted">
+                              Edit Comment ✎
+                            </span>
+                          </div>
+                          <p className="activity-notes-text">{w.comments}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          className="text-xxs font-mono text-muted hover:text-accent transition-colors"
+                          onClick={() => onEditRun && onEditRun(w)}
+                        >
+                          💬 + Add a comment to this run...
+                        </button>
                       </div>
                     )}
                   </div>

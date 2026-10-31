@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import type {
   TrainingPlan,
@@ -20,7 +20,25 @@ import {
   getPlanWeeksCount,
   getPlanWeekChunk,
 } from '../utils/planShare';
-import { ROSTER_USERS } from '../utils/storage';
+import {
+  loadStoredRoster,
+  isCoachEmail,
+  updateAthleteGoogleSheetLink,
+} from '../utils/storage';
+import {
+  SHEET_COLOR_LEGEND,
+  ELISE_REFERENCE_TABS,
+  fetchAndParseGoogleSheet,
+  parseGoogleSheetHtml,
+  convertSheetTabToPlanAndWorkouts,
+} from '../utils/googleSheetsParser';
+import type {
+  ParsedSheetTab,
+  DoubleRunSplitMode,
+} from '../utils/googleSheetsParser';
+
+const DEFAULT_ELISE_SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg/edit?usp=sharing';
 
 interface Props {
   isOpen: boolean;
@@ -31,6 +49,8 @@ interface Props {
   distanceUnit: DistanceUnit;
   onOpenAsAthlete: (plan: TrainingPlan) => void;
   onAssignRuns?: (newRuns: WorkoutRun[], notificationText: string) => void;
+  initialAthleteId?: string;
+  onRosterUpdated?: (roster: UserProfile[]) => void;
 }
 
 export const AdminPlanModal: React.FC<Props> = ({
@@ -42,18 +62,102 @@ export const AdminPlanModal: React.FC<Props> = ({
   distanceUnit,
   onOpenAsAthlete,
   onAssignRuns,
+  initialAthleteId,
+  onRosterUpdated,
 }) => {
-  const isCoach = currentUser.role === 'coach';
+  // Strictly Coach-Only: only careyer1234@gmail.com in 'coach' role may integrate Google Sheets or manage plans
+  const isCoach = currentUser.role === 'coach' && isCoachEmail(currentUser.email);
+  const [rosterUsers, setRosterUsers] = useState<UserProfile[]>(() => loadStoredRoster());
+
+  // Refresh roster when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setRosterUsers(loadStoredRoster());
+    }
+  }, [isOpen]);
+
+  // Filter selectable profiles to Athletes on the roster (excluding the Coach admin card itself)
+  const athleteRoster = useMemo(() => {
+    const runners = rosterUsers.filter((u) => u.role === 'runner');
+    return runners.length > 0 ? runners : rosterUsers;
+  }, [rosterUsers]);
 
   // Target Athlete Selection State
   const [targetAthleteId, setTargetAthleteId] = useState<string>(() => {
-    const rob = ROSTER_USERS.find((u) => u.name.toLowerCase().includes('rob'));
-    return rob ? rob.id : currentUser.id;
+    const list = loadStoredRoster().filter((u) => u.role === 'runner');
+    if (initialAthleteId && list.some((u) => u.id === initialAthleteId)) {
+      return initialAthleteId;
+    }
+    const elise = list.find((u) => u.name.toLowerCase().includes('elise'));
+    if (elise) return elise.id;
+    return list[0]?.id || currentUser.id;
   });
 
   const targetAthlete = useMemo(() => {
-    return ROSTER_USERS.find((u) => u.id === targetAthleteId) || currentUser;
-  }, [targetAthleteId, currentUser]);
+    return (
+      athleteRoster.find((u) => u.id === targetAthleteId) ||
+      athleteRoster[0] ||
+      currentUser
+    );
+  }, [athleteRoster, targetAthleteId, currentUser]);
+
+  // Mode Switcher: 'sheets' (Coach Google Sheets Integration) vs 'manual' (Manual Builder)
+  const [builderMode, setBuilderMode] = useState<'sheets' | 'manual'>('sheets');
+  const [sheetUrl, setSheetUrl] = useState<string>(
+    () => targetAthlete?.googleSheetUrl || ''
+  );
+  const [sheetTabName, setSheetTabName] = useState<string>(
+    () => targetAthlete?.googleSheetTab || 'Indy'
+  );
+  const [availableSheetTabs, setAvailableSheetTabs] = useState<string[]>([
+    'CIM',
+    'Boston',
+    'Indy',
+  ]);
+  const [parsedSheetTab, setParsedSheetTab] = useState<ParsedSheetTab | null>(() =>
+    targetAthlete?.googleSheetUrl ? ELISE_REFERENCE_TABS[targetAthlete.googleSheetTab || 'Indy'] || ELISE_REFERENCE_TABS['Indy'] : null
+  );
+  const [doubleRunMode, setDoubleRunMode] = useState<DoubleRunSplitMode>('combined');
+  const [isSyncingSheet, setIsSyncingSheet] = useState<boolean>(false);
+  const [sheetError, setSheetError] = useState<string>('');
+  const sheetFileInputRef = useRef<HTMLInputElement>(null);
+
+  // When Coach selects a different athlete, load that athlete's corresponding Google Sheet link
+  const handleSelectAthlete = async (athlete: UserProfile) => {
+    setTargetAthleteId(athlete.id);
+    setSheetError('');
+    setAssignDirectSuccess('');
+    const savedUrl = athlete.googleSheetUrl || '';
+    const savedTab = athlete.googleSheetTab || 'Indy';
+    setSheetUrl(savedUrl);
+    setSheetTabName(savedTab);
+
+    if (savedUrl) {
+      setIsSyncingSheet(true);
+      try {
+        const result = await fetchAndParseGoogleSheet(savedUrl, savedTab, 2026);
+        setParsedSheetTab(result.activeTab);
+        setAvailableSheetTabs(result.availableTabs);
+        setSheetTabName(result.activeTab.tabName);
+      } catch {
+        setParsedSheetTab(ELISE_REFERENCE_TABS[savedTab] || ELISE_REFERENCE_TABS['Indy']);
+      } finally {
+        setIsSyncingSheet(false);
+      }
+    } else {
+      setParsedSheetTab(null);
+    }
+  };
+
+  // Sync initialAthleteId when opened from Coach Roster bar for a specific filtered athlete
+  useEffect(() => {
+    if (isOpen && initialAthleteId && initialAthleteId !== 'all') {
+      const found = athleteRoster.find((u) => u.id === initialAthleteId);
+      if (found) {
+        handleSelectAthlete(found);
+      }
+    }
+  }, [isOpen, initialAthleteId]);
 
   const [assignDirectSuccess, setAssignDirectSuccess] = useState<string>('');
 
@@ -254,7 +358,187 @@ export const AdminPlanModal: React.FC<Props> = ({
     setTimeout(() => setAssignDirectSuccess(''), 3500);
   };
 
+  // Google Sheets Sync Handlers (Coach-Only)
+  const handleSyncGoogleSheet = async (
+    tabToFetch: string = sheetTabName,
+    urlOverride?: string
+  ) => {
+    if (!isCoach) return;
+    const urlToSync = (urlOverride !== undefined ? urlOverride : sheetUrl).trim();
+    if (!urlToSync) {
+      setSheetError(`Please paste or upload ${targetAthlete.name}'s Google Sheet link first.`);
+      return;
+    }
+
+    setSheetError('');
+    setIsSyncingSheet(true);
+    try {
+      const result = await fetchAndParseGoogleSheet(urlToSync, tabToFetch, 2026);
+      setParsedSheetTab(result.activeTab);
+      setAvailableSheetTabs(result.availableTabs);
+      setSheetTabName(result.activeTab.tabName);
+
+      // Save the Google Sheet URL & active tab directly onto the selected athlete's profile
+      const updatedRoster = updateAthleteGoogleSheetLink(
+        targetAthlete.id,
+        urlToSync,
+        result.activeTab.tabName
+      );
+      setRosterUsers(updatedRoster);
+      onRosterUpdated?.(updatedRoster);
+
+      setAssignDirectSuccess(
+        `✓ Linked & synced "${result.activeTab.title}" (${result.activeTab.weeks.length} weeks, ${result.activeTab.totalMiles} total miles) for ${targetAthlete.name}!`
+      );
+      setTimeout(() => setAssignDirectSuccess(''), 4000);
+    } catch (err: any) {
+      setSheetError(err.message || 'Failed to parse Google Sheet.');
+    } finally {
+      setIsSyncingSheet(false);
+    }
+  };
+
+  // Coach File Upload Handler for exported Google Sheet (.html)
+  const handleSheetFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isCoach) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSheetError('');
+    setIsSyncingSheet(true);
+    try {
+      const htmlText = await file.text();
+      const customTabName = file.name.replace(/\.(html|htm)$/i, '') || 'UploadedSheet';
+      const parsed = parseGoogleSheetHtml(
+        htmlText,
+        `file_${targetAthlete.id}`,
+        customTabName,
+        2026
+      );
+      if (!parsed || parsed.weeks.length === 0) {
+        throw new Error(
+          'No weekly schedule rows (Monday dates + daily mileage) found in the uploaded file.'
+        );
+      }
+      const pseudoUrl = sheetUrl.trim() || `uploaded://${file.name}`;
+      setSheetUrl(pseudoUrl);
+      setParsedSheetTab(parsed);
+      setAvailableSheetTabs([parsed.tabName]);
+      setSheetTabName(parsed.tabName);
+
+      const updatedRoster = updateAthleteGoogleSheetLink(
+        targetAthlete.id,
+        pseudoUrl,
+        parsed.tabName
+      );
+      setRosterUsers(updatedRoster);
+      onRosterUpdated?.(updatedRoster);
+
+      setAssignDirectSuccess(
+        `✓ Uploaded & parsed "${file.name}" (${parsed.weeks.length} weeks, ${parsed.totalMiles} miles) for ${targetAthlete.name}!`
+      );
+      setTimeout(() => setAssignDirectSuccess(''), 4000);
+    } catch (err: any) {
+      setSheetError(err.message || 'Could not parse uploaded Google Sheet file.');
+    } finally {
+      setIsSyncingSheet(false);
+      if (sheetFileInputRef.current) sheetFileInputRef.current.value = '';
+    }
+  };
+
+  const handleUnlinkAthleteSheet = () => {
+    if (!isCoach) return;
+    const updatedRoster = updateAthleteGoogleSheetLink(targetAthlete.id, '', '');
+    setRosterUsers(updatedRoster);
+    onRosterUpdated?.(updatedRoster);
+    setSheetUrl('');
+    setParsedSheetTab(null);
+    setAssignDirectSuccess(`Removed Google Sheet link for ${targetAthlete.name}.`);
+    setTimeout(() => setAssignDirectSuccess(''), 3000);
+  };
+
+  const handleLoadSheetIntoBuilder = () => {
+    if (!isCoach || !parsedSheetTab) return;
+    const { plan } = convertSheetTabToPlanAndWorkouts({
+      sheetTab: parsedSheetTab,
+      sheetUrl,
+      coachId: currentUser.id,
+      coachName: currentUser.name,
+      athleteId: targetAthlete.id,
+      athleteName: targetAthlete.name,
+      distanceUnit,
+      doubleRunMode,
+    });
+    setActivePlan(plan);
+    setWeeksCount(plan.weeksCount || parsedSheetTab.weeks.length);
+    setActiveWeekTab(0);
+    setBuilderMode('manual');
+    setAssignDirectSuccess(
+      `✓ Loaded ${parsedSheetTab.weeks.length}-week "${parsedSheetTab.tabName}" block for ${targetAthlete.name} into Manual Plan Builder!`
+    );
+    setTimeout(() => setAssignDirectSuccess(''), 3500);
+  };
+
+  const handleAssignGoogleSheetDirectly = () => {
+    if (!isCoach || !onAssignRuns || !parsedSheetTab) return;
+    const { plan, workouts: sheetWorkouts } = convertSheetTabToPlanAndWorkouts({
+      sheetTab: parsedSheetTab,
+      sheetUrl,
+      coachId: currentUser.id,
+      coachName: currentUser.name,
+      athleteId: targetAthlete.id,
+      athleteName: targetAthlete.name,
+      distanceUnit,
+      doubleRunMode,
+    });
+
+    const notifMsg = `Coach ${currentUser.name || 'Michael Carey'} synced & assigned "${plan.title}" (${sheetWorkouts.length} color-coded workouts across ${parsedSheetTab.weeks.length} weeks, ${parsedSheetTab.totalMiles} mi) from Google Sheets to ${targetAthlete.name}'s schedule!`;
+    onAssignRuns(sheetWorkouts, notifMsg);
+    onSavePlan(plan);
+    setActivePlan(plan);
+    setWeeksCount(plan.weeksCount || parsedSheetTab.weeks.length);
+    setAssignDirectSuccess(
+      `✓ Assigned ${sheetWorkouts.length} workouts (${parsedSheetTab.weeks.length} weeks, ${parsedSheetTab.totalMiles} miles) from "${parsedSheetTab.tabName}" Google Sheet to ${targetAthlete.name}!`
+    );
+    setTimeout(() => setAssignDirectSuccess(''), 4500);
+  };
+
   if (!isOpen) return null;
+
+  // Strictly block non-coach accounts from accessing the Google Sheet Integration & Plan Builder
+  if (!isCoach) {
+    return (
+      <div className="modal-backdrop">
+        <div className="modal-card">
+          <div className="modal-header">
+            <div>
+              <span className="text-xxs uppercase tracking-wider text-danger font-mono font-bold">
+                Coach Only
+              </span>
+              <h2 className="modal-title">Coach Access Required</h2>
+            </div>
+            <button type="button" className="btn-modal-close" onClick={onClose}>
+              ✕
+            </button>
+          </div>
+          <div className="modal-body">
+            <div className="inweek-banner inweek-critical">
+              <p className="text-sm font-bold text-danger mb-1">
+                🔒 Google Sheet Integration is Restricted to Coaches
+              </p>
+              <p className="text-xs text-secondary">
+                Only Coach Michael Carey (<code>careyer1234@gmail.com</code> in Coach mode) can select athletes and link or sync their Google Sheets training plans.
+              </p>
+            </div>
+          </div>
+          <div className="modal-footer flex justify-end">
+            <button type="button" className="btn-modal-cancel" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-backdrop">
@@ -262,8 +546,12 @@ export const AdminPlanModal: React.FC<Props> = ({
         <div className="modal-header">
           <div className="flex items-center gap-3">
             <div>
-              <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">Coach</span>
-              <h2 className="modal-title">Training Plan Builder</h2>
+              <span className="text-xxs uppercase tracking-wider text-accent font-mono font-bold">
+                Coach Only • Athlete Google Sheets Integration
+              </span>
+              <h2 className="modal-title">
+                Select Athlete &amp; Link Google Sheet Plan
+              </h2>
             </div>
           </div>
           <button type="button" className="btn-modal-close" onClick={onClose}>✕</button>
@@ -278,39 +566,48 @@ export const AdminPlanModal: React.FC<Props> = ({
             </div>
           )}
 
-          {!isCoach && (
-            <div className="inweek-banner inweek-critical mb-3">
-              <p className="text-sm font-bold text-danger mb-1">
-                ⚠️ Coach Access Required
-              </p>
-              <p className="text-xs text-secondary">
-                Only coaches can assign training plans. You are currently logged in as <strong>{currentUser.name}</strong> ({currentUser.role}).
-              </p>
+          {sheetError && (
+            <div className="inweek-ribbon inweek-ribbon-critical mb-3">
+              <span className="font-mono text-xs font-bold text-danger">
+                {sheetError}
+              </span>
             </div>
           )}
 
-          {/* Target Athlete Selection for the Training Plan */}
-          <div className="mb-3 p-3 rounded" style={{ backgroundColor: 'var(--bg-surface-elevated)', border: '1px solid var(--border-subtle)' }}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xxs uppercase font-mono font-bold text-accent">
-                Athlete
-              </span>
-              <span className="text-xxs font-mono text-primary font-bold">
-                For: {targetAthlete.name} ({targetAthlete.role === 'coach' ? 'Coach' : 'Athlete'})
+          {/* STEP 1: Coach Selects the Athlete */}
+          <div
+            className="mb-3 p-3.5 rounded-xl"
+            style={{
+              backgroundColor: 'var(--bg-surface-elevated)',
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="badge-safe font-mono text-xxs font-bold">
+                  STEP 1
+                </span>
+                <span className="text-xs uppercase font-mono font-bold text-primary">
+                  Select Athlete from Roster
+                </span>
+              </div>
+              <span className="text-xxs font-mono text-accent font-bold">
+                Selected Athlete: {targetAthlete.name} ({targetAthlete.email})
               </span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {ROSTER_USERS.map((user) => {
-                const isSelected = targetAthleteId === user.id;
-                const isSelf = user.id === currentUser.id;
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+              {athleteRoster.map((user) => {
+                const isSelected = targetAthlete.id === user.id;
+                const hasLinkedSheet = Boolean(user.googleSheetUrl);
                 return (
                   <button
                     key={user.id}
                     type="button"
                     className={`athlete-select-card ${isSelected ? 'active font-bold' : ''}`}
-                    onClick={() => setTargetAthleteId(user.id)}
+                    onClick={() => handleSelectAthlete(user)}
                   >
-                    <div className="flex items-center gap-1.5 mb-0.5">
+                    <div className="flex items-center gap-1.5 mb-1">
                       <span
                         className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-xxs"
                         style={{
@@ -321,19 +618,344 @@ export const AdminPlanModal: React.FC<Props> = ({
                         {user.name.charAt(0)}
                       </span>
                       <span className="text-xs font-bold truncate">
-                        {user.name} {isSelf ? '(You)' : ''}
+                        {user.name}
                       </span>
                     </div>
-                    <span className="text-xxs font-mono block opacity-80 uppercase">
-                      {user.role === 'coach' ? 'Coach' : 'Athlete'}
-                    </span>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xxs font-mono opacity-80 truncate">
+                        {hasLinkedSheet
+                          ? `📊 ${user.googleSheetTab || 'Sheet'} Linked`
+                          : '+ No Sheet Yet'}
+                      </span>
+                    </div>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Plan Meta Inputs */}
+          {/* Mode Switcher: Google Sheets Sync vs Manual Builder */}
+          <div className="login-tab-pills mb-3">
+            <button
+              type="button"
+              className={`login-tab-pill ${builderMode === 'sheets' ? 'active' : ''}`}
+              onClick={() => setBuilderMode('sheets')}
+            >
+              📊 1. Link &amp; Sync {targetAthlete.name}&apos;s Google Sheet
+            </button>
+            <button
+              type="button"
+              className={`login-tab-pill ${builderMode === 'manual' ? 'active' : ''}`}
+              onClick={() => setBuilderMode('manual')}
+            >
+              ✍️ 2. Manual Week-by-Week Builder ({weeksCount}w)
+            </button>
+          </div>
+
+          {builderMode === 'sheets' ? (
+            <div className="space-y-3">
+              {/* STEP 2: Upload / Paste Athlete's Corresponding Google Sheet Link */}
+              <div
+                className="p-3.5 rounded-xl space-y-3"
+                style={{
+                  backgroundColor: 'var(--bg-surface-elevated)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="badge-safe font-mono text-xxs font-bold">
+                        STEP 2
+                      </span>
+                      <span className="text-sm font-bold text-primary">
+                        Upload or Paste {targetAthlete.name}&apos;s Google Sheet Link
+                      </span>
+                      {targetAthlete.googleSheetUrl && (
+                        <span className="badge-safe font-mono text-xxs font-bold">
+                          ✓ LINKED TO {targetAthlete.name.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xxs text-secondary mt-0.5">
+                      Each athlete has their own dedicated Google Sheet link. Paste {targetAthlete.name}&apos;s sharing link below (or upload an exported <code>.html</code> sheet) to parse their color-coded weekly mileage.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {!sheetUrl && (
+                      <button
+                        type="button"
+                        className="btn-duration-pill font-mono text-xxs"
+                        onClick={() => {
+                          setSheetUrl(DEFAULT_ELISE_SHEET_URL);
+                          handleSyncGoogleSheet('Indy', DEFAULT_ELISE_SHEET_URL);
+                        }}
+                        title="Populate with Elise's sample color-coded marathon Google Sheet link"
+                      >
+                        Load Sample Sheet Link
+                      </button>
+                    )}
+                    {targetAthlete.googleSheetUrl && (
+                      <button
+                        type="button"
+                        className="btn-duration-pill font-mono text-xxs"
+                        onClick={handleUnlinkAthleteSheet}
+                        title={`Unlink Google Sheet from ${targetAthlete.name}`}
+                      >
+                        Unlink Sheet ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* URL Input + Link & Sync Button + Upload HTML File */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    className="input-text font-mono text-xs flex-1"
+                    value={sheetUrl}
+                    onChange={(e) => setSheetUrl(e.target.value)}
+                    placeholder={`Paste ${targetAthlete.name}'s Google Sheet link (https://docs.google.com/spreadsheets/d/...)`}
+                  />
+                  <button
+                    type="button"
+                    className="btn-action-primary font-mono text-xs whitespace-nowrap"
+                    onClick={() => handleSyncGoogleSheet(sheetTabName)}
+                    disabled={isSyncingSheet}
+                  >
+                    {isSyncingSheet
+                      ? 'Syncing...'
+                      : `Link & Sync ${targetAthlete.name}'s Sheet 🔄`}
+                  </button>
+                  <input
+                    ref={sheetFileInputRef}
+                    type="file"
+                    accept=".html,.htm"
+                    style={{ display: 'none' }}
+                    onChange={handleSheetFileUpload}
+                  />
+                  <button
+                    type="button"
+                    className="btn-action-secondary font-mono text-xs whitespace-nowrap"
+                    onClick={() => sheetFileInputRef.current?.click()}
+                    title="Upload a Google Sheet downloaded as Web Page (.html)"
+                  >
+                    📄 Upload Sheet (.html)
+                  </button>
+                </div>
+
+                {/* Sheet Tab Pills (CIM, Boston, Indy) + Double Run Mode Toggle */}
+                {parsedSheetTab && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xxs font-mono uppercase text-muted mr-1">
+                        Sheet Tab:
+                      </span>
+                      {availableSheetTabs.map((tab) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          className={`btn-duration-pill font-mono ${
+                            sheetTabName === tab ? 'active' : ''
+                          }`}
+                          onClick={() => {
+                            setSheetTabName(tab);
+                            handleSyncGoogleSheet(tab);
+                          }}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xxs font-mono uppercase text-muted">
+                        Double Days:
+                      </span>
+                      <button
+                        type="button"
+                        className={`btn-duration-pill text-xxs ${
+                          doubleRunMode === 'combined' ? 'active' : ''
+                        }`}
+                        onClick={() => setDoubleRunMode('combined')}
+                        title="Keep Double Threshold / Mod double as a single combined daily run card"
+                      >
+                        1 Combined Run
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn-duration-pill text-xxs ${
+                          doubleRunMode === 'split' ? 'active' : ''
+                        }`}
+                        onClick={() => setDoubleRunMode('split')}
+                        title="Automatically split Double Threshold / Mod double into AM main workout + PM 4mi easy run"
+                      >
+                        Split AM + PM (2 Runs)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 12-Color Legend Key (Rows 29-30 from Google Sheet) */}
+              <div
+                className="p-3 rounded-xl"
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xxs font-mono uppercase font-bold text-secondary">
+                    Detected Sheet Color Legend (Rows 29–30) → ACWR Multipliers
+                  </span>
+                  <span className="text-xxs font-mono text-muted">
+                    12 Workout Categories
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-1.5">
+                  {SHEET_COLOR_LEGEND.map((item) => {
+                    const mult = getRunTypeMultiplier(item.runType);
+                    return (
+                      <div
+                        key={item.runType}
+                        className="px-2 py-1 rounded flex items-center justify-between text-xxs font-mono font-bold"
+                        style={{
+                          backgroundColor: item.sheetHex,
+                          color: item.textColor,
+                          border: '1px solid rgba(0,0,0,0.2)',
+                        }}
+                      >
+                        <span className="truncate">{item.label}</span>
+                        <span className="ml-1 opacity-90">×{mult}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* STEP 3: Color-Coded Spreadsheet Schedule Preview or Empty Prompt */}
+              {parsedSheetTab ? (
+                <div
+                  className="rounded-xl overflow-hidden"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div className="p-2.5 px-3 flex flex-wrap items-center justify-between gap-2 border-b border-subtle">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="badge-safe font-mono text-xxs font-bold">
+                        STEP 3
+                      </span>
+                      <span className="text-xs font-mono font-bold text-primary">
+                        {targetAthlete.name} — {parsedSheetTab.tabName} Schedule Preview
+                      </span>
+                      <span className="text-xxs font-mono text-accent">
+                        ({parsedSheetTab.weeks.length} Weeks • {parsedSheetTab.totalMiles} Total Miles)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-duration-pill font-mono text-xxs"
+                      onClick={handleLoadSheetIntoBuilder}
+                    >
+                      Edit Individual Days in Builder ✎
+                    </button>
+                  </div>
+
+                  <div style={{ maxHeight: '340px', overflowY: 'auto', overflowX: 'auto' }}>
+                    <table className="w-full text-xs font-mono" style={{ borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr
+                          style={{
+                            backgroundColor: 'var(--bg-surface-elevated)',
+                            borderBottom: '1px solid var(--border-subtle)',
+                          }}
+                        >
+                          <th className="p-2 text-left text-xxs text-muted">Wk Start (Col A)</th>
+                          <th className="p-2 text-center text-xxs text-muted">Mon (B)</th>
+                          <th className="p-2 text-center text-xxs text-muted">Tue (C)</th>
+                          <th className="p-2 text-center text-xxs text-muted">Wed (D)</th>
+                          <th className="p-2 text-center text-xxs text-muted">Thu (E)</th>
+                          <th className="p-2 text-center text-xxs text-muted">Fri (F)</th>
+                          <th className="p-2 text-center text-xxs text-muted">Sat (G)</th>
+                          <th className="p-2 text-center text-xxs text-muted">Sun (H)</th>
+                          <th className="p-2 text-right text-xxs text-primary">Total (Col I)</th>
+                          <th className="p-2 text-right text-xxs text-accent">Load</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {parsedSheetTab.weeks.map((week) => (
+                          <tr
+                            key={week.weekNumber}
+                            style={{ borderBottom: '1px solid var(--border-subtle)' }}
+                          >
+                            <td className="p-1.5 px-2 font-bold text-primary whitespace-nowrap">
+                              {week.weekLabel}{' '}
+                              <span className="text-xxs text-muted font-normal">
+                                ({week.startDate.slice(5)})
+                              </span>
+                            </td>
+                            {week.days.map((day) => {
+                              const legendItem = SHEET_COLOR_LEGEND.find(
+                                (l) => l.runType === day.runType
+                              );
+                              return (
+                                <td
+                                  key={day.dayOffset}
+                                  className="p-1.5 text-center font-bold"
+                                  style={{
+                                    backgroundColor: day.sheetHex,
+                                    color: legendItem?.textColor || '#0f172a',
+                                    border: '1px solid rgba(15, 23, 42, 0.18)',
+                                    minWidth: '52px',
+                                  }}
+                                  title={`${day.dayName} ${day.date}: ${day.runTypeLabel} — ${day.distance} mi (Load: ${day.load})`}
+                                >
+                                  {day.distance > 0 ? day.distance : ''}
+                                </td>
+                              );
+                            })}
+                            <td className="p-1.5 px-2 text-right font-bold text-primary whitespace-nowrap">
+                              {week.calculatedWeeklyTotal}{' '}
+                              {week.checksumValid && (
+                                <span className="text-success text-xxs" title="Matches Column I">
+                                  ✓
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-1.5 px-2 text-right text-accent font-bold whitespace-nowrap">
+                              {week.weeklyAcuteLoad.toFixed(0)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="p-6 rounded-xl text-center space-y-2"
+                  style={{
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px dashed var(--border-subtle)',
+                  }}
+                >
+                  <p className="text-sm font-bold text-primary">
+                    No Google Sheet Linked for {targetAthlete.name} Yet
+                  </p>
+                  <p className="text-xs text-secondary max-w-lg mx-auto">
+                    Paste <strong>{targetAthlete.name}</strong>&apos;s Google Sheet link in Step 2 above and click{' '}
+                    <strong>&quot;Link &amp; Sync {targetAthlete.name}&apos;s Sheet 🔄&quot;</strong> (or upload an exported <code>.html</code> file) to preview and assign their color-coded running schedule.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Plan Meta Inputs */}
           <div className="plan-meta-row">
             <div className="plan-meta-field flex-1">
               <label className="text-xs text-muted">Plan Title</label>
@@ -586,6 +1208,8 @@ export const AdminPlanModal: React.FC<Props> = ({
               </div>
             </div>
           )}
+            </>
+          )}
         </div>
 
         <div className="modal-footer flex items-center justify-between">
@@ -598,7 +1222,17 @@ export const AdminPlanModal: React.FC<Props> = ({
           </button>
           
           <div className="flex items-center gap-2">
-            {isCoach && onAssignRuns && (
+            {isCoach && onAssignRuns && builderMode === 'sheets' && parsedSheetTab && (
+              <button
+                type="button"
+                className="btn-action-primary"
+                onClick={handleAssignGoogleSheetDirectly}
+                title={`Assign ${parsedSheetTab.weeks.length}-week Google Sheet "${parsedSheetTab.tabName}" plan (${parsedSheetTab.totalMiles} mi) directly to ${targetAthlete.name}'s calendar`}
+              >
+                Assign {parsedSheetTab.weeks.length}-Week &quot;{parsedSheetTab.tabName}&quot; Sheet to {targetAthlete.name} →
+              </button>
+            )}
+            {isCoach && onAssignRuns && builderMode === 'manual' && (
               <button
                 type="button"
                 className="btn-action-primary"

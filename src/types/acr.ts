@@ -46,6 +46,14 @@ export interface WorkoutRun {
   complianceStatus?: 'exact' | 'over' | 'under';
   shoeId?: string; // Running shoe used for this run
   shoeName?: string;
+  source?: 'manual' | 'garmin' | 'strava' | 'file_import' | 'google_sheets';
+  externalActivityId?: string;
+  deviceModel?: string; // e.g. "Garmin Forerunner 265", "Garmin Fenix 7"
+  averageHeartRate?: number; // average bpm
+  maxHeartRate?: number; // max bpm
+  elevationGainMeters?: number; // meters
+  elevationGainFeet?: number; // feet
+  cadence?: number; // strides per minute (spm)
 }
 
 export type RunnerFeeling = 'fresh' | 'good' | 'normal' | 'tired' | 'exhausted';
@@ -123,6 +131,10 @@ export interface TrainingPlan {
   days: PlanDayItem[];
   createdAt: string;
   code: string; // short unique code for QR sharing
+  sheetUrl?: string;
+  sheetId?: string;
+  sheetTabName?: string;
+  lastSyncedAt?: string;
 }
 
 export interface CoachNotification {
@@ -147,6 +159,15 @@ export interface UserProfile {
   avatarUrl?: string;
   role: UserRole;
   googleId?: string;
+  googleSheetUrl?: string;
+  googleSheetTab?: string;
+  googleSheetLastSyncedAt?: string;
+}
+
+export interface RegisteredUser extends UserProfile {
+  password?: string;
+  invitedBy?: string;
+  createdAt?: string;
 }
 
 export type ThemeMode = 'dark' | 'light';
@@ -160,4 +181,18 @@ export interface AppSettings {
   shoes?: RunningShoe[];
   userQuickStaples?: Record<string, QuickLogStaple[]>;
   weeklyMileageTarget?: number; // e.g. 40.0 miles
+  garminConnected?: boolean;
+  garminAccountName?: string;
+  garminAutoSync?: boolean;
+  garminLastSyncTime?: string;
+  stravaConnected?: boolean;
+  stravaAthleteName?: string;
+  stravaAthleteId?: string;
+  stravaAccessToken?: string;
+  stravaRefreshToken?: string;
+  stravaExpiresAt?: number;
+  stravaClientId?: string;
+  stravaClientSecret?: string;
+  stravaAutoSync?: boolean;
+  stravaLastSyncTime?: string;
 }

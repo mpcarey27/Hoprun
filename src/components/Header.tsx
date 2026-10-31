@@ -7,6 +7,7 @@ import type {
   ThemeMode,
 } from '../types/acr';
 import { NotificationCenter } from './NotificationCenter';
+import { isCoachEmail } from '../utils/storage';
 
 export type ActiveNavTab = 'workouts' | 'training_log' | 'analytics' | 'settings';
 
@@ -30,6 +31,10 @@ interface Props {
   onOpenQuickLog?: () => void;
   onOpenAssignedRuns?: () => void;
   pendingAssignedCount?: number;
+  onOpenInvite?: () => void;
+  onSignOut?: () => void;
+  onOpenStravaConnect?: () => void;
+  stravaConnected?: boolean;
 }
 
 export const Header: React.FC<Props> = ({
@@ -52,6 +57,10 @@ export const Header: React.FC<Props> = ({
   onOpenQuickLog,
   onOpenAssignedRuns,
   pendingAssignedCount = 0,
+  onOpenInvite,
+  onSignOut,
+  onOpenStravaConnect,
+  stravaConnected = false,
 }) => {
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
   const settingsMenuRef = React.useRef<HTMLDivElement>(null);
@@ -183,16 +192,62 @@ export const Header: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Plan Builder (Coach Admin Only) */}
-          {currentUser.role === 'coach' && (
+          {/* Plan Builder & Google Sheet Integration (Strictly Coach Admin Only) */}
+          {currentUser.role === 'coach' && isCoachEmail(currentUser.email) && (
             <button
               type="button"
               className="btn-plan-header"
               onClick={onOpenPlanBuilder}
-              title="Build & assign multi-week plan to athlete"
+              title="Coach Only: Select athlete & link their color-coded Google Sheet plan"
             >
-              <span className="desktop-only-text">Assign Plan</span>
-              <span className="mobile-only-text">Plans</span>
+              <span className="desktop-only-text">📊 Sheet / Plan</span>
+              <span className="mobile-only-text">📊 Plans</span>
+            </button>
+          )}
+
+          {/* Coach Invite Athletes Button */}
+          {currentUser.role === 'coach' && onOpenInvite && (
+            <button
+              type="button"
+              className="btn-invite-header"
+              onClick={onOpenInvite}
+              title="Invite athletes to your roster"
+            >
+              <span className="invite-mail-icon">✉️</span>
+              <span className="desktop-only-text">Invite</span>
+            </button>
+          )}
+
+          {/* Ambient Athlete Mode badge for Michael Carey to easily toggle back */}
+          {isCoachEmail(currentUser.email) && currentUser.role === 'runner' && (
+            <button
+              type="button"
+              className="btn-coach-view-pill"
+              onClick={onToggleRole}
+              title="Currently testing as Athlete. Click to return to Coach Michael Carey."
+            >
+              <span className="athlete-dot">●</span>
+              <span className="desktop-only-text">Athlete View → <strong>Coach</strong></span>
+              <span className="mobile-only-text">→ Coach</span>
+            </button>
+          )}
+
+          {/* Strava Cloud Sync Header Pill */}
+          {onOpenStravaConnect && (
+            <button
+              type="button"
+              className={`btn-header-strava ${stravaConnected ? 'connected' : ''}`}
+              onClick={onOpenStravaConnect}
+              title={stravaConnected ? 'Strava Sync Active — Click to manage sync' : 'Connect Strava to sync runs automatically'}
+              aria-label="Strava Sync"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: '13px', height: '13px' }} aria-hidden="true">
+                <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7.01 13.828h4.172" />
+              </svg>
+              <span className="desktop-only-text font-bold">
+                {stravaConnected ? 'Strava Synced' : 'Sync Strava'}
+              </span>
+              {stravaConnected && <span className="strava-dot-live">●</span>}
             </button>
           )}
 
@@ -268,19 +323,48 @@ export const Header: React.FC<Props> = ({
 
                 <div className="settings-divider" />
 
-                {/* Role Switcher */}
+                {/* Role Switcher (Exclusively available for coach careyer1234@gmail.com) */}
                 <div className="settings-item">
                   <div className="settings-item-label">
                     <span className="text-xs font-medium text-primary">Active Mode</span>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-settings-pill"
-                    onClick={onToggleRole}
-                  >
-                    Switch to {currentUser.role === 'coach' ? 'Athlete' : 'Coach'}
-                  </button>
+                  {isCoachEmail(currentUser.email) ? (
+                    <button
+                      type="button"
+                      className="btn-settings-pill"
+                      onClick={() => {
+                        setIsSettingsOpen(false);
+                        onToggleRole();
+                      }}
+                      title="Switch between Coach and Athlete profile"
+                    >
+                      Switch to {currentUser.role === 'coach' ? '🏃 Athlete View' : '👑 Coach Profile'}
+                    </button>
+                  ) : (
+                    <span className="text-xs font-mono text-muted px-2 py-1 bg-surface rounded">
+                      Athlete (Roster)
+                    </span>
+                  )}
                 </div>
+
+                {/* Coach Invite Roster Link */}
+                {currentUser.role === 'coach' && onOpenInvite && (
+                  <div className="settings-item">
+                    <div className="settings-item-label">
+                      <span className="text-xs font-medium text-primary">Team Management</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-settings-pill"
+                      onClick={() => {
+                        setIsSettingsOpen(false);
+                        onOpenInvite();
+                      }}
+                    >
+                      ✉️ Invite Athletes
+                    </button>
+                  </div>
+                )}
 
                 {/* Theme Mode Switcher */}
                 <div className="settings-item">
@@ -359,7 +443,28 @@ export const Header: React.FC<Props> = ({
                   Settings →
                 </button>
 
-                {/* Account Settings / Sign In */}
+                {/* Strava Sync Shortcut */}
+                {onOpenStravaConnect && (
+                  <button
+                    type="button"
+                    className="btn-settings-auth"
+                    style={{ marginBottom: '0.25rem' }}
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      onOpenStravaConnect();
+                    }}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span style={{ color: '#FC4C02', fontWeight: 800 }}>🟠</span>
+                      <span>Strava Sync</span>
+                    </span>
+                    <span className="text-xs font-mono font-bold" style={{ color: stravaConnected ? 'var(--color-success)' : '#FC4C02' }}>
+                      {stravaConnected ? 'Linked ✓' : 'Connect →'}
+                    </span>
+                  </button>
+                )}
+
+                {/* Account Settings / Switch */}
                 <button
                   type="button"
                   className="btn-settings-auth"
@@ -368,9 +473,25 @@ export const Header: React.FC<Props> = ({
                     onOpenAuth();
                   }}
                 >
-                  <span>Google Account</span>
+                  <span>Google Account Profile</span>
                   <span className="text-accent text-xs">→</span>
                 </button>
+
+                {/* Sign Out Button */}
+                {onSignOut && (
+                  <button
+                    type="button"
+                    className="btn-settings-auth"
+                    style={{ color: 'var(--color-critical)', marginTop: '0.25rem' }}
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      onSignOut();
+                    }}
+                  >
+                    <span>Sign Out</span>
+                    <span className="text-xs">🚪</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

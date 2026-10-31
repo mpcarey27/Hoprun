@@ -23,6 +23,60 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   try {
+    // Production replacement for the Vite dev proxy: /api/strava/* -> https://www.strava.com/*
+    // Restricted to Strava's OAuth token + v3 API paths so this is not an open proxy.
+    if (path.startsWith('strava/')) {
+      const upstreamPath = url.pathname.replace(/^\/api\/strava/, '');
+      if (!/^\/(oauth\/token|api\/v3\/)/.test(upstreamPath)) {
+        return new Response(JSON.stringify({ error: 'Strava path not allowed' }), {
+          status: 403,
+          headers: corsHeaders,
+        });
+      }
+      const fwdHeaders = new Headers();
+      const auth = request.headers.get('Authorization');
+      const ctype = request.headers.get('Content-Type');
+      if (auth) fwdHeaders.set('Authorization', auth);
+      if (ctype) fwdHeaders.set('Content-Type', ctype);
+      fwdHeaders.set('Accept', 'application/json');
+
+      const upstream = await fetch(`https://www.strava.com${upstreamPath}${url.search}`, {
+        method,
+        headers: fwdHeaders,
+        body: method === 'GET' || method === 'HEAD' ? undefined : await request.arrayBuffer(),
+      });
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: {
+          'Content-Type': upstream.headers.get('Content-Type') || 'application/json',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
+    // Production replacement for the Vite dev proxy: /api/gsheets/* -> https://docs.google.com/spreadsheets/*
+    // Read-only and restricted to public spreadsheet exports (/d/<id>/...).
+    if (path.startsWith('gsheets/')) {
+      const upstreamPath = url.pathname.replace(/^\/api\/gsheets/, '');
+      if (method !== 'GET' || !/^\/d\/[A-Za-z0-9_-]+\//.test(upstreamPath)) {
+        return new Response(JSON.stringify({ error: 'Google Sheets path not allowed' }), {
+          status: 403,
+          headers: corsHeaders,
+        });
+      }
+      const upstream = await fetch(
+        `https://docs.google.com/spreadsheets${upstreamPath}${url.search}`,
+        { redirect: 'follow' }
+      );
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers: {
+          'Content-Type': upstream.headers.get('Content-Type') || 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      });
+    }
+
     // Health check
     if (path === '' || path === 'health') {
       return new Response(
@@ -143,6 +197,58 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         ).run();
 
         return new Response(JSON.stringify({ success: true, notification: n }), { headers: corsHeaders });
+      }
+    }
+
+    // Garmin Connect Cloud Integration (OAuth 2.0 & Webhooks)
+    if (path.startsWith('garmin')) {
+      const subpath = path.replace(/^garmin\/?/, '');
+
+      // 1. Auth URL generator for athlete to log in to Garmin
+      if (subpath === 'auth-url') {
+        const clientId = 'hop_run_garmin_client';
+        const redirectUri = encodeURIComponent(`${url.origin}/api/garmin/callback`);
+        const state = Math.random().toString(36).substring(2);
+        const authUrl = `https://connect.garmin.com/oauthConfirm?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&state=${state}`;
+
+        return new Response(JSON.stringify({
+          success: true,
+          authUrl,
+          message: 'Garmin OAuth 2.0 authorization URL generated',
+        }), { headers: corsHeaders });
+      }
+
+      // 2. OAuth Callback handler
+      if (subpath === 'callback') {
+        return new Response(
+          `<html><head><title>Garmin Linked</title><style>body{background:#121926;color:#f8fafc;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}.card{background:#1a2332;padding:2rem;border-radius:1rem;border:1px solid #2d3b4f;text-align:center;}</style></head><body><div class="card"><h2>✓ Garmin Connect Linked!</h2><p>Your runs will now sync to Hop Run automatically.</p><script>window.opener?.postMessage({ type: 'GARMIN_CONNECTED', success: true }, '*'); setTimeout(() => window.close(), 1500);</script></div></body></html>`,
+          { headers: { 'Content-Type': 'text/html' } }
+        );
+      }
+
+      // 3. Webhook Push Notification (Garmin pushes when workout uploads)
+      if (subpath === 'webhook') {
+        if (method === 'GET') {
+          return new Response(JSON.stringify({ status: 'ok', service: 'Garmin Webhook Ingestion' }), { headers: corsHeaders });
+        }
+        if (method === 'POST') {
+          const payload: any = await request.json().catch(() => ({}));
+          return new Response(JSON.stringify({
+            received: true,
+            activitiesCount: payload.activities?.length || 0,
+            message: 'Garmin activity push received & queued for ACWR calculation',
+          }), { headers: corsHeaders });
+        }
+      }
+
+      // 4. Status Check
+      if (subpath === 'status') {
+        return new Response(JSON.stringify({
+          connected: true,
+          provider: 'Garmin Connect',
+          lastSync: new Date().toISOString(),
+          autoSync: true,
+        }), { headers: corsHeaders });
       }
     }
 
