@@ -1,6 +1,16 @@
 name = "hoprun"
+main = "functions/worker.ts"
 compatibility_date = "2024-11-01"
-pages_build_output_dir = "dist"
+
+routes = [
+  { pattern = "hoprun.app", custom_domain = true },
+  { pattern = "www.hoprun.app", custom_domain = true }
+]
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
 
 # Cloudflare Free Tier D1 Database Binding
 [[d1_databases]]
