@@ -320,6 +320,105 @@ export async function refreshStravaToken(
 }
 
 /**
+ * Converts a timeline date string (e.g. '2026-01-01', '1/1/26', '2025-10-15')
+ * to an epoch timestamp in seconds for Strava's `after` parameter.
+ * Uses a 12-hour buffer before midnight UTC to ensure no runs in any timezone
+ * on that start date are excluded.
+ */
+export function parseDateToEpochSeconds(dateStr: string): number {
+  if (!dateStr || dateStr.trim() === '') {
+    // Default to 90 days ago
+    return Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+  }
+  const clean = dateStr.trim();
+  // Support YYYY-MM-DD
+  const ymd = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (ymd) {
+    const y = parseInt(ymd[1], 10);
+    const m = parseInt(ymd[2], 10) - 1;
+    const d = parseInt(ymd[3], 10);
+    const utcMidnight = Date.UTC(y, m, d, 0, 0, 0);
+    return Math.max(0, Math.floor((utcMidnight - 12 * 3600 * 1000) / 1000));
+  }
+  // Support M/D/YY or M/D/YYYY (e.g. '1/1/26' or '1/1/2026')
+  const mdy = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (mdy) {
+    const m = parseInt(mdy[1], 10) - 1;
+    const d = parseInt(mdy[2], 10);
+    let y = parseInt(mdy[3], 10);
+    if (y < 100) y += 2000;
+    const utcMidnight = Date.UTC(y, m, d, 0, 0, 0);
+    return Math.max(0, Math.floor((utcMidnight - 12 * 3600 * 1000) / 1000));
+  }
+  const parsed = new Date(clean).getTime();
+  if (!isNaN(parsed)) {
+    return Math.max(0, Math.floor((parsed - 12 * 3600 * 1000) / 1000));
+  }
+  return Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+}
+
+/**
+ * Fetches ALL activities from Strava starting at a specific epoch timestamp forward.
+ * Automatically paginates through Strava's 200 items/page API until all activities
+ * from that timeline date forward have been collected.
+ */
+export async function fetchAllStravaActivitiesSince(
+  accessToken: string,
+  afterEpochSeconds: number,
+  refreshConfig?: {
+    clientId?: string;
+    clientSecret?: string;
+    refreshToken?: string;
+    onTokenRefreshed?: (tokenData: StravaTokenResponse) => void;
+  },
+  onProgress?: (totalFetched: number, page: number) => void
+): Promise<StravaSummaryActivity[]> {
+  const allActivities: StravaSummaryActivity[] = [];
+  let page = 1;
+  const perPage = 200;
+  const maxPages = 30; // Up to 6,000 activities
+  let currentToken = accessToken;
+
+  while (page <= maxPages) {
+    const batch = await fetchStravaActivities(
+      currentToken,
+      page,
+      perPage,
+      refreshConfig
+        ? {
+            ...refreshConfig,
+            onTokenRefreshed: (tokenData) => {
+              currentToken = tokenData.access_token;
+              if (refreshConfig.onTokenRefreshed) {
+                refreshConfig.onTokenRefreshed(tokenData);
+              }
+            },
+          }
+        : undefined,
+      afterEpochSeconds
+    );
+
+    if (!batch || batch.length === 0) {
+      break;
+    }
+
+    allActivities.push(...batch);
+
+    if (onProgress) {
+      onProgress(allActivities.length, page);
+    }
+
+    if (batch.length < perPage) {
+      break; // Reached the most recent activities
+    }
+
+    page++;
+  }
+
+  return allActivities;
+}
+
+/**
  * Fetches recent activities from Strava for the authenticated athlete.
  * Defaults to importing the last 3 months (90 days) of runs automatically.
  * Automatically refreshes an expired token if refreshConfig is provided.
@@ -394,30 +493,10 @@ export async function fetchStravaActivities(
   }
 
   const list: StravaSummaryActivity[] = await response.json();
-  let combinedList = Array.isArray(list) ? [...list] : [];
-
-  // If the athlete has >= 200 total activities in the 3-month window, fetch page 2 as well
-  if (page === 1 && perPage >= 200 && combinedList.length >= 200) {
-    try {
-      const page2Path = `/api/v3/athlete/activities?after=${effectiveAfter}&page=2&per_page=${perPage}`;
-      const page2Res = await callStravaEndpoint(page2Path, {
-        headers: {
-          Authorization: `Bearer ${activeAccessToken}`,
-        },
-      });
-      if (page2Res.ok) {
-        const page2List: StravaSummaryActivity[] = await page2Res.json();
-        if (Array.isArray(page2List) && page2List.length > 0) {
-          combinedList = [...combinedList, ...page2List];
-        }
-      }
-    } catch {
-      // Ignore optional page 2 fetch error
-    }
-  }
+  const rawList = Array.isArray(list) ? list : [];
 
   // Filter for runs (Run, TrailRun, VirtualRun)
-  return combinedList.filter(
+  return rawList.filter(
     (act) =>
       act.type === 'Run' ||
       act.sport_type === 'Run' ||

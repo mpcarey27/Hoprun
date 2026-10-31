@@ -57,7 +57,8 @@ import { StravaConnectModal } from './components/StravaConnectModal';
 import {
   exchangeStravaCode,
   refreshStravaToken,
-  fetchStravaActivities,
+  fetchAllStravaActivitiesSince,
+  parseDateToEpochSeconds,
   normalizeStravaActivity,
   decodeStravaOAuthState,
   reconcileStravaWorkouts,
@@ -230,7 +231,13 @@ export const App: React.FC = () => {
             ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
             : currentUser?.name || 'Strava Athlete';
 
-          const activities = await fetchStravaActivities(tokenData.access_token, 1, 200);
+          const effectiveStartDate =
+            settings.stravaSyncStartDate || freshSettings.stravaSyncStartDate || '2026-01-01';
+          const afterEpoch = parseDateToEpochSeconds(effectiveStartDate);
+          const activities = await fetchAllStravaActivitiesSince(
+            tokenData.access_token,
+            afterEpoch
+          );
           const defaultShoe = (settings.shoes || freshSettings.shoes || []).find(
             (s) => !s.isRetired && s.isDefault
           );
@@ -417,19 +424,27 @@ export const App: React.FC = () => {
           }
         }
 
-        const activities = await fetchStravaActivities(activeToken, 1, 200, {
-          clientId,
-          clientSecret,
-          refreshToken: activeRefreshToken,
-          onTokenRefreshed: (tokenData) => {
-            handleUpdateSettings({
-              stravaConnected: true,
-              stravaAccessToken: tokenData.access_token,
-              stravaRefreshToken: tokenData.refresh_token,
-              stravaExpiresAt: tokenData.expires_at,
-            });
-          },
-        });
+        const effectiveStartDate =
+          settings.stravaSyncStartDate || freshSettings.stravaSyncStartDate || '2026-01-01';
+        const afterEpoch = parseDateToEpochSeconds(effectiveStartDate);
+
+        const activities = await fetchAllStravaActivitiesSince(
+          activeToken,
+          afterEpoch,
+          {
+            clientId,
+            clientSecret,
+            refreshToken: activeRefreshToken,
+            onTokenRefreshed: (tokenData) => {
+              handleUpdateSettings({
+                stravaConnected: true,
+                stravaAccessToken: tokenData.access_token,
+                stravaRefreshToken: tokenData.refresh_token,
+                stravaExpiresAt: tokenData.expires_at,
+              });
+            },
+          }
+        );
 
         const defaultShoe = (settings.shoes || freshSettings.shoes || []).find(
           (s) => !s.isRetired && s.isDefault

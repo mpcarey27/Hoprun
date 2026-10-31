@@ -196,4 +196,5 @@ export interface AppSettings {
   stravaClientSecret?: string;
   stravaAutoSync?: boolean;
   stravaLastSyncTime?: string;
+  stravaSyncStartDate?: string; // 'YYYY-MM-DD' - timeline start date for activities (e.g. '2026-01-01')
 }

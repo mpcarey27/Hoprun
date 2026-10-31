@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import type { UserProfile, AppSettings, WorkoutRun } from '../types/acr';
 import {
-  fetchStravaActivities,
+  fetchAllStravaActivitiesSince,
+  parseDateToEpochSeconds,
   normalizeStravaActivity,
   buildStravaAuthUrl,
   exchangeStravaCode,
-  refreshStravaToken,
   encodeStravaOAuthState,
   decodeStravaOAuthState,
   extractCodeFromUrlOrInput,
@@ -21,6 +21,14 @@ interface Props {
   onImportRuns?: (runs: WorkoutRun[]) => void;
   oauthStatus?: { type: 'success' | 'error'; message: string } | null;
 }
+
+const getDaysAgoDateString = (days: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split('T')[0];
+};
+
+const ytdDateString = `${new Date().getFullYear()}-01-01`;
 
 export const StravaConnectModal: React.FC<Props> = ({
   isOpen,
@@ -48,6 +56,12 @@ export const StravaConnectModal: React.FC<Props> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Timeline / Date Range Sync state (defaults to Jan 1, 2026 / YTD as requested)
+  const [customStartDate, setCustomStartDate] = useState<string>(
+    () => settings.stravaSyncStartDate || ytdDateString
+  );
+  const [syncProgressMessage, setSyncProgressMessage] = useState<string>('');
 
   useEffect(() => {
     if (settings.stravaClientId && !clientId) setClientId(settings.stravaClientId);
@@ -102,7 +116,18 @@ export const StravaConnectModal: React.FC<Props> = ({
 
     setIsSyncing(true);
     try {
-      const activities = await fetchStravaActivities(cleanToken, 1, 200);
+      const effectiveStartDate = customStartDate || ytdDateString;
+      const afterEpoch = parseDateToEpochSeconds(effectiveStartDate);
+      const activities = await fetchAllStravaActivitiesSince(
+        cleanToken,
+        afterEpoch,
+        undefined,
+        (count, page) => {
+          setSyncProgressMessage(
+            `Importing runs from ${effectiveStartDate}... (Page ${page}, ${count} runs)`
+          );
+        }
+      );
       const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
       const unit = settings.distanceUnit || 'mi';
 
@@ -127,15 +152,20 @@ export const StravaConnectModal: React.FC<Props> = ({
         stravaAthleteName: currentUser.name || 'Strava Athlete',
         stravaAutoSync: true,
         stravaLastSyncTime: new Date().toISOString(),
+        stravaSyncStartDate: effectiveStartDate,
       });
 
-      setToastMessage(`✓ Connected! Synced ${normalizedWorkouts.length} Garmin/Strava runs.`);
+      setToastMessage(
+        `✓ Connected! Synced ${normalizedWorkouts.length} runs starting from ${effectiveStartDate} forward.`
+      );
+      setSyncProgressMessage('');
       setTimeout(() => {
         setToastMessage('');
         onClose();
       }, 2000);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to authenticate with Strava. Check your token.');
+      setSyncProgressMessage('');
     } finally {
       setIsSyncing(false);
     }
@@ -158,15 +188,18 @@ export const StravaConnectModal: React.FC<Props> = ({
     }
 
     // Persist synchronously to localStorage so App.tsx can read them immediately on callback
+    const effectiveStartDate = customStartDate || ytdDateString;
     const currentStored = loadStoredSettings();
     saveStoredSettings({
       ...currentStored,
       stravaClientId: cleanId,
       stravaClientSecret: cleanSecret,
+      stravaSyncStartDate: effectiveStartDate,
     });
     onUpdateSettings({
       stravaClientId: cleanId,
       stravaClientSecret: cleanSecret,
+      stravaSyncStartDate: effectiveStartDate,
     });
 
     const state = encodeStravaOAuthState({
@@ -209,7 +242,18 @@ export const StravaConnectModal: React.FC<Props> = ({
         ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
         : currentUser.name || 'Strava Athlete';
 
-      const activities = await fetchStravaActivities(tokenData.access_token, 1, 200);
+      const effectiveStartDate = customStartDate || ytdDateString;
+      const afterEpoch = parseDateToEpochSeconds(effectiveStartDate);
+      const activities = await fetchAllStravaActivitiesSince(
+        tokenData.access_token,
+        afterEpoch,
+        undefined,
+        (count, page) => {
+          setSyncProgressMessage(
+            `Pulling activities from ${effectiveStartDate}... (Page ${page}, ${count} runs found)`
+          );
+        }
+      );
       const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
       const unit = settings.distanceUnit || 'mi';
 
@@ -238,13 +282,16 @@ export const StravaConnectModal: React.FC<Props> = ({
         stravaAthleteName: athleteName,
         stravaAutoSync: true,
         stravaLastSyncTime: new Date().toISOString(),
+        stravaSyncStartDate: effectiveStartDate,
       });
 
       setCallbackInput('');
+      setSyncProgressMessage('');
       setToastMessage(
-        `✓ Strava Connected! Synced ${normalizedWorkouts.length} runs from ${athleteName}.`
+        `✓ Strava Connected! Synced ${normalizedWorkouts.length} runs starting from ${effectiveStartDate} forward.`
       );
     } catch (err: any) {
+      setSyncProgressMessage('');
       setErrorMessage(
         err.message || 'Failed to exchange authorization code. Please check your Client ID, Secret, and pasted URL.'
       );
@@ -253,42 +300,46 @@ export const StravaConnectModal: React.FC<Props> = ({
     }
   };
 
-  // 3. Sync recent activities now (with automatic token refresh on 401)
-  const handleSyncLatest = async () => {
+  // 3. Sync timeline activities starting from a specific date forward
+  const handleSyncTimeline = async (targetStartDate?: string) => {
     if (!settings.stravaAccessToken) {
       setErrorMessage('No active Strava token found. Please re-enter your access token.');
       return;
     }
 
+    const effectiveStartDate = (targetStartDate || customStartDate || ytdDateString).trim();
+    const afterEpoch = parseDateToEpochSeconds(effectiveStartDate);
+
     setIsSyncing(true);
     setErrorMessage('');
+    setSyncProgressMessage(`Starting timeline sync from ${effectiveStartDate}...`);
+
     try {
       let activeToken = settings.stravaAccessToken;
-      let activities;
-      try {
-        activities = await fetchStravaActivities(activeToken, 1, 200);
-      } catch (fetchErr: any) {
-        if (
-          settings.stravaRefreshToken &&
-          settings.stravaClientId &&
-          settings.stravaClientSecret
-        ) {
-          const refreshed = await refreshStravaToken(
-            settings.stravaClientId,
-            settings.stravaClientSecret,
-            settings.stravaRefreshToken
-          );
-          activeToken = refreshed.access_token;
+      const refreshConfig = {
+        clientId: settings.stravaClientId,
+        clientSecret: settings.stravaClientSecret,
+        refreshToken: settings.stravaRefreshToken,
+        onTokenRefreshed: (tokenData: any) => {
+          activeToken = tokenData.access_token;
           onUpdateSettings({
-            stravaAccessToken: refreshed.access_token,
-            stravaRefreshToken: refreshed.refresh_token,
-            stravaExpiresAt: refreshed.expires_at,
+            stravaAccessToken: tokenData.access_token,
+            stravaRefreshToken: tokenData.refresh_token,
+            stravaExpiresAt: tokenData.expires_at,
           });
-          activities = await fetchStravaActivities(activeToken, 1, 200);
-        } else {
-          throw fetchErr;
+        },
+      };
+
+      const activities = await fetchAllStravaActivitiesSince(
+        activeToken,
+        afterEpoch,
+        refreshConfig,
+        (count, page) => {
+          setSyncProgressMessage(
+            `Pulling activities from ${effectiveStartDate}... (Page ${page}, ${count} runs found)`
+          );
         }
-      }
+      );
 
       const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
       const unit = settings.distanceUnit || 'mi';
@@ -310,18 +361,28 @@ export const StravaConnectModal: React.FC<Props> = ({
 
       onUpdateSettings({
         stravaLastSyncTime: new Date().toISOString(),
+        stravaSyncStartDate: effectiveStartDate,
       });
 
-      setToastMessage(`✓ Synced ${normalizedWorkouts.length} activities from Strava/Garmin!`);
-      setTimeout(() => setToastMessage(''), 3500);
+      setToastMessage(
+        `✓ Timeline sync complete! Synced ${normalizedWorkouts.length} runs starting from ${effectiveStartDate} forward.`
+      );
+      setSyncProgressMessage('');
+      setTimeout(() => setToastMessage(''), 4500);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to pull runs from Strava.');
+      setErrorMessage(err.message || 'Failed to pull runs from Strava timeline.');
+      setSyncProgressMessage('');
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // 4. Disconnect
+  // 4. Quick sync recent activities
+  const handleSyncLatest = async () => {
+    await handleSyncTimeline(settings.stravaSyncStartDate || customStartDate || ytdDateString);
+  };
+
+  // 5. Disconnect
   const handleDisconnect = () => {
     onUpdateSettings({
       stravaConnected: false,
@@ -436,6 +497,12 @@ export const StravaConnectModal: React.FC<Props> = ({
                       {settings.stravaAthleteName || currentUser.name}
                     </span>
                   </div>
+                  <div>
+                    <span>Timeline: </span>
+                    <span className="text-primary font-bold">
+                      All runs from {customStartDate || settings.stravaSyncStartDate || ytdDateString} forward
+                    </span>
+                  </div>
                   {settings.stravaLastSyncTime && (
                     <div>
                       <span>Last Synced: </span>
@@ -450,6 +517,87 @@ export const StravaConnectModal: React.FC<Props> = ({
                 </div>
               </div>
 
+              {/* Timeline Start Date Sync Card */}
+              <div className="p-3.5 rounded-xl bg-surface-elevated border border-subtle space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📅</span>
+                    <strong className="text-xs font-bold text-primary font-mono uppercase tracking-wider">
+                      Sync by Timeline / Start Date
+                    </strong>
+                  </div>
+                  <span className="badge-safe font-mono text-xxs font-bold">
+                    START DATE FORWARD
+                  </span>
+                </div>
+
+                <p className="text-xs text-secondary leading-relaxed">
+                  Choose a starting date (e.g. <strong>1/1/2026</strong>) to pull all activities from that date forward. Hop Run will automatically pull and reconcile all runs from this date forward.
+                </p>
+
+                {/* Preset Timeline Buttons */}
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    className={`btn-filter-pill text-xs font-mono ${customStartDate === ytdDateString ? 'active' : ''}`}
+                    onClick={() => setCustomStartDate(ytdDateString)}
+                  >
+                    Jan 1, 2026 (YTD)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-filter-pill text-xs font-mono ${customStartDate === getDaysAgoDateString(90) ? 'active' : ''}`}
+                    onClick={() => setCustomStartDate(getDaysAgoDateString(90))}
+                  >
+                    Last 3 Months (90d)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-filter-pill text-xs font-mono ${customStartDate === getDaysAgoDateString(180) ? 'active' : ''}`}
+                    onClick={() => setCustomStartDate(getDaysAgoDateString(180))}
+                  >
+                    Last 6 Months (180d)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-filter-pill text-xs font-mono ${customStartDate === getDaysAgoDateString(365) ? 'active' : ''}`}
+                    onClick={() => setCustomStartDate(getDaysAgoDateString(365))}
+                  >
+                    Last 1 Year (365d)
+                  </button>
+                </div>
+
+                {/* Date Input and Action */}
+                <div className="space-y-1.5">
+                  <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                    Timeline Start Date (Pulls all runs from this date forward)
+                  </label>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <input
+                      type="date"
+                      className="input-field text-xs font-mono flex-1"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                    <button
+                      type="button"
+                      className="btn-strava-primary py-2 px-3 text-xs font-bold font-mono whitespace-nowrap"
+                      onClick={() => handleSyncTimeline(customStartDate)}
+                      disabled={isSyncing || !customStartDate}
+                    >
+                      {isSyncing ? 'Syncing Timeline...' : `Sync From ${customStartDate} Forward ➔`}
+                    </button>
+                  </div>
+                </div>
+
+                {syncProgressMessage && (
+                  <div className="p-2 rounded bg-surface border border-accent text-xs font-mono text-accent animate-pulse">
+                    ⏳ {syncProgressMessage}
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -457,7 +605,7 @@ export const StravaConnectModal: React.FC<Props> = ({
                   onClick={handleSyncLatest}
                   disabled={isSyncing}
                 >
-                  {isSyncing ? 'Pulling Latest Runs...' : 'Sync Latest Runs Now 🔄'}
+                  {isSyncing ? 'Pulling Runs...' : 'Sync Latest Runs Now 🔄'}
                 </button>
                 <button
                   type="button"

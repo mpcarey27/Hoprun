@@ -53,6 +53,8 @@ import {
   decodeStravaOAuthState,
   extractCodeFromUrlOrInput,
   reconcileStravaWorkouts,
+  parseDateToEpochSeconds,
+  fetchAllStravaActivitiesSince,
 } from '../src/utils/stravaSync';
 import type { StravaSummaryActivity } from '../src/utils/stravaSync';
 import {
@@ -1811,6 +1813,93 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       const extracted3 = extractCodeFromUrlOrInput(rawCode);
       expect(extracted3.code).toBe('raw_auth_code_112233');
       expect(extracted3.state).toBeNull();
+    });
+
+    it('test_parseDateToEpochSeconds_and_fetchAllStravaActivitiesSince() - timeline date parsing and multi-page activity collection', async () => {
+      // 1. Validates parsing YYYY-MM-DD
+      const epochYmd = parseDateToEpochSeconds('2026-01-01');
+      expect(typeof epochYmd).toBe('number');
+      expect(epochYmd).toBeGreaterThan(0);
+
+      // 2. Validates parsing M/D/YY (e.g. 1/1/26) matches 2026-01-01
+      const epochShort = parseDateToEpochSeconds('1/1/26');
+      expect(epochShort).toBe(epochYmd);
+
+      // 3. Validates parsing M/D/YYYY (e.g. 1/1/2026)
+      const epochLong = parseDateToEpochSeconds('1/1/2026');
+      expect(epochLong).toBe(epochYmd);
+
+      // 4. Multi-page pagination collection
+      const originalFetch = globalThis.fetch;
+      const requestedUrls: string[] = [];
+      const mockActivitiesPage1 = Array.from({ length: 200 }, (_, i) => ({
+        id: 1000 + i,
+        name: `Run ${i + 1}`,
+        distance: 8000,
+        moving_time: 2400,
+        elapsed_time: 2400,
+        total_elevation_gain: 20,
+        type: 'Run',
+        sport_type: 'Run',
+        start_date: '2026-01-02T12:00:00Z',
+        start_date_local: '2026-01-02T07:00:00Z',
+      }));
+      const mockActivitiesPage2 = Array.from({ length: 15 }, (_, i) => ({
+        id: 2000 + i,
+        name: `Run page 2 - ${i + 1}`,
+        distance: 10000,
+        moving_time: 3000,
+        elapsed_time: 3000,
+        total_elevation_gain: 30,
+        type: 'Run',
+        sport_type: 'Run',
+        start_date: '2026-01-03T12:00:00Z',
+        start_date_local: '2026-01-03T07:00:00Z',
+      }));
+
+      (globalThis as any).fetch = async (url: string) => {
+        requestedUrls.push(url);
+        if (url.includes('page=1')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => mockActivitiesPage1,
+          };
+        }
+        if (url.includes('page=2')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => mockActivitiesPage2,
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [],
+        };
+      };
+
+      try {
+        let progressCalled = false;
+        const allRuns = await fetchAllStravaActivitiesSince(
+          'test_token_xyz',
+          epochYmd,
+          undefined,
+          (count, page) => {
+            progressCalled = true;
+          }
+        );
+
+        expect(allRuns.length).toBe(215);
+        expect(progressCalled).toBe(true);
+        expect(requestedUrls.length).toBe(2);
+        expect(requestedUrls[0]).toContain(`after=${epochYmd}`);
+        expect(requestedUrls[0]).toContain('page=1&per_page=200');
+        expect(requestedUrls[1]).toContain('page=2&per_page=200');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
     });
 
     it('test_reconcileStravaWorkouts_deletesSameDayAndPreviousPrescribedRuns() - replaces same-day and past prescribed runs with synced Strava runs while keeping future prescribed runs', () => {
