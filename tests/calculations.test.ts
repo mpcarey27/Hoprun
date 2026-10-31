@@ -46,6 +46,9 @@ import {
 import {
   normalizeStravaActivity,
   buildStravaAuthUrl,
+  encodeStravaOAuthState,
+  decodeStravaOAuthState,
+  extractCodeFromUrlOrInput,
 } from '../src/utils/stravaSync';
 import type { StravaSummaryActivity } from '../src/utils/stravaSync';
 import {
@@ -1698,6 +1701,52 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(url).toContain('client_id=123456');
       expect(url).toContain('redirect_uri=http%3A%2F%2Flocalhost%3A5173%2F');
       expect(url).toContain('activity%3Aread_all');
+    });
+
+    it('test_encodeAndDecodeStravaOAuthState() - roundtrips cross-domain OAuth state safely', () => {
+      const state = encodeStravaOAuthState({
+        clientId: '142857',
+        clientSecret: 'sec_99887766aabbcc',
+        origin: 'https://www.hoprun.app',
+      });
+      expect(state.length).toBeGreaterThan(10);
+      expect(state).not.toContain('+');
+      expect(state).not.toContain('/');
+      expect(state).not.toContain('=');
+
+      const decoded = decodeStravaOAuthState(state);
+      expect(decoded).toEqual({
+        clientId: '142857',
+        clientSecret: 'sec_99887766aabbcc',
+        origin: 'https://www.hoprun.app',
+      });
+
+      const authUrlWithState = buildStravaAuthUrl('142857', 'https://hoprun.app/', state);
+      expect(authUrlWithState).toContain(`&state=${encodeURIComponent(state)}`);
+      expect(decodeStravaOAuthState(null)).toBeNull();
+      expect(decodeStravaOAuthState('invalid-base64-json-%%%')).toBeNull();
+    });
+
+    it('test_extractCodeFromUrlOrInput() - extracts code and state from callback URLs or raw codes', () => {
+      const state = encodeStravaOAuthState({
+        clientId: '12345',
+        clientSecret: 'secret_xyz',
+        origin: 'https://www.hoprun.app',
+      });
+      const fullCallbackUrl = `http://localhost:5173/?state=${state}&code=4ef89a12b34c56d78e90&scope=read,activity:read_all`;
+      const extracted1 = extractCodeFromUrlOrInput(fullCallbackUrl);
+      expect(extracted1.code).toBe('4ef89a12b34c56d78e90');
+      expect(extracted1.state).toBe(state);
+
+      const prodCallbackUrl = 'https://hoprun.app/?code=abc987654321&scope=read,activity:read_all';
+      const extracted2 = extractCodeFromUrlOrInput(prodCallbackUrl);
+      expect(extracted2.code).toBe('abc987654321');
+      expect(extracted2.state).toBeNull();
+
+      const rawCode = '  raw_auth_code_112233  ';
+      const extracted3 = extractCodeFromUrlOrInput(rawCode);
+      expect(extracted3.code).toBe('raw_auth_code_112233');
+      expect(extracted3.state).toBeNull();
     });
   });
 

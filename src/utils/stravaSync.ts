@@ -47,6 +47,107 @@ export interface StravaTokenResponse {
   };
 }
 
+export interface StravaOAuthStatePayload {
+  clientId?: string;
+  clientSecret?: string;
+  origin?: string;
+}
+
+/**
+ * Encodes OAuth state payload as base64url so Strava credentials and origin
+ * survive cross-domain redirects (www.hoprun.app <-> hoprun.app <-> localhost).
+ */
+export function encodeStravaOAuthState(payload: {
+  clientId: string;
+  clientSecret: string;
+  origin?: string;
+}): string {
+  try {
+    const json = JSON.stringify(payload);
+    const base64 =
+      typeof btoa === 'function'
+        ? btoa(unescape(encodeURIComponent(json)))
+        : Buffer.from(json, 'utf-8').toString('base64');
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Safely decodes a base64url Strava OAuth state parameter.
+ */
+export function decodeStravaOAuthState(
+  stateParam: string | null | undefined
+): StravaOAuthStatePayload | null {
+  if (!stateParam || typeof stateParam !== 'string') return null;
+  try {
+    const base64 = stateParam.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const json =
+      typeof atob === 'function'
+        ? decodeURIComponent(escape(atob(padded)))
+        : Buffer.from(padded, 'base64').toString('utf-8');
+    const parsed = JSON.parse(json);
+    if (parsed && typeof parsed === 'object') {
+      return {
+        clientId: typeof parsed.clientId === 'string' ? parsed.clientId : undefined,
+        clientSecret: typeof parsed.clientSecret === 'string' ? parsed.clientSecret : undefined,
+        origin: typeof parsed.origin === 'string' ? parsed.origin : undefined,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts a clean Strava authorization code (and optional state) whether the user
+ * passes a raw code or a full callback URL (e.g. http://localhost:5173/?state=...&code=abc&scope=...).
+ */
+export function extractCodeFromUrlOrInput(input: string): {
+  code: string;
+  state?: string | null;
+} {
+  const trimmed = (input || '').trim();
+  if (!trimmed) return { code: '', state: null };
+
+  if (
+    trimmed.includes('code=') ||
+    trimmed.includes('?') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  ) {
+    try {
+      const url =
+        trimmed.startsWith('http://') || trimmed.startsWith('https://')
+          ? new URL(trimmed)
+          : new URL(
+              trimmed.startsWith('?')
+                ? `http://localhost/${trimmed}`
+                : `http://localhost/?${trimmed}`
+            );
+      const codeParam = url.searchParams.get('code');
+      const stateParam = url.searchParams.get('state');
+      if (codeParam) {
+        return { code: codeParam.trim(), state: stateParam };
+      }
+    } catch {
+      const codeMatch = trimmed.match(/[?&]code=([^&#\s]+)/);
+      const stateMatch = trimmed.match(/[?&]state=([^&#\s]+)/);
+      if (codeMatch?.[1]) {
+        return {
+          code: decodeURIComponent(codeMatch[1]).trim(),
+          state: stateMatch?.[1] ? decodeURIComponent(stateMatch[1]).trim() : null,
+        };
+      }
+    }
+  }
+
+  return { code: trimmed, state: null };
+}
+
 /**
  * Normalizes a raw Strava activity into a full Hop Run WorkoutRun.
  */
@@ -167,13 +268,14 @@ export async function exchangeStravaCode(
   clientSecret: string,
   code: string
 ): Promise<StravaTokenResponse> {
+  const { code: cleanCode } = extractCodeFromUrlOrInput(code);
   const response = await callStravaEndpoint('/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       client_id: clientId.trim(),
       client_secret: clientSecret.trim(),
-      code: code.trim(),
+      code: cleanCode.trim(),
       grant_type: 'authorization_code',
     }),
   });
@@ -224,18 +326,50 @@ export async function refreshStravaToken(
 
 /**
  * Fetches recent activities from Strava for the authenticated athlete.
+ * Automatically refreshes an expired token if refreshConfig is provided.
  */
 export async function fetchStravaActivities(
   accessToken: string,
   page: number = 1,
-  perPage: number = 30
+  perPage: number = 30,
+  refreshConfig?: {
+    clientId?: string;
+    clientSecret?: string;
+    refreshToken?: string;
+    onTokenRefreshed?: (tokenData: StravaTokenResponse) => void;
+  }
 ): Promise<StravaSummaryActivity[]> {
   const path = `/api/v3/athlete/activities?page=${page}&per_page=${perPage}`;
-  const response = await callStravaEndpoint(path, {
+  let response = await callStravaEndpoint(path, {
     headers: {
       Authorization: `Bearer ${accessToken.trim()}`,
     },
   });
+
+  if (
+    response.status === 401 &&
+    refreshConfig?.clientId &&
+    refreshConfig?.clientSecret &&
+    refreshConfig?.refreshToken
+  ) {
+    try {
+      const refreshed = await refreshStravaToken(
+        refreshConfig.clientId,
+        refreshConfig.clientSecret,
+        refreshConfig.refreshToken
+      );
+      if (refreshConfig.onTokenRefreshed) {
+        refreshConfig.onTokenRefreshed(refreshed);
+      }
+      response = await callStravaEndpoint(path, {
+        headers: {
+          Authorization: `Bearer ${refreshed.access_token.trim()}`,
+        },
+      });
+    } catch {
+      // Fall through to standard 401 error below if refresh fails
+    }
+  }
 
   if (!response.ok) {
     let errorDetail = '';
@@ -274,12 +408,17 @@ export async function fetchStravaActivities(
  */
 export function buildStravaAuthUrl(
   clientId: string,
-  redirectUri: string
+  redirectUri: string,
+  state?: string
 ): string {
   const scope = 'read,activity:read,activity:read_all';
-  return `https://www.strava.com/oauth/authorize?client_id=${encodeURIComponent(
+  const base = `https://www.strava.com/oauth/authorize?client_id=${encodeURIComponent(
     clientId.trim()
   )}&response_type=code&redirect_uri=${encodeURIComponent(
     redirectUri
   )}&approval_prompt=force&scope=${encodeURIComponent(scope)}`;
+  if (state) {
+    return `${base}&state=${encodeURIComponent(state)}`;
+  }
+  return base;
 }

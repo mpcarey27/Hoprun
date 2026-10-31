@@ -1,9 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { UserProfile, AppSettings, WorkoutRun } from '../types/acr';
 import {
   fetchStravaActivities,
   normalizeStravaActivity,
   buildStravaAuthUrl,
+  exchangeStravaCode,
+  refreshStravaToken,
+  encodeStravaOAuthState,
+  decodeStravaOAuthState,
+  extractCodeFromUrlOrInput,
 } from '../utils/stravaSync';
 import { loadStoredSettings, saveStoredSettings } from '../utils/storage';
 
@@ -14,6 +19,7 @@ interface Props {
   settings: AppSettings;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
   onImportRuns?: (runs: WorkoutRun[]) => void;
+  oauthStatus?: { type: 'success' | 'error'; message: string } | null;
 }
 
 export const StravaConnectModal: React.FC<Props> = ({
@@ -23,19 +29,66 @@ export const StravaConnectModal: React.FC<Props> = ({
   settings,
   onUpdateSettings,
   onImportRuns,
+  oauthStatus,
 }) => {
-  const isConnected = Boolean(settings.stravaConnected && (settings.stravaAccessToken || settings.stravaClientId));
-  
+  const isConnected = Boolean(
+    settings.stravaConnected && (settings.stravaAccessToken || settings.stravaClientId)
+  );
+
   // Form state
   const [clientId, setClientId] = useState(settings.stravaClientId || '');
   const [clientSecret, setClientSecret] = useState(settings.stravaClientSecret || '');
   const [accessToken, setAccessToken] = useState(settings.stravaAccessToken || '');
   const [activeMode, setActiveMode] = useState<'token' | 'oauth'>('oauth');
+  const [callbackDomainMode, setCallbackDomainMode] = useState<
+    'current' | 'hoprun' | 'localhost'
+  >('current');
+  const [copiedDomain, setCopiedDomain] = useState(false);
+  const [callbackInput, setCallbackInput] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
+  useEffect(() => {
+    if (settings.stravaClientId && !clientId) setClientId(settings.stravaClientId);
+    if (settings.stravaClientSecret && !clientSecret) setClientSecret(settings.stravaClientSecret);
+    if (settings.stravaAccessToken && !accessToken) setAccessToken(settings.stravaAccessToken);
+  }, [settings.stravaClientId, settings.stravaClientSecret, settings.stravaAccessToken]);
+
   if (!isOpen) return null;
+
+  const currentHostname =
+    typeof window !== 'undefined' && window.location?.hostname
+      ? window.location.hostname
+      : 'hoprun.app';
+  const currentOrigin =
+    typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'https://hoprun.app';
+
+  const selectedRedirectUri =
+    callbackDomainMode === 'hoprun'
+      ? 'https://hoprun.app/'
+      : callbackDomainMode === 'localhost'
+        ? 'http://localhost:5173/'
+        : `${currentOrigin}/`;
+
+  const selectedCallbackHostname =
+    callbackDomainMode === 'hoprun'
+      ? 'hoprun.app'
+      : callbackDomainMode === 'localhost'
+        ? 'localhost'
+        : currentHostname;
+
+  const handleCopyDomain = async () => {
+    try {
+      await navigator.clipboard.writeText(selectedCallbackHostname);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2000);
+    } catch {
+      // Clipboard fallback
+    }
+  };
 
   // 1. Direct Access Token Connect (Fastest, zero OAuth callback redirect needed)
   const handleConnectWithToken = async (e: React.FormEvent) => {
@@ -116,12 +169,91 @@ export const StravaConnectModal: React.FC<Props> = ({
       stravaClientSecret: cleanSecret,
     });
 
-    const redirectUri = typeof window !== 'undefined' ? `${window.location.origin}/` : 'http://localhost:5173/';
-    const authUrl = buildStravaAuthUrl(cleanId, redirectUri);
+    const state = encodeStravaOAuthState({
+      clientId: cleanId,
+      clientSecret: cleanSecret,
+      origin: currentOrigin,
+    });
+    const authUrl = buildStravaAuthUrl(cleanId, selectedRedirectUri, state);
     window.location.href = authUrl;
   };
 
-  // 3. Sync recent activities now
+  // 2b. Manual Callback URL or Authorization Code Completion (Fallback for localhost / cross-origin redirects)
+  const handleCompleteManualCallback = async () => {
+    setErrorMessage('');
+    const { code: extractedCode, state: extractedState } = extractCodeFromUrlOrInput(callbackInput);
+    if (!extractedCode) {
+      setErrorMessage(
+        'Please paste the callback URL (containing ?code=...) or authorization code from your browser address bar.'
+      );
+      return;
+    }
+
+    const decoded = decodeStravaOAuthState(extractedState);
+    const effectiveId =
+      clientId.trim() || decoded?.clientId || settings.stravaClientId || '';
+    const effectiveSecret =
+      clientSecret.trim() || decoded?.clientSecret || settings.stravaClientSecret || '';
+
+    if (!effectiveId || !effectiveSecret) {
+      setErrorMessage(
+        'Please enter your Strava Client ID and Client Secret above so Hop Run can exchange the authorization code.'
+      );
+      return;
+    }
+
+    setIsSyncing(true);
+    try {
+      const tokenData = await exchangeStravaCode(effectiveId, effectiveSecret, extractedCode);
+      const athleteName = tokenData.athlete
+        ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
+        : currentUser.name || 'Strava Athlete';
+
+      const activities = await fetchStravaActivities(tokenData.access_token, 1, 30);
+      const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
+      const unit = settings.distanceUnit || 'mi';
+
+      const normalizedWorkouts = activities.map((act) =>
+        normalizeStravaActivity(
+          act,
+          unit,
+          currentUser.id,
+          currentUser.name || athleteName,
+          defaultShoe?.id,
+          defaultShoe?.name
+        )
+      );
+
+      if (onImportRuns && normalizedWorkouts.length > 0) {
+        onImportRuns(normalizedWorkouts);
+      }
+
+      onUpdateSettings({
+        stravaClientId: effectiveId,
+        stravaClientSecret: effectiveSecret,
+        stravaConnected: true,
+        stravaAccessToken: tokenData.access_token,
+        stravaRefreshToken: tokenData.refresh_token,
+        stravaExpiresAt: tokenData.expires_at,
+        stravaAthleteName: athleteName,
+        stravaAutoSync: true,
+        stravaLastSyncTime: new Date().toISOString(),
+      });
+
+      setCallbackInput('');
+      setToastMessage(
+        `✓ Strava Connected! Synced ${normalizedWorkouts.length} runs from ${athleteName}.`
+      );
+    } catch (err: any) {
+      setErrorMessage(
+        err.message || 'Failed to exchange authorization code. Please check your Client ID, Secret, and pasted URL.'
+      );
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // 3. Sync recent activities now (with automatic token refresh on 401)
   const handleSyncLatest = async () => {
     if (!settings.stravaAccessToken) {
       setErrorMessage('No active Strava token found. Please re-enter your access token.');
@@ -131,7 +263,33 @@ export const StravaConnectModal: React.FC<Props> = ({
     setIsSyncing(true);
     setErrorMessage('');
     try {
-      const activities = await fetchStravaActivities(settings.stravaAccessToken, 1, 30);
+      let activeToken = settings.stravaAccessToken;
+      let activities;
+      try {
+        activities = await fetchStravaActivities(activeToken, 1, 30);
+      } catch (fetchErr: any) {
+        if (
+          settings.stravaRefreshToken &&
+          settings.stravaClientId &&
+          settings.stravaClientSecret
+        ) {
+          const refreshed = await refreshStravaToken(
+            settings.stravaClientId,
+            settings.stravaClientSecret,
+            settings.stravaRefreshToken
+          );
+          activeToken = refreshed.access_token;
+          onUpdateSettings({
+            stravaAccessToken: refreshed.access_token,
+            stravaRefreshToken: refreshed.refresh_token,
+            stravaExpiresAt: refreshed.expires_at,
+          });
+          activities = await fetchStravaActivities(activeToken, 1, 30);
+        } else {
+          throw fetchErr;
+        }
+      }
+
       const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
       const unit = settings.distanceUnit || 'mi';
 
@@ -223,6 +381,24 @@ export const StravaConnectModal: React.FC<Props> = ({
         </div>
 
         <div className="modal-body space-y-4">
+          {oauthStatus && (
+            <div
+              className={`inweek-ribbon ${
+                oauthStatus.type === 'success'
+                  ? 'inweek-ribbon-optimal'
+                  : 'inweek-ribbon-critical'
+              } animate-in`}
+            >
+              <span
+                className={`font-mono text-xs font-bold ${
+                  oauthStatus.type === 'success' ? 'text-success' : 'text-danger'
+                }`}
+              >
+                {oauthStatus.message}
+              </span>
+            </div>
+          )}
+
           {toastMessage && (
             <div className="inweek-ribbon inweek-ribbon-optimal animate-in">
               <span className="font-mono text-xs font-bold text-success">
@@ -333,85 +509,151 @@ export const StravaConnectModal: React.FC<Props> = ({
               </div>
 
               {activeMode === 'oauth' ? (
-                /* OAuth Mode: Client ID + Secret */
-                <form onSubmit={handleOAuthConnect} className="space-y-3">
-                  <div className="p-3 rounded-lg bg-surface border border-subtle text-xs space-y-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <strong className="text-primary text-xs">Easy 2-Minute Setup:</strong>
-                      <span className="badge-strava font-mono text-xxs font-bold">ACTIVITY ACCESS</span>
+                /* OAuth Mode: Client ID + Secret + Callback Domain Selector + Manual Callback Fallback */
+                <div className="space-y-3">
+                  <form onSubmit={handleOAuthConnect} className="space-y-3">
+                    <div className="p-3 rounded-lg bg-surface border border-subtle text-xs space-y-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <strong className="text-primary text-xs">Easy 2-Minute Setup:</strong>
+                        <span className="badge-strava font-mono text-xxs font-bold">ACTIVITY ACCESS</span>
+                      </div>
+                      <ol className="list-decimal list-inside space-y-1.5 text-secondary text-xxs leading-relaxed">
+                        <li>
+                          Open your free Strava API page:{' '}
+                          <a
+                            href="https://www.strava.com/settings/api"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-accent underline font-bold"
+                          >
+                            strava.com/settings/api ↗
+                          </a>
+                        </li>
+                        <li>
+                          Set <strong>Authorization Callback Domain</strong> in Strava to match your choice below:
+                          <div className="flex items-center gap-2 pt-1.5 flex-wrap">
+                            <code className="text-emerald-400 bg-surface-elevated px-2 py-0.5 rounded border border-emerald-500/30 font-mono font-bold">
+                              {selectedCallbackHostname}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={handleCopyDomain}
+                              className="btn-filter-pill text-xxs font-mono py-0.5 px-2"
+                            >
+                              {copiedDomain ? '✓ Copied!' : '📋 Copy Domain'}
+                            </button>
+                          </div>
+                          <span className="text-amber-400 block pt-1 text-xxs">
+                            ⚠️ Important: In Strava settings, enter just the hostname{' '}
+                            <strong>{selectedCallbackHostname}</strong> (no https:// or slash).
+                          </span>
+                        </li>
+                        <li>Copy your <strong>Client ID</strong> and <strong>Client Secret</strong> below.</li>
+                      </ol>
                     </div>
-                    <ol className="list-decimal list-inside space-y-1.5 text-secondary text-xxs leading-relaxed">
-                      <li>
-                        Open your free Strava API page:{' '}
-                        <a
-                          href="https://www.strava.com/settings/api"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-accent underline font-bold"
+
+                    {/* Callback Domain Selector */}
+                    <div className="p-2.5 rounded-lg bg-surface-elevated border border-subtle space-y-1.5">
+                      <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                        Strava Callback Domain (Match strava.com/settings/api)
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setCallbackDomainMode('current')}
+                          className={`btn-filter-pill text-xxs font-mono ${
+                            callbackDomainMode === 'current' ? 'active' : ''
+                          }`}
                         >
-                          strava.com/settings/api ↗
-                        </a>
-                      </li>
-                      <li>
-                        If creating your app, enter:
-                        <ul className="list-disc list-inside pl-3 pt-1 space-y-0.5 text-muted font-mono">
-                          <li>Application Name: <strong className="text-primary">Hop Run</strong></li>
-                          <li>Website: <strong className="text-primary">{typeof window !== 'undefined' ? window.location.origin : 'https://hoprun.app'}</strong></li>
-                          <li>
-                            Authorization Callback Domain:{' '}
-                            <strong className="text-emerald-400 bg-surface px-1 py-0.5 rounded border border-emerald-500/30">
-                              {typeof window !== 'undefined' ? window.location.hostname : 'hoprun.app'}
-                            </strong>
-                          </li>
-                        </ul>
-                        <span className="text-amber-400 block pt-1 text-xxs">
-                          ⚠️ Important: In Strava settings, enter just the domain{' '}
-                          <strong>{typeof window !== 'undefined' ? window.location.hostname : 'hoprun.app'}</strong>{' '}
-                          (no http:// or port).
-                        </span>
-                      </li>
-                      <li>Copy your <strong>Client ID</strong> and <strong>Client Secret</strong> below.</li>
-                    </ol>
-                  </div>
+                          Current ({currentHostname})
+                        </button>
+                        {currentHostname !== 'hoprun.app' && (
+                          <button
+                            type="button"
+                            onClick={() => setCallbackDomainMode('hoprun')}
+                            className={`btn-filter-pill text-xxs font-mono ${
+                              callbackDomainMode === 'hoprun' ? 'active' : ''
+                            }`}
+                          >
+                            hoprun.app
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setCallbackDomainMode('localhost')}
+                          className={`btn-filter-pill text-xxs font-mono ${
+                            callbackDomainMode === 'localhost' ? 'active' : ''
+                          }`}
+                        >
+                          localhost Compatibility
+                        </button>
+                      </div>
+                    </div>
 
-                  <div>
-                    <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      Client ID
+                    <div>
+                      <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
+                        Client ID
+                      </label>
+                      <input
+                        type="text"
+                        className="input font-mono text-xs w-full"
+                        placeholder="e.g. 123456"
+                        value={clientId}
+                        onChange={(e) => setClientId(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
+                        Client Secret
+                      </label>
+                      <input
+                        type="password"
+                        className="input font-mono text-xs w-full"
+                        placeholder="e.g. 8a7b6c5d4e..."
+                        value={clientSecret}
+                        onChange={(e) => setClientSecret(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="btn-strava-primary w-full py-2.5 font-mono text-xs font-bold text-center mt-2 flex items-center justify-center gap-2"
+                      disabled={isSyncing}
+                    >
+                      <span>Connect &amp; Authorize on Strava →</span>
+                    </button>
+                    <p className="text-center text-xxs text-muted font-mono">
+                      Directs you to Strava to approve activity permissions, then syncs automatically.
+                    </p>
+                  </form>
+
+                  {/* Manual Callback URL / Code Paste Fallback */}
+                  <div className="p-3 rounded-lg bg-surface border border-subtle space-y-2">
+                    <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                      Redirected to localhost or another URL? Paste Callback URL or Code here:
                     </label>
-                    <input
-                      type="text"
-                      className="input font-mono text-xs w-full"
-                      placeholder="e.g. 123456"
-                      value={clientId}
-                      onChange={(e) => setClientId(e.target.value)}
-                      required
-                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        className="input font-mono text-xs flex-1"
+                        placeholder="Paste http://localhost:5173/?state=...&code=... or raw code"
+                        value={callbackInput}
+                        onChange={(e) => setCallbackInput(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCompleteManualCallback}
+                        disabled={isSyncing || !callbackInput.trim()}
+                        className="btn-strava-primary px-3 py-2 font-mono text-xxs font-bold whitespace-nowrap"
+                      >
+                        {isSyncing ? 'Connecting...' : 'Complete Connection'}
+                      </button>
+                    </div>
                   </div>
-
-                  <div>
-                    <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                      Client Secret
-                    </label>
-                    <input
-                      type="password"
-                      className="input font-mono text-xs w-full"
-                      placeholder="e.g. 8a7b6c5d4e..."
-                      value={clientSecret}
-                      onChange={(e) => setClientSecret(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="btn-strava-primary w-full py-2.5 font-mono text-xs font-bold text-center mt-2 flex items-center justify-center gap-2"
-                  >
-                    <span>Connect &amp; Authorize on Strava →</span>
-                  </button>
-                  <p className="text-center text-xxs text-muted font-mono">
-                    Directs you to Strava to approve activity permissions, then syncs automatically.
-                  </p>
-                </form>
+                </div>
               ) : (
                 /* Fast Mode: Personal Access Token */
                 <form onSubmit={handleConnectWithToken} className="space-y-3">

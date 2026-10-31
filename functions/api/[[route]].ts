@@ -48,6 +48,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return new Response(upstream.body, {
         status: upstream.status,
         headers: {
+          ...corsHeaders,
           'Content-Type': upstream.headers.get('Content-Type') || 'application/json',
           'Cache-Control': 'no-store',
         },

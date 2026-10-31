@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type {
   WorkoutRun,
   TrainingPlan,
@@ -55,7 +55,10 @@ import {
   exchangeStravaCode,
   fetchStravaActivities,
   normalizeStravaActivity,
+  decodeStravaOAuthState,
 } from './utils/stravaSync';
+
+const globalProcessedStravaCodes = new Set<string>();
 
 export const App: React.FC = () => {
   // Core state
@@ -95,6 +98,11 @@ export const App: React.FC = () => {
   const [isAssignedRunsOpen, setIsAssignedRunsOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isStravaModalOpen, setIsStravaModalOpen] = useState(false);
+  const [stravaOAuthStatus, setStravaOAuthStatus] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const processedStravaCodesRef = useRef<Set<string>>(new Set());
 
   // Strava-Style Log Run / Edit Run Pop-up Modal State
   const [isLogRunModalOpen, setIsLogRunModalOpen] = useState(false);
@@ -134,69 +142,136 @@ export const App: React.FC = () => {
     const parseUrlPlan = async () => {
       const params = new URLSearchParams(window.location.search);
       const compressedPayload = params.get('p');
-      const planCode = params.get('plan') || params.get('code');
+      const planCode =
+        params.get('plan') ||
+        (!params.has('scope') && !params.has('state') ? params.get('code') : null);
       const planData = params.get('data');
 
       // 0. Strava OAuth Callback (?code=XYZ&scope=... or ?error=...)
       const stravaCode = params.get('code');
       const stravaError = params.get('error');
+      const decodedState = decodeStravaOAuthState(params.get('state'));
+
       if (stravaError) {
         window.history.replaceState({}, document.title, window.location.pathname);
         console.warn('Strava authorization was cancelled or denied:', stravaError);
+        if (!currentUser && !loadStoredUser()) {
+          setCurrentUser(COACH_PROFILE);
+          saveStoredUser(COACH_PROFILE);
+        }
+        setStravaOAuthStatus({
+          type: 'error',
+          message: `Strava authorization was cancelled or denied (${stravaError}). Please try again.`,
+        });
+        setIsStravaModalOpen(true);
         return;
       }
 
-      if (stravaCode && (params.get('scope') !== null || params.has('scope'))) {
+      if (stravaCode && (params.get('scope') !== null || params.has('scope') || decodedState)) {
+        // If user initiated OAuth from another origin (e.g., https://www.hoprun.app) using localhost compatibility
+        // and local dev server caught the redirect, bounce back to the originating domain
+        if (
+          decodedState?.origin &&
+          decodedState.origin !== window.location.origin &&
+          window.location.hostname === 'localhost'
+        ) {
+          window.location.href = `${decodedState.origin}${window.location.pathname}${window.location.search}`;
+          return;
+        }
+
+        // Guard against React 19 StrictMode double-execution or dependency re-renders
+        if (
+          processedStravaCodesRef.current.has(stravaCode) ||
+          globalProcessedStravaCodes.has(stravaCode)
+        ) {
+          return;
+        }
+        processedStravaCodesRef.current.add(stravaCode);
+        globalProcessedStravaCodes.add(stravaCode);
+
+        // Immediately clean ?code=...&scope=...&state=... from URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+
+        if (!currentUser && !loadStoredUser()) {
+          setCurrentUser(COACH_PROFILE);
+          saveStoredUser(COACH_PROFILE);
+        }
+
         const freshSettings = loadStoredSettings();
-        const effectiveClientId = settings.stravaClientId || freshSettings.stravaClientId;
-        const effectiveClientSecret = settings.stravaClientSecret || freshSettings.stravaClientSecret;
+        const effectiveClientId =
+          decodedState?.clientId || settings.stravaClientId || freshSettings.stravaClientId;
+        const effectiveClientSecret =
+          decodedState?.clientSecret ||
+          settings.stravaClientSecret ||
+          freshSettings.stravaClientSecret;
 
-        if (effectiveClientId && effectiveClientSecret) {
-          try {
-            const tokenData = await exchangeStravaCode(
-              effectiveClientId,
-              effectiveClientSecret,
-              stravaCode
-            );
-            const athleteName = tokenData.athlete
-              ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
-              : currentUser?.name || 'Strava Athlete';
+        if (!effectiveClientId || !effectiveClientSecret) {
+          setStravaOAuthStatus({
+            type: 'error',
+            message:
+              'Strava returned an authorization code, but your Client ID or Client Secret was not found in browser storage. Please enter your Client ID and Client Secret below and click Connect.',
+          });
+          setIsStravaModalOpen(true);
+          return;
+        }
 
-            const activities = await fetchStravaActivities(tokenData.access_token, 1, 30);
-            const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
-            const unit = settings.distanceUnit || 'mi';
+        try {
+          const tokenData = await exchangeStravaCode(
+            effectiveClientId,
+            effectiveClientSecret,
+            stravaCode
+          );
+          const athleteName = tokenData.athlete
+            ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
+            : currentUser?.name || 'Strava Athlete';
 
-            const normalizedWorkouts = activities.map((act) =>
-              normalizeStravaActivity(
-                act,
-                unit,
-                currentUser?.id || COACH_PROFILE.id,
-                currentUser?.name || athleteName,
-                defaultShoe?.id,
-                defaultShoe?.name
-              )
-            );
+          const activities = await fetchStravaActivities(tokenData.access_token, 1, 30);
+          const defaultShoe = (settings.shoes || freshSettings.shoes || []).find(
+            (s) => !s.isRetired && s.isDefault
+          );
+          const unit = settings.distanceUnit || freshSettings.distanceUnit || 'mi';
 
-            if (normalizedWorkouts.length > 0) {
-              handleBatchImportWorkouts(normalizedWorkouts);
-            }
+          const normalizedWorkouts = activities.map((act) =>
+            normalizeStravaActivity(
+              act,
+              unit,
+              currentUser?.id || COACH_PROFILE.id,
+              currentUser?.name || athleteName,
+              defaultShoe?.id,
+              defaultShoe?.name
+            )
+          );
 
-            handleUpdateSettings({
-              stravaConnected: true,
-              stravaAccessToken: tokenData.access_token,
-              stravaRefreshToken: tokenData.refresh_token,
-              stravaExpiresAt: tokenData.expires_at,
-              stravaAthleteName: athleteName,
-              stravaAutoSync: true,
-              stravaLastSyncTime: new Date().toISOString(),
-            });
-
-            // Clean URL query parameters
-            window.history.replaceState({}, document.title, window.location.pathname);
-          } catch (err) {
-            console.error('Strava OAuth callback error:', err);
-            setIsStravaModalOpen(true);
+          if (normalizedWorkouts.length > 0) {
+            handleBatchImportWorkouts(normalizedWorkouts);
           }
+
+          handleUpdateSettings({
+            stravaClientId: effectiveClientId,
+            stravaClientSecret: effectiveClientSecret,
+            stravaConnected: true,
+            stravaAccessToken: tokenData.access_token,
+            stravaRefreshToken: tokenData.refresh_token,
+            stravaExpiresAt: tokenData.expires_at,
+            stravaAthleteName: athleteName,
+            stravaAutoSync: true,
+            stravaLastSyncTime: new Date().toISOString(),
+          });
+
+          setStravaOAuthStatus({
+            type: 'success',
+            message: `✓ Strava Connected! Synced ${normalizedWorkouts.length} runs from ${athleteName}.`,
+          });
+          setIsStravaModalOpen(true);
+        } catch (err: any) {
+          console.error('Strava OAuth callback error:', err);
+          setStravaOAuthStatus({
+            type: 'error',
+            message:
+              err?.message ||
+              'Failed to exchange Strava authorization code. Please verify your Client ID and Client Secret.',
+          });
+          setIsStravaModalOpen(true);
         }
         return;
       }
@@ -485,9 +560,11 @@ export const App: React.FC = () => {
 
   // Settings handlers
   const handleUpdateSettings = (newSettings: Partial<AppSettings>) => {
-    const updated = { ...settings, ...newSettings };
-    setSettings(updated);
-    saveStoredSettings(updated);
+    setSettings((prev) => {
+      const updated = { ...prev, ...newSettings };
+      saveStoredSettings(updated);
+      return updated;
+    });
   };
 
   const handleSaveUserStaples = (userId: string, staples: QuickLogStaple[]) => {
@@ -900,11 +977,15 @@ export const App: React.FC = () => {
       {/* Strava Sync Modal */}
       <StravaConnectModal
         isOpen={isStravaModalOpen}
-        onClose={() => setIsStravaModalOpen(false)}
+        onClose={() => {
+          setIsStravaModalOpen(false);
+          setStravaOAuthStatus(null);
+        }}
         currentUser={currentUser}
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
         onImportRuns={handleBatchImportWorkouts}
+        oauthStatus={stravaOAuthStatus}
       />
     </div>
   );
