@@ -1657,10 +1657,10 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(workout.source).toBe('strava');
       expect(workout.shoeName).toBe('Nike Vaporfly 3');
       expect(workout.completed).toBe(true);
-      // Run classified based on "Tempo" title -> double_threshold (6.0 multiplier)
-      expect(workout.runType).toBe('double_threshold');
-      expect(workout.multiplier).toBe(6.0);
-      expect(workout.load).toBe(37.3); // 6.21 * 6.0 = 37.26 -> 37.3
+      // All synced Strava runs default to 'easy' (3.0 multiplier) unless overridden by a same-day planned workout
+      expect(workout.runType).toBe('easy');
+      expect(workout.multiplier).toBe(3.0);
+      expect(workout.load).toBe(18.6); // 6.21 * 3.0 = 18.63 -> 18.6
     });
 
     it('test_normalizeStravaActivity_metric() - converts to kilometers when preferredUnit is km', () => {
@@ -1951,6 +1951,128 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(reconciled[0].comments).toBe(
         'Changed from fartlek to easy recovery jog — legs felt heavy'
       );
+    });
+
+    it('test_reconcileStravaWorkouts_longestRunInheritsSameDayPlannedNonEasyType() - longest Strava run on a planned non-easy day inherits the planned runType while all other Strava runs stay easy', () => {
+      const existingCalendar: WorkoutRun[] = [
+        {
+          id: 'plan_oct31_moderate',
+          workoutDate: '2026-10-31',
+          runOrder: 1,
+          distance: 7.0,
+          distanceUnit: 'mi',
+          runType: 'mod_workout',
+          multiplier: 7.0,
+          load: 49.0,
+          comments: 'Planned Saturday Mod Workout',
+          completed: false,
+          isPlanAssigned: true,
+          source: 'google_sheets',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+        {
+          id: 'plan_oct30_easy',
+          workoutDate: '2026-10-30',
+          runOrder: 1,
+          distance: 5.0,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 15.0,
+          comments: 'Planned Friday Easy Run',
+          completed: false,
+          isPlanAssigned: true,
+          source: 'google_sheets',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+      ];
+
+      // Runner syncs 2 runs on Oct 31 (2.0 mi shakeout + 6.5 mi main session) and 1 run on Oct 30 (5.2 mi)
+      const incomingStrava: WorkoutRun[] = [
+        {
+          id: 'strava_oct31_short',
+          workoutDate: '2026-10-31',
+          startTime: '07:00',
+          runOrder: 1,
+          distance: 2.0,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 6.0,
+          comments: 'Synced via Strava',
+          completed: true,
+          source: 'strava',
+          externalActivityId: '3101',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+        {
+          id: 'strava_oct31_long',
+          workoutDate: '2026-10-31',
+          startTime: '08:00',
+          runOrder: 2,
+          distance: 6.5,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 19.5,
+          comments: 'Synced via Strava',
+          completed: true,
+          source: 'strava',
+          externalActivityId: '3102',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+        {
+          id: 'strava_oct30_only',
+          workoutDate: '2026-10-30',
+          startTime: '07:30',
+          runOrder: 1,
+          distance: 5.2,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 15.6,
+          comments: 'Synced via Strava',
+          completed: true,
+          source: 'strava',
+          externalActivityId: '3001',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+      ];
+
+      const reconciled = reconcileStravaWorkouts(existingCalendar, incomingStrava);
+
+      // Both planned calendar entries on 10/30 and 10/31 were deleted in exchange for the Strava runs
+      expect(reconciled.find((w) => w.id === 'plan_oct31_moderate')).toBeUndefined();
+      expect(reconciled.find((w) => w.id === 'plan_oct30_easy')).toBeUndefined();
+      expect(reconciled.length).toBe(3);
+
+      // Longest run on Oct 31 (6.5 mi) inherited 'mod_workout' (7.0x -> 45.5 load)
+      const oct31Long = reconciled.find((w) => w.id === 'strava_oct31_long');
+      expect(oct31Long?.runType).toBe('mod_workout');
+      expect(oct31Long?.multiplier).toBe(7.0);
+      expect(oct31Long?.load).toBe(45.5);
+      expect(oct31Long?.isTypeConfirmed).toBe(true);
+
+      // Shorter run on Oct 31 (2.0 mi) remained 'easy' (3.0x -> 6.0 load)
+      const oct31Short = reconciled.find((w) => w.id === 'strava_oct31_short');
+      expect(oct31Short?.runType).toBe('easy');
+      expect(oct31Short?.multiplier).toBe(3.0);
+      expect(oct31Short?.load).toBe(6.0);
+
+      // Oct 30 run (where plan was easy) remained 'easy'
+      const oct30Run = reconciled.find((w) => w.id === 'strava_oct30_only');
+      expect(oct30Run?.runType).toBe('easy');
+      expect(oct30Run?.multiplier).toBe(3.0);
+
+      // Subsequent auto-resync preserves the inherited 'mod_workout' on oct31Long
+      const resynced = reconcileStravaWorkouts(reconciled, incomingStrava);
+      expect(resynced.find((w) => w.id === 'strava_oct31_long')?.runType).toBe('mod_workout');
+      expect(resynced.find((w) => w.id === 'strava_oct31_short')?.runType).toBe('easy');
     });
   });
 

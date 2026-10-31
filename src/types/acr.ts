@@ -48,6 +48,7 @@ export interface WorkoutRun {
   shoeName?: string;
   source?: 'manual' | 'garmin' | 'strava' | 'file_import' | 'google_sheets';
   externalActivityId?: string;
+  isTypeConfirmed?: boolean;
   deviceModel?: string; // e.g. "Garmin Forerunner 265", "Garmin Fenix 7"
   averageHeartRate?: number; // average bpm
   maxHeartRate?: number; // max bpm

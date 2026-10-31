@@ -227,7 +227,7 @@ export const App: React.FC = () => {
             ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
             : currentUser?.name || 'Strava Athlete';
 
-          const activities = await fetchStravaActivities(tokenData.access_token, 1, 30);
+          const activities = await fetchStravaActivities(tokenData.access_token, 1, 200);
           const defaultShoe = (settings.shoes || freshSettings.shoes || []).find(
             (s) => !s.isRetired && s.isDefault
           );
@@ -356,7 +356,7 @@ export const App: React.FC = () => {
           });
         }
 
-        const activities = await fetchStravaActivities(activeToken, 1, 30, {
+        const activities = await fetchStravaActivities(activeToken, 1, 200, {
           clientId,
           clientSecret,
           refreshToken,

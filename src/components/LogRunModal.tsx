@@ -241,6 +241,7 @@ export const LogRunModal: React.FC<Props> = ({
         multiplier: updatedMultiplier,
         load: updatedLoad,
         comments: comments.trim(),
+        isTypeConfirmed: true,
         updatedAt: new Date().toISOString(),
       };
 

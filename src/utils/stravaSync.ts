@@ -5,8 +5,8 @@ import {
   formatDurationStrava,
   calculatePaceSeconds,
   formatPace,
+  getRunTypeMultiplier,
 } from './calculations';
-import { classifyGarminRun } from './garminParser';
 
 export interface StravaSummaryActivity {
   id: number;
@@ -189,17 +189,12 @@ export function normalizeStravaActivity(
       ? calculatePaceSeconds(durationSec, targetDistance) || 0
       : 0;
 
-  // Run type classification & ACWR load multiplier
+  // Default all synced Strava runs to 'easy' unless overridden by a same-day planned workout or manual user edit
   const avgHr = act.has_heartrate && act.average_heartrate ? Math.round(act.average_heartrate) : undefined;
   const maxHr = act.has_heartrate && act.max_heartrate ? Math.round(act.max_heartrate) : undefined;
 
-  const { runType, multiplier } = classifyGarminRun({
-    title: act.name,
-    distanceMiles,
-    avgHr,
-    durationSeconds: durationSec,
-  });
-
+  const runType = 'easy';
+  const multiplier = getRunTypeMultiplier('easy');
   const load = calculateRunLoad(targetDistance, preferredUnit, multiplier);
 
   // Elevation in feet and meters
@@ -326,23 +321,28 @@ export async function refreshStravaToken(
 
 /**
  * Fetches recent activities from Strava for the authenticated athlete.
+ * Defaults to importing the last 3 months (90 days) of runs automatically.
  * Automatically refreshes an expired token if refreshConfig is provided.
  */
 export async function fetchStravaActivities(
   accessToken: string,
   page: number = 1,
-  perPage: number = 30,
+  perPage: number = 200,
   refreshConfig?: {
     clientId?: string;
     clientSecret?: string;
     refreshToken?: string;
     onTokenRefreshed?: (tokenData: StravaTokenResponse) => void;
-  }
+  },
+  afterEpochSeconds?: number
 ): Promise<StravaSummaryActivity[]> {
-  const path = `/api/v3/athlete/activities?page=${page}&per_page=${perPage}`;
+  const effectiveAfter =
+    afterEpochSeconds ?? Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+  const path = `/api/v3/athlete/activities?after=${effectiveAfter}&page=${page}&per_page=${perPage}`;
+  let activeAccessToken = accessToken.trim();
   let response = await callStravaEndpoint(path, {
     headers: {
-      Authorization: `Bearer ${accessToken.trim()}`,
+      Authorization: `Bearer ${activeAccessToken}`,
     },
   });
 
@@ -361,9 +361,10 @@ export async function fetchStravaActivities(
       if (refreshConfig.onTokenRefreshed) {
         refreshConfig.onTokenRefreshed(refreshed);
       }
+      activeAccessToken = refreshed.access_token.trim();
       response = await callStravaEndpoint(path, {
         headers: {
-          Authorization: `Bearer ${refreshed.access_token.trim()}`,
+          Authorization: `Bearer ${activeAccessToken}`,
         },
       });
     } catch {
@@ -393,8 +394,30 @@ export async function fetchStravaActivities(
   }
 
   const list: StravaSummaryActivity[] = await response.json();
+  let combinedList = Array.isArray(list) ? [...list] : [];
+
+  // If the athlete has >= 200 total activities in the 3-month window, fetch page 2 as well
+  if (page === 1 && perPage >= 200 && combinedList.length >= 200) {
+    try {
+      const page2Path = `/api/v3/athlete/activities?after=${effectiveAfter}&page=2&per_page=${perPage}`;
+      const page2Res = await callStravaEndpoint(page2Path, {
+        headers: {
+          Authorization: `Bearer ${activeAccessToken}`,
+        },
+      });
+      if (page2Res.ok) {
+        const page2List: StravaSummaryActivity[] = await page2Res.json();
+        if (Array.isArray(page2List) && page2List.length > 0) {
+          combinedList = [...combinedList, ...page2List];
+        }
+      }
+    } catch {
+      // Ignore optional page 2 fetch error
+    }
+  }
+
   // Filter for runs (Run, TrailRun, VirtualRun)
-  return list.filter(
+  return combinedList.filter(
     (act) =>
       act.type === 'Run' ||
       act.sport_type === 'Run' ||
@@ -462,9 +485,12 @@ function isSameStravaActivity(a: WorkoutRun, b: WorkoutRun): boolean {
 
 /**
  * Reconciles incoming synced Strava runs against existing calendar workouts:
- * 1. Deletes any non-Strava calendar/prescribed/assigned runs on the same date for the same runner
+ * 1. Defaults all synced Strava runs to 'easy', EXCEPT when a same-day planned/prescribed
+ *    calendar workout for that runner has a non-easy runType — in which case the longest
+ *    synced Strava run on that date inherits the planned workout's runType.
+ * 2. Deletes any non-Strava calendar/prescribed/assigned runs on the same date for the same runner
  *    in exchange for the synced Strava run(s).
- * 2. Deduplicates already-synced Strava runs while preserving any athlete edits to runType,
+ * 3. Deduplicates already-synced Strava runs while preserving any confirmed/edited runType,
  *    multiplier, load, comments, or gear.
  */
 export function reconcileStravaWorkouts(
@@ -475,13 +501,81 @@ export function reconcileStravaWorkouts(
     return existingWorkouts;
   }
 
-  // Step 1: Delete any existing non-Strava calendar/prescribed runs on the same date
+  const preparedIncoming: WorkoutRun[] = incomingStravaWorkouts.map((r) => ({ ...r }));
+  const uniqueDates = Array.from(
+    new Set(preparedIncoming.filter((r) => r.source === 'strava').map((r) => r.workoutDate))
+  );
+
+  // Step 1: Same-day planned workout type inheritance onto the longest synced Strava run of the day
+  for (const dateStr of uniqueDates) {
+    const stravaRunsOnDay = preparedIncoming.filter(
+      (r) => r.source === 'strava' && r.workoutDate === dateStr
+    );
+    const nonStravaOnDay = existingWorkouts.filter(
+      (w) => w.source !== 'strava' && w.workoutDate === dateStr
+    );
+
+    const processedIndices = new Set<number>();
+    for (let i = 0; i < stravaRunsOnDay.length; i++) {
+      if (processedIndices.has(i)) continue;
+      const rep = stravaRunsOnDay[i];
+      const runnerStravaRuns: WorkoutRun[] = [];
+      for (let j = i; j < stravaRunsOnDay.length; j++) {
+        if (!processedIndices.has(j) && isSameRunner(rep, stravaRunsOnDay[j])) {
+          processedIndices.add(j);
+          runnerStravaRuns.push(stravaRunsOnDay[j]);
+        }
+      }
+
+      // Default all non-confirmed Strava runs on this day to 'easy'
+      for (const sr of runnerStravaRuns) {
+        if (!sr.isTypeConfirmed) {
+          const easyMult = getRunTypeMultiplier('easy');
+          sr.runType = 'easy';
+          sr.multiplier = easyMult;
+          sr.load = calculateRunLoad(sr.distance, sr.distanceUnit, easyMult);
+        }
+      }
+
+      // Check if there is a non-easy planned/prescribed workout on this date for this runner
+      const plannedNonEasyRuns = nonStravaOnDay
+        .filter(
+          (w) =>
+            isSameRunner(w, rep) &&
+            Boolean(w.runType) &&
+            w.runType !== 'easy' &&
+            w.runType !== 'day_off'
+        )
+        .sort(
+          (a, b) => getRunTypeMultiplier(b.runType) - getRunTypeMultiplier(a.runType)
+        );
+
+      if (plannedNonEasyRuns.length > 0 && runnerStravaRuns.length > 0) {
+        const sortedByDistanceDesc = [...runnerStravaRuns].sort(
+          (a, b) => b.distance - a.distance
+        );
+        const longestRun = sortedByDistanceDesc[0];
+        const inheritedType = plannedNonEasyRuns[0].runType;
+        const inheritedMultiplier = getRunTypeMultiplier(inheritedType);
+        longestRun.runType = inheritedType;
+        longestRun.multiplier = inheritedMultiplier;
+        longestRun.load = calculateRunLoad(
+          longestRun.distance,
+          longestRun.distanceUnit,
+          inheritedMultiplier
+        );
+        longestRun.isTypeConfirmed = true;
+      }
+    }
+  }
+
+  // Step 2: Delete any existing non-Strava calendar/prescribed runs on the same date
   // for the same runner in exchange for the synced Strava run(s).
   const filteredExisting = existingWorkouts.filter((existing) => {
     if (existing.source === 'strava') {
       return true;
     }
-    const replacedByStrava = incomingStravaWorkouts.some(
+    const replacedByStrava = preparedIncoming.some(
       (sRun) =>
         sRun.source === 'strava' &&
         existing.workoutDate === sRun.workoutDate &&
@@ -490,26 +584,41 @@ export function reconcileStravaWorkouts(
     return !replacedByStrava;
   });
 
-  // Step 2: Merge incoming Strava workouts, updating existing Strava workouts in-place
-  // while preserving user-customized fields (runType, multiplier, load, comments, shoe).
+  // Step 3: Merge incoming Strava workouts, updating existing Strava workouts in-place
+  // while preserving confirmed/edited runType, multiplier, load, comments, and gear.
   const result = [...filteredExisting];
 
-  for (const incoming of incomingStravaWorkouts) {
+  for (const incoming of preparedIncoming) {
     const existingIdx = result.findIndex((w) => isSameStravaActivity(w, incoming));
     if (existingIdx >= 0) {
       const prev = result[existingIdx];
-      const preservedMultiplier = prev.multiplier;
-      const preservedLoad = calculateRunLoad(
+      let resolvedRunType = 'easy';
+      let resolvedMultiplier = getRunTypeMultiplier('easy');
+      let resolvedConfirmed: boolean | undefined = undefined;
+
+      if (incoming.isTypeConfirmed) {
+        resolvedRunType = incoming.runType;
+        resolvedMultiplier = incoming.multiplier;
+        resolvedConfirmed = true;
+      } else if (prev.isTypeConfirmed) {
+        resolvedRunType = prev.runType;
+        resolvedMultiplier = prev.multiplier;
+        resolvedConfirmed = true;
+      }
+
+      const resolvedLoad = calculateRunLoad(
         incoming.distance,
         incoming.distanceUnit,
-        preservedMultiplier
+        resolvedMultiplier
       );
+
       result[existingIdx] = {
         ...incoming,
         id: prev.id,
-        runType: prev.runType,
-        multiplier: preservedMultiplier,
-        load: preservedLoad,
+        runType: resolvedRunType,
+        multiplier: resolvedMultiplier,
+        load: resolvedLoad,
+        isTypeConfirmed: resolvedConfirmed,
         comments: prev.comments,
         title: prev.title || incoming.title,
         shoeId: prev.shoeId || incoming.shoeId,

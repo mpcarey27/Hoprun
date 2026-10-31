@@ -102,7 +102,7 @@ export const StravaConnectModal: React.FC<Props> = ({
 
     setIsSyncing(true);
     try {
-      const activities = await fetchStravaActivities(cleanToken, 1, 30);
+      const activities = await fetchStravaActivities(cleanToken, 1, 200);
       const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
       const unit = settings.distanceUnit || 'mi';
 
@@ -209,7 +209,7 @@ export const StravaConnectModal: React.FC<Props> = ({
         ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
         : currentUser.name || 'Strava Athlete';
 
-      const activities = await fetchStravaActivities(tokenData.access_token, 1, 30);
+      const activities = await fetchStravaActivities(tokenData.access_token, 1, 200);
       const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
       const unit = settings.distanceUnit || 'mi';
 
@@ -266,7 +266,7 @@ export const StravaConnectModal: React.FC<Props> = ({
       let activeToken = settings.stravaAccessToken;
       let activities;
       try {
-        activities = await fetchStravaActivities(activeToken, 1, 30);
+        activities = await fetchStravaActivities(activeToken, 1, 200);
       } catch (fetchErr: any) {
         if (
           settings.stravaRefreshToken &&
@@ -284,7 +284,7 @@ export const StravaConnectModal: React.FC<Props> = ({
             stravaRefreshToken: refreshed.refresh_token,
             stravaExpiresAt: refreshed.expires_at,
           });
-          activities = await fetchStravaActivities(activeToken, 1, 30);
+          activities = await fetchStravaActivities(activeToken, 1, 200);
         } else {
           throw fetchErr;
         }
