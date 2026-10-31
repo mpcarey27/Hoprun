@@ -755,7 +755,8 @@ export const App: React.FC = () => {
           'stravaAccessToken' in newSettings ||
           'stravaRefreshToken' in newSettings ||
           'stravaClientId' in newSettings ||
-          'stravaClientSecret' in newSettings)
+          'stravaClientSecret' in newSettings ||
+          'stravaLastSyncTime' in newSettings)
       ) {
         saveUserStravaConnection(currentUser.email, updated);
       }
