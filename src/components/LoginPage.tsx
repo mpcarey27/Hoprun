@@ -3,7 +3,6 @@ import type { UserProfile, RegisteredUser } from '../types/acr';
 import {
   COACH_EMAIL,
   COACH_PROFILE,
-  COACH_ATHLETE_PROFILE,
   isCoachEmail,
   determineUserRole,
   loadStoredAuthUsers,
@@ -67,6 +66,10 @@ export const LoginPage: React.FC<Props> = ({
           avatarUrl: existing.avatarUrl || '',
         };
         saveStoredUser(loggedInUser, keepSignedIn);
+        if (loggedInUser.role === 'runner') {
+          // Make sure returning athletes are on the coach's cloud roster
+          addAthleteToRoster(loggedInUser);
+        }
         onLoginSuccess(loggedInUser);
       } else {
         // First-time sign in with this email: create their profile on the fly
@@ -361,61 +364,6 @@ export const LoginPage: React.FC<Props> = ({
             {mode === 'signup' ? 'Create Account & Enter' : 'Sign In'}
           </button>
         </form>
-
-        {/* Quick Demo Switcher Section */}
-        <div className="login-demo-section mt-5 pt-4 border-t border-subtle">
-          <span className="text-xxs uppercase tracking-wider text-muted font-mono block mb-2 text-center">
-            One-Click Quick Sign In (For Testing):
-          </span>
-          <div className="flex flex-col gap-1.5">
-            <button
-              type="button"
-              className="btn-quick-login-chip flex items-center justify-between py-1.5 px-3 rounded text-xs"
-              onClick={() => handleQuickLogin(COACH_PROFILE)}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs">👑</span>
-                <span className="font-bold text-primary">Michael Carey</span>
-                <span className="text-muted text-xxs font-mono">({COACH_EMAIL})</span>
-              </div>
-              <span className="badge-safe text-xxs font-mono uppercase font-bold">Coach</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-quick-login-chip flex items-center justify-between py-1.5 px-3 rounded text-xs"
-              onClick={() => handleQuickLogin(COACH_ATHLETE_PROFILE)}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs">🏃</span>
-                <span className="font-bold text-primary">Michael Carey</span>
-                <span className="text-muted text-xxs font-mono">(Athlete Account)</span>
-              </div>
-              <span className="badge-muted text-xxs font-mono uppercase font-bold">Athlete</span>
-            </button>
-
-            <button
-              type="button"
-              className="btn-quick-login-chip flex items-center justify-between py-1.5 px-3 rounded text-xs"
-              onClick={() =>
-                handleQuickLogin({
-                  id: 'user_rob',
-                  email: 'rob.athlete@example.com',
-                  name: 'Rob',
-                  role: 'runner',
-                  avatarUrl: '',
-                })
-              }
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs">🏃</span>
-                <span className="font-bold text-primary">Rob</span>
-                <span className="text-muted text-xxs font-mono">(rob.athlete@example.com)</span>
-              </div>
-              <span className="badge-muted text-xxs font-mono uppercase font-bold">Athlete</span>
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Google Account Creation / Sign-In Modal */}

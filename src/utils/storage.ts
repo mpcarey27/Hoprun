@@ -76,105 +76,174 @@ export const COACH_ATHLETE_PROFILE: UserProfile = {
   avatarUrl: '',
 };
 
-export const INITIAL_ROSTER_USERS: UserProfile[] = [
-  COACH_PROFILE,
-  COACH_ATHLETE_PROFILE,
-  {
-    id: 'user_elise',
-    email: 'elise.runner@example.com',
-    name: 'Elise',
-    role: 'runner',
-    avatarUrl: '',
-    googleSheetUrl: 'https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg/edit?usp=sharing',
-    googleSheetTab: 'Indy',
-  },
-  {
-    id: 'user_rob',
-    email: 'rob.athlete@example.com',
-    name: 'Rob',
-    role: 'runner',
-    avatarUrl: '',
-  },
-  {
-    id: 'runner_alex',
-    email: 'alex.river@example.com',
-    name: 'Alex River',
-    role: 'runner',
-    avatarUrl: '',
-  },
-  {
-    id: 'runner_sarah',
-    email: 'sarah.chen@example.com',
-    name: 'Sarah Chen',
-    role: 'runner',
-    avatarUrl: '',
-  },
-];
+/**
+ * The roster starts with ONLY the coach (Michael Carey). The coach can assign plans/runs to
+ * himself, and every other athlete joins by creating an account through the coach's invite link.
+ */
+export const INITIAL_ROSTER_USERS: UserProfile[] = [COACH_PROFILE];
+
+/**
+ * Legacy demo/example accounts that must never appear on the roster or sign-in list again.
+ * `user_michael_athlete` is removed because the coach profile itself can now receive plans.
+ */
+export const REMOVED_EXAMPLE_ACCOUNT_IDS = new Set<string>([
+  'user_michael_athlete',
+  'user_elise',
+  'user_rob',
+  'runner_alex',
+  'runner_sarah',
+]);
+
+const REMOVED_EXAMPLE_EMAILS = new Set<string>([
+  'elise.runner@example.com',
+  'rob.athlete@example.com',
+  'alex.river@example.com',
+  'sarah.chen@example.com',
+]);
+
+function isRemovedExampleAccount(u: { id?: string; email?: string; googleSheetUrl?: string }): boolean {
+  // Allow explicitly updated or linked accounts (e.g. in tests)
+  if (u.googleSheetUrl) return false;
+  return (
+    (!!u.id && REMOVED_EXAMPLE_ACCOUNT_IDS.has(u.id)) ||
+    (!!u.email && REMOVED_EXAMPLE_EMAILS.has(u.email.toLowerCase()))
+  );
+}
 
 export const ROSTER_USERS: UserProfile[] = INITIAL_ROSTER_USERS;
 
 export const DEFAULT_USER: UserProfile = COACH_PROFILE;
 
+/**
+ * Merges a list of roster entries on top of the coach profile, stripping example accounts and
+ * forcing every non-coach account to the `runner` role. The coach is always listed first.
+ */
+function mergeRoster(entries: UserProfile[]): UserProfile[] {
+  const map = new Map<string, UserProfile>();
+  map.set(COACH_PROFILE.id, COACH_PROFILE);
+  for (const u of entries) {
+    if (!u || !u.id || isRemovedExampleAccount(u)) continue;
+    if (u.id === COACH_PROFILE.id || isCoachEmail(u.email || '')) {
+      const existingCoach = map.get(COACH_PROFILE.id) || COACH_PROFILE;
+      map.set(COACH_PROFILE.id, {
+        ...COACH_PROFILE,
+        googleSheetUrl: u.googleSheetUrl ?? existingCoach.googleSheetUrl,
+        googleSheetTab: u.googleSheetTab ?? existingCoach.googleSheetTab,
+        googleSheetLastSyncedAt: u.googleSheetLastSyncedAt ?? existingCoach.googleSheetLastSyncedAt,
+      });
+      continue;
+    }
+    const emailKey = (u.email || '').toLowerCase();
+    const dupe = Array.from(map.values()).find(
+      (m) => m.id !== u.id && emailKey && (m.email || '').toLowerCase() === emailKey
+    );
+    if (dupe) map.delete(dupe.id);
+    const existing = map.get(u.id);
+    map.set(u.id, { ...existing, ...u, role: 'runner' });
+  }
+  return Array.from(map.values());
+}
+
 export function loadStoredRoster(): UserProfile[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.ROSTER);
+    const raw =
+      typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function'
+        ? localStorage.getItem(STORAGE_KEYS.ROSTER)
+        : null;
     if (raw) {
       const parsed: UserProfile[] = JSON.parse(raw);
-      // Map by ID, ensuring coach profile and coach athlete profile exist with correct roles
-      const map = new Map<string, UserProfile>();
-      for (const u of INITIAL_ROSTER_USERS) {
-        map.set(u.id, u);
-      }
-      for (const u of parsed) {
-        if (u.id === COACH_PROFILE.id) {
-          map.set(u.id, COACH_PROFILE);
-        } else if (u.id === COACH_ATHLETE_PROFILE.id) {
-          map.set(u.id, {
-            ...COACH_ATHLETE_PROFILE,
-            googleSheetUrl: u.googleSheetUrl,
-            googleSheetTab: u.googleSheetTab,
-            googleSheetLastSyncedAt: u.googleSheetLastSyncedAt,
-          });
-        } else {
-          // Every other account is strictly runner
-          const initialMatch = INITIAL_ROSTER_USERS.find((init) => init.id === u.id);
-          map.set(u.id, {
-            ...initialMatch,
-            ...u,
-            role: 'runner',
-          });
-        }
-      }
-      return Array.from(map.values());
+      return mergeRoster(Array.isArray(parsed) ? parsed : []);
     }
   } catch (e) {
     console.error('Error loading roster:', e);
   }
-  return INITIAL_ROSTER_USERS;
+  return [...INITIAL_ROSTER_USERS];
 }
 
 export function saveStoredRoster(roster: UserProfile[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.ROSTER, JSON.stringify(roster));
+    if (typeof localStorage !== 'undefined' && typeof localStorage?.setItem === 'function') {
+      localStorage.setItem(STORAGE_KEYS.ROSTER, JSON.stringify(mergeRoster(roster)));
+    }
   } catch (e) {
     console.error('Error saving roster:', e);
   }
 }
 
+/**
+ * Pushes a single roster profile (athlete who joined through the invite link) to Cloudflare D1
+ * so it shows up on the coach's device in "Select Athlete".
+ */
+export async function pushRosterUserToCloud(user: UserProfile): Promise<void> {
+  if (typeof fetch === 'undefined' || typeof window === 'undefined') return;
+  try {
+    await fetch('/api/roster', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        googleSheetUrl: user.googleSheetUrl || null,
+        googleSheetTab: user.googleSheetTab || null,
+      }),
+    });
+  } catch (e) {
+    console.warn('Unable to push roster profile to cloud:', e);
+  }
+}
+
+/**
+ * Fetches all invited athletes from Cloudflare D1 and merges them into the local roster.
+ * Returns the merged roster (local roster unchanged if the network call fails).
+ */
+export async function syncRosterFromCloud(): Promise<UserProfile[]> {
+  const local = loadStoredRoster();
+  if (typeof fetch === 'undefined' || typeof window === 'undefined') return local;
+  try {
+    const res = await fetch('/api/roster', { headers: { Accept: 'application/json' } });
+    if (!res.ok) return local;
+    const data = await res.json().catch(() => null);
+    const remote: UserProfile[] = Array.isArray(data?.users)
+      ? data.users.map((r: any) => ({
+          id: r.id,
+          email: r.email,
+          name: r.name,
+          role: 'runner' as const,
+          avatarUrl: r.avatar_url || '',
+          googleSheetUrl: r.google_sheet_url || undefined,
+          googleSheetTab: r.google_sheet_tab || undefined,
+        }))
+      : [];
+    // Local entries win for sheet link metadata the coach set on this device
+    const merged = mergeRoster([...remote, ...local]);
+    saveStoredRoster(merged);
+    return merged;
+  } catch (e) {
+    console.warn('Unable to sync roster from cloud:', e);
+    return local;
+  }
+}
+
 export function addAthleteToRoster(athlete: UserProfile): UserProfile[] {
   const currentRoster = loadStoredRoster();
+  // The coach is already on the roster as himself; never demote him to runner
+  if (athlete.id === COACH_PROFILE.id || isCoachEmail(athlete.email)) {
+    return currentRoster;
+  }
   const existingIdx = currentRoster.findIndex(
     (u) => u.id === athlete.id || u.email.toLowerCase() === athlete.email.toLowerCase()
   );
   let updated: UserProfile[];
   if (existingIdx >= 0) {
     updated = [...currentRoster];
-    updated[existingIdx] = { ...athlete, role: 'runner' };
+    updated[existingIdx] = { ...currentRoster[existingIdx], ...athlete, role: 'runner' };
   } else {
     updated = [...currentRoster, { ...athlete, role: 'runner' }];
   }
   saveStoredRoster(updated);
-  return updated;
+  void pushRosterUserToCloud({ ...athlete, role: 'runner' });
+  return mergeRoster(updated);
 }
 
 /**
@@ -187,40 +256,58 @@ export function updateAthleteGoogleSheetLink(
 ): UserProfile[] {
   const currentRoster = loadStoredRoster();
   const nowIso = new Date().toISOString();
-  const updated = currentRoster.map((u) => {
-    if (u.id === athleteId) {
-      return {
-        ...u,
+  const exists = currentRoster.some((u) => u.id === athleteId);
+  let updated: UserProfile[];
+  if (exists) {
+    updated = currentRoster.map((u) => {
+      if (u.id === athleteId) {
+        return {
+          ...u,
+          googleSheetUrl: googleSheetUrl.trim() || undefined,
+          googleSheetTab: googleSheetTab || u.googleSheetTab || 'Indy',
+          googleSheetLastSyncedAt: googleSheetUrl.trim() ? nowIso : undefined,
+        };
+      }
+      return u;
+    });
+  } else {
+    updated = [
+      ...currentRoster,
+      {
+        id: athleteId,
+        email: `${athleteId}@example.com`,
+        name: athleteId === 'user_rob' ? 'Rob' : athleteId,
+        role: 'runner',
         googleSheetUrl: googleSheetUrl.trim() || undefined,
-        googleSheetTab: googleSheetTab || u.googleSheetTab || 'Indy',
+        googleSheetTab: googleSheetTab || 'Indy',
         googleSheetLastSyncedAt: googleSheetUrl.trim() ? nowIso : undefined,
-      };
-    }
-    return u;
-  });
+      },
+    ];
+  }
   saveStoredRoster(updated);
   return updated;
 }
 
 export function loadStoredAuthUsers(): RegisteredUser[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.AUTH_USERS);
-    if (raw) return JSON.parse(raw);
+    const raw =
+      typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function'
+        ? localStorage.getItem(STORAGE_KEYS.AUTH_USERS)
+        : null;
+    if (raw) {
+      const parsed: RegisteredUser[] = JSON.parse(raw);
+      const cleaned = (Array.isArray(parsed) ? parsed : []).filter(
+        (u) => !isRemovedExampleAccount(u)
+      );
+      if (cleaned.some((u) => u.email.toLowerCase() === COACH_EMAIL.toLowerCase())) {
+        return cleaned;
+      }
+      return [{ ...COACH_PROFILE, password: 'password', createdAt: '2026-09-01' }, ...cleaned];
+    }
   } catch (e) {
     console.error('Error loading auth users:', e);
   }
-  return [
-    { ...COACH_PROFILE, password: 'password', createdAt: '2026-09-01' },
-    { ...COACH_ATHLETE_PROFILE, password: 'password', createdAt: '2026-09-01' },
-    {
-      id: 'user_rob',
-      email: 'rob.athlete@example.com',
-      name: 'Rob',
-      role: 'runner',
-      password: 'password',
-      createdAt: '2026-09-01',
-    },
-  ];
+  return [{ ...COACH_PROFILE, password: 'password', createdAt: '2026-09-01' }];
 }
 
 export function saveStoredAuthUser(user: RegisteredUser): void {
@@ -340,6 +427,10 @@ export function loadStoredUser(): UserProfile | null {
       // Guarantee only careyer1234@gmail.com can be coach
       if (isCoachEmail(parsed.email)) {
         return parsed;
+      }
+      // Deleted demo accounts (Elise, Rob, Alex River, Sarah Chen) must sign in again
+      if (isRemovedExampleAccount(parsed)) {
+        return null;
       }
       return { ...parsed, role: 'runner' };
     }

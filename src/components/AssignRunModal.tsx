@@ -12,8 +12,9 @@ import {
   formatDate,
   getDayName,
 } from '../utils/calculations';
-import { ROSTER_USERS } from '../utils/storage';
+import { loadStoredRoster } from '../utils/storage';
 import { StravaTimePacePicker } from './StravaTimePacePicker';
+import { AthleteSelectList } from './AthleteSelectList';
 
 interface Props {
   isOpen: boolean;
@@ -25,6 +26,8 @@ interface Props {
   allWorkouts?: WorkoutRun[];
   onUpdateRun?: (updatedRun: WorkoutRun) => void;
   onDeleteRun?: (runId: string) => void;
+  rosterUsers?: UserProfile[];
+  onInviteAthletes?: () => void;
 }
 
 export const AssignRunModal: React.FC<Props> = ({
@@ -37,6 +40,8 @@ export const AssignRunModal: React.FC<Props> = ({
   allWorkouts = [],
   onUpdateRun,
   onDeleteRun,
+  rosterUsers,
+  onInviteAthletes,
 }) => {
   const isCoach = currentUser.role === 'coach';
   const todayStr = useMemo(() => formatDate(new Date()), []);
@@ -47,15 +52,25 @@ export const AssignRunModal: React.FC<Props> = ({
   // -------------------------------------------------------------
   // Assign Tab State: 1 Athlete, 1 Run, 1 Date (No Repeating)
   // -------------------------------------------------------------
-  // Default target athlete to Rob (or coach themselves if selected)
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string>(() => {
-    const rob = ROSTER_USERS.find((u) => u.name.toLowerCase().includes('rob'));
-    return rob ? rob.id : currentUser.id;
-  });
+  // Live roster: the coach (you) + every athlete who joined through your invite link
+  const rosterList = useMemo<UserProfile[]>(() => {
+    const list = rosterUsers && rosterUsers.length > 0 ? rosterUsers : loadStoredRoster();
+    return list.some((u) => u.id === currentUser.id) ? list : [currentUser, ...list];
+  }, [rosterUsers, currentUser, isOpen]);
+
+  // Default target athlete to the coach (assign to yourself)
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string>(() => currentUser.id);
+
+  // If the selected athlete is no longer on the roster, fall back to yourself
+  useEffect(() => {
+    if (!rosterList.some((u) => u.id === selectedAthleteId)) {
+      setSelectedAthleteId(currentUser.id);
+    }
+  }, [rosterList, selectedAthleteId, currentUser.id]);
 
   const selectedAthlete = useMemo(() => {
-    return ROSTER_USERS.find((u) => u.id === selectedAthleteId) || currentUser;
-  }, [selectedAthleteId, currentUser]);
+    return rosterList.find((u) => u.id === selectedAthleteId) || currentUser;
+  }, [rosterList, selectedAthleteId, currentUser]);
 
   // Single date for the assigned run (default to activeDate or today)
   const [workoutDate, setWorkoutDate] = useState<string>(() => activeDate || todayStr);
@@ -210,7 +225,7 @@ export const AssignRunModal: React.FC<Props> = ({
   // Save changes to previously assigned run
   const handleSaveDraftRun = (originalRun: WorkoutRun) => {
     if (!onUpdateRun) return;
-    const targetUser = ROSTER_USERS.find((u) => u.id === draftAthleteId) || currentUser;
+    const targetUser = rosterList.find((u) => u.id === draftAthleteId) || currentUser;
     const newMult = getRunTypeMultiplier(draftRunType);
     const newLoad = calculateRunLoad(draftDistance, draftUnit, newMult);
 
@@ -337,42 +352,17 @@ export const AssignRunModal: React.FC<Props> = ({
                     Select Athlete
                   </h3>
                   <span className="text-xxs font-mono text-accent font-bold uppercase">
-                    For: {selectedAthlete.name} ({selectedAthlete.role === 'coach' ? 'Coach' : 'Athlete'})
+                    For: {selectedAthlete.id === currentUser.id ? `${selectedAthlete.name} (You)` : selectedAthlete.name}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {ROSTER_USERS.map((user) => {
-                    const isSelected = selectedAthleteId === user.id;
-                    const isSelf = user.id === currentUser.id;
-                    return (
-                      <button
-                        key={user.id}
-                        type="button"
-                        className={`athlete-select-card ${isSelected ? 'active font-bold' : ''}`}
-                        onClick={() => setSelectedAthleteId(user.id)}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className="w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs"
-                            style={{
-                              backgroundColor: isSelected ? '#ffffff' : 'var(--color-accent)',
-                              color: isSelected ? '#15803d' : '#ffffff',
-                            }}
-                          >
-                            {user.name.charAt(0)}
-                          </span>
-                          <span className="text-xs font-bold truncate">
-                            {user.name} {isSelf ? '(You)' : ''}
-                          </span>
-                        </div>
-                        <span className="text-xxs font-mono block opacity-80 uppercase">
-                          {user.role === 'coach' ? 'Coach' : 'Athlete'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <AthleteSelectList
+                  roster={rosterList}
+                  selectedId={selectedAthleteId}
+                  currentUserId={currentUser.id}
+                  onSelect={(user) => setSelectedAthleteId(user.id)}
+                  onInviteAthletes={onInviteAthletes}
+                />
               </div>
 
               {/* Section 2: Date Selection for Single Run */}
@@ -558,7 +548,7 @@ export const AssignRunModal: React.FC<Props> = ({
                     onChange={(e) => setEditAthleteFilter(e.target.value)}
                   >
                     <option value="all">All Athletes ({previouslyAssignedRuns.length})</option>
-                    {ROSTER_USERS.map((u) => {
+                    {rosterList.map((u) => {
                       const count = previouslyAssignedRuns.filter(
                         (r) => r.athleteId === u.id || r.athleteName === u.name
                       ).length;
@@ -694,7 +684,7 @@ export const AssignRunModal: React.FC<Props> = ({
                                   value={draftAthleteId}
                                   onChange={(e) => setDraftAthleteId(e.target.value)}
                                 >
-                                  {ROSTER_USERS.map((u) => (
+                                  {rosterList.map((u) => (
                                     <option key={u.id} value={u.id}>
                                       {u.name} ({u.role === 'coach' ? 'Coach' : 'Athlete'})
                                     </option>

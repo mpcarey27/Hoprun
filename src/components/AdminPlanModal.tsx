@@ -32,6 +32,7 @@ import {
   parseGoogleSheetHtml,
   convertSheetTabToPlanAndWorkouts,
 } from '../utils/googleSheetsParser';
+import { AthleteSelectList } from './AthleteSelectList';
 import type {
   ParsedSheetTab,
   DoubleRunSplitMode,
@@ -51,6 +52,7 @@ interface Props {
   onAssignRuns?: (newRuns: WorkoutRun[], notificationText: string) => void;
   initialAthleteId?: string;
   onRosterUpdated?: (roster: UserProfile[]) => void;
+  onInviteAthletes?: () => void;
 }
 
 export const AdminPlanModal: React.FC<Props> = ({
@@ -64,6 +66,7 @@ export const AdminPlanModal: React.FC<Props> = ({
   onAssignRuns,
   initialAthleteId,
   onRosterUpdated,
+  onInviteAthletes,
 }) => {
   // Strictly Coach-Only: only careyer1234@gmail.com in 'coach' role may integrate Google Sheets or manage plans
   const isCoach = currentUser.role === 'coach' && isCoachEmail(currentUser.email);
@@ -76,21 +79,20 @@ export const AdminPlanModal: React.FC<Props> = ({
     }
   }, [isOpen]);
 
-  // Filter selectable profiles to Athletes on the roster (excluding the Coach admin card itself)
+  // Selectable profiles: the coach (assign a plan to yourself) + every invited athlete
   const athleteRoster = useMemo(() => {
-    const runners = rosterUsers.filter((u) => u.role === 'runner');
-    return runners.length > 0 ? runners : rosterUsers;
-  }, [rosterUsers]);
+    return rosterUsers.some((u) => u.id === currentUser.id)
+      ? rosterUsers
+      : [currentUser, ...rosterUsers];
+  }, [rosterUsers, currentUser]);
 
-  // Target Athlete Selection State
+  // Target Athlete Selection State (defaults to the filtered athlete, otherwise yourself)
   const [targetAthleteId, setTargetAthleteId] = useState<string>(() => {
-    const list = loadStoredRoster().filter((u) => u.role === 'runner');
+    const list = loadStoredRoster();
     if (initialAthleteId && list.some((u) => u.id === initialAthleteId)) {
       return initialAthleteId;
     }
-    const elise = list.find((u) => u.name.toLowerCase().includes('elise'));
-    if (elise) return elise.id;
-    return list[0]?.id || currentUser.id;
+    return currentUser.id;
   });
 
   const targetAthlete = useMemo(() => {
@@ -592,46 +594,18 @@ export const AdminPlanModal: React.FC<Props> = ({
                 </span>
               </div>
               <span className="text-xxs font-mono text-accent font-bold">
-                Selected Athlete: {targetAthlete.name} ({targetAthlete.email})
+                Selected: {targetAthlete.id === currentUser.id ? `${targetAthlete.name} (You)` : targetAthlete.name}
               </span>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
-              {athleteRoster.map((user) => {
-                const isSelected = targetAthlete.id === user.id;
-                const hasLinkedSheet = Boolean(user.googleSheetUrl);
-                return (
-                  <button
-                    key={user.id}
-                    type="button"
-                    className={`athlete-select-card ${isSelected ? 'active font-bold' : ''}`}
-                    onClick={() => handleSelectAthlete(user)}
-                  >
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span
-                        className="w-4 h-4 rounded-full flex items-center justify-center font-bold text-xxs"
-                        style={{
-                          backgroundColor: isSelected ? '#ffffff' : 'var(--color-accent)',
-                          color: isSelected ? '#15803d' : '#ffffff',
-                        }}
-                      >
-                        {user.name.charAt(0)}
-                      </span>
-                      <span className="text-xs font-bold truncate">
-                        {user.name}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-xxs font-mono opacity-80 truncate">
-                        {hasLinkedSheet
-                          ? `📊 ${user.googleSheetTab || 'Sheet'} Linked`
-                          : '+ No Sheet Yet'}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            <AthleteSelectList
+              roster={athleteRoster}
+              selectedId={targetAthlete.id}
+              currentUserId={currentUser.id}
+              onSelect={(user) => handleSelectAthlete(user)}
+              showSheetStatus
+              onInviteAthletes={onInviteAthletes}
+            />
           </div>
 
           {/* Mode Switcher: Google Sheets Sync vs Manual Builder */}

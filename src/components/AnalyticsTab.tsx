@@ -5,7 +5,7 @@ import { WorkloadComparisonChart } from './Charts/WorkloadComparisonChart';
 import { MileageBarChart } from './Charts/MileageBarChart';
 import { ACRTachometerDial } from './Charts/ACRTachometerDial';
 import { exportWorkloadToCsv } from '../utils/csvExport';
-import { ROSTER_USERS, DEFAULT_USER } from '../utils/storage';
+import { loadStoredRoster, DEFAULT_USER } from '../utils/storage';
 import {
   buildWeeklyWorkloadData,
   convertDistance,
@@ -58,8 +58,9 @@ export const AnalyticsTab: React.FC<Props> = ({
   // Find currently selected athlete details when viewing single athlete
   const activeAthleteInfo = useMemo(() => {
     if (selectedAthleteFilter === 'all') return null;
+    const roster = loadStoredRoster();
     return (
-      ROSTER_USERS.find((u) => u.id === selectedAthleteFilter) || {
+      roster.find((u) => u.id === selectedAthleteFilter) || {
         id: selectedAthleteFilter,
         name: selectedAthleteFilter,
         role: 'runner' as const,
@@ -103,7 +104,8 @@ export const AnalyticsTab: React.FC<Props> = ({
 
     // Collect roster users and any athletes tagged in workouts
     const athletesMap = new Map<string, { id: string; name: string; role: 'coach' | 'runner' }>();
-    ROSTER_USERS.forEach((u) => athletesMap.set(u.id, { id: u.id, name: u.name, role: u.role }));
+    const roster = loadStoredRoster();
+    roster.forEach((u) => athletesMap.set(u.id, { id: u.id, name: u.name, role: u.role }));
     allWorkouts.forEach((w) => {
       if (w.athleteId && !athletesMap.has(w.athleteId)) {
         athletesMap.set(w.athleteId, {

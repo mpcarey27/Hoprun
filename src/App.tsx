@@ -23,6 +23,7 @@ import {
   saveStoredUser,
   clearStoredUser,
   loadStoredRoster,
+  syncRosterFromCloud,
   COACH_EMAIL,
   COACH_PROFILE,
   COACH_ATHLETE_PROFILE,
@@ -319,6 +320,25 @@ export const App: React.FC = () => {
   const lastAutoSyncTimeRef = useRef<number>(0);
   const isAutoSyncingRef = useRef<boolean>(false);
   const [isStravaAutoSyncing, setIsStravaAutoSyncing] = useState<boolean>(false);
+
+  // Pull invited athletes from Cloudflare D1 whenever the coach opens the app (and on tab focus)
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'coach') return;
+    let cancelled = false;
+    const refreshRoster = async () => {
+      const merged = await syncRosterFromCloud();
+      if (!cancelled) setRoster(merged);
+    };
+    void refreshRoster();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshRoster();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -1099,6 +1119,7 @@ export const App: React.FC = () => {
           onAssignRuns={handleAssignRuns}
           initialAthleteId={selectedAthleteFilter}
           onRosterUpdated={setRoster}
+          onInviteAthletes={() => setIsInviteModalOpen(true)}
         />
       )}
 
@@ -1113,6 +1134,8 @@ export const App: React.FC = () => {
         allWorkouts={workouts}
         onUpdateRun={handleSaveRun}
         onDeleteRun={handleDeleteRun}
+        rosterUsers={roster}
+        onInviteAthletes={() => setIsInviteModalOpen(true)}
       />
 
       {/* Strava-Style Log Run / Edit Run Pop-up Menu Modal with Scroll Bar */}

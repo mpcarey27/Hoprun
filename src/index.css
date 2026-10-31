@@ -4664,6 +4664,120 @@ button:focus-visible {
   box-shadow: 0 2px 8px var(--color-accent-subtle);
 }
 
+/* Coach athlete picker (Assign Run / Sheet & Plan): name + subtitle, check on the right */
+.athlete-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 0.5rem;
+}
+
+.athlete-picker-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.athlete-picker-card:hover:not(.is-selected) {
+  border-color: var(--border-muted);
+  background-color: var(--bg-surface-elevated);
+}
+
+.athlete-picker-card:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.athlete-picker-card.is-selected {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-subtle);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.athlete-picker-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.athlete-picker-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.athlete-picker-you {
+  flex-shrink: 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-surface-subtle);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.athlete-picker-card.is-selected .athlete-picker-you {
+  background-color: var(--color-accent);
+  color: var(--btn-accent-text);
+}
+
+.athlete-picker-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.athlete-picker-check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--border-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.athlete-picker-card.is-selected .athlete-picker-check {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+  color: var(--btn-accent-text);
+}
+
+.athlete-picker-invite {
+  border-style: dashed;
+  border-color: var(--border-muted);
+  background-color: transparent;
+}
+
+.athlete-picker-invite .athlete-picker-name {
+  color: var(--color-accent);
+}
+
 /* 1-Tap Quick Staples: Dashed Add Preset Button */
 .btn-add-preset-dashed {
   width: 100%;

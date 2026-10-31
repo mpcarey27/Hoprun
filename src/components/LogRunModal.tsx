@@ -18,7 +18,7 @@ import {
   formatTimeOfDay,
   getSmartDefaultTitle,
 } from '../utils/calculations';
-import { ROSTER_USERS } from '../utils/storage';
+import { loadStoredRoster } from '../utils/storage';
 import { StravaTimePacePicker } from './StravaTimePacePicker';
 import { RPEFeelingPicker } from './RPEFeelingPicker';
 import { QuickLogPresetsModal } from './QuickLogPresetsModal';
@@ -73,9 +73,14 @@ export const LogRunModal: React.FC<Props> = ({
     return currentUser.id;
   });
 
+  const rosterList = useMemo(() => {
+    const list = loadStoredRoster();
+    return list.some((u) => u.id === currentUser.id) ? list : [currentUser, ...list];
+  }, [currentUser, isOpen]);
+
   const targetAthlete = useMemo(() => {
-    return ROSTER_USERS.find((u) => u.id === athleteId) || currentUser;
-  }, [athleteId, currentUser]);
+    return rosterList.find((u) => u.id === athleteId) || currentUser;
+  }, [rosterList, athleteId, currentUser]);
 
   // Find the shoe used on the most recent run for this athlete
   const lastUsedShoeId = useMemo(() => {
@@ -571,7 +576,7 @@ export const LogRunModal: React.FC<Props> = ({
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {ROSTER_USERS.map((user) => {
+                  {rosterList.map((user) => {
                     const isSelected = athleteId === user.id;
                     return (
                       <button

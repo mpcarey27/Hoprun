@@ -201,6 +201,76 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
     }
 
+    // Team Roster: athletes who created accounts via the coach's invite link (GET & POST /api/roster)
+    if (path === 'roster' || path.startsWith('roster/')) {
+      if (!env.DB) {
+        return new Response(JSON.stringify({ users: [], message: 'D1 not bound' }), {
+          headers: corsHeaders,
+        });
+      }
+
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS athlete_roster (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          avatar_url TEXT,
+          google_sheet_url TEXT,
+          google_sheet_tab TEXT,
+          created_at TEXT,
+          updated_at TEXT
+        )`
+      ).run();
+
+      if (method === 'GET') {
+        const { results } = await env.DB.prepare(
+          'SELECT id, email, name, avatar_url, google_sheet_url, google_sheet_tab, created_at FROM athlete_roster ORDER BY created_at ASC'
+        ).all();
+        return new Response(JSON.stringify({ users: results || [] }), { headers: corsHeaders });
+      }
+
+      if (method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const id = String(body.id || '').trim();
+        const email = String(body.email || '').trim().toLowerCase();
+        const name = String(body.name || '').trim().slice(0, 120);
+        if (!id || !email || !name) {
+          return new Response(JSON.stringify({ error: 'Missing id, email, or name' }), {
+            status: 400,
+            headers: corsHeaders,
+          });
+        }
+        // The coach is never stored as an athlete
+        if (email === 'careyer1234@gmail.com') {
+          return new Response(JSON.stringify({ success: true, skipped: 'coach' }), {
+            headers: corsHeaders,
+          });
+        }
+        const now = new Date().toISOString();
+        await env.DB.prepare(
+          `INSERT INTO athlete_roster (id, email, name, avatar_url, google_sheet_url, google_sheet_tab, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(email) DO UPDATE SET
+             name = excluded.name,
+             google_sheet_url = COALESCE(excluded.google_sheet_url, athlete_roster.google_sheet_url),
+             google_sheet_tab = COALESCE(excluded.google_sheet_tab, athlete_roster.google_sheet_tab),
+             updated_at = excluded.updated_at`
+        )
+          .bind(
+            id,
+            email,
+            name,
+            body.avatarUrl || '',
+            body.googleSheetUrl || null,
+            body.googleSheetTab || null,
+            now,
+            now
+          )
+          .run();
+        return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+      }
+    }
+
     // Persistent Strava Connection Backup (GET & POST /api/strava-connection)
     if (path.startsWith('strava-connection')) {
       if (!env.DB) {
