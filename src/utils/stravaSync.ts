@@ -422,3 +422,109 @@ export function buildStravaAuthUrl(
   }
   return base;
 }
+
+const MICHAEL_ATHLETE_IDS = new Set(['user_michael_carey', 'user_michael_athlete']);
+
+function isSameRunner(a: WorkoutRun, b: WorkoutRun): boolean {
+  if (!a.athleteId || !b.athleteId) return true;
+  if (a.athleteId === b.athleteId) return true;
+  if (MICHAEL_ATHLETE_IDS.has(a.athleteId) && MICHAEL_ATHLETE_IDS.has(b.athleteId)) return true;
+  if (a.athleteName && b.athleteName) {
+    const nameA = a.athleteName.trim().toLowerCase();
+    const nameB = b.athleteName.trim().toLowerCase();
+    if (nameA === nameB) return true;
+    if (nameA.includes('michael carey') && nameB.includes('michael carey')) return true;
+  }
+  return false;
+}
+
+function isSameStravaActivity(a: WorkoutRun, b: WorkoutRun): boolean {
+  if (a.id === b.id) return true;
+  if (
+    a.externalActivityId &&
+    b.externalActivityId &&
+    a.externalActivityId === b.externalActivityId
+  ) {
+    return true;
+  }
+  if (
+    a.source === 'strava' &&
+    b.source === 'strava' &&
+    isSameRunner(a, b) &&
+    a.workoutDate === b.workoutDate &&
+    Math.abs(a.distance - b.distance) < 0.05 &&
+    (a.startTime || '') === (b.startTime || '')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Reconciles incoming synced Strava runs against existing calendar workouts:
+ * 1. Deletes any non-Strava calendar/prescribed/assigned runs on the same date for the same runner
+ *    in exchange for the synced Strava run(s).
+ * 2. Deduplicates already-synced Strava runs while preserving any athlete edits to runType,
+ *    multiplier, load, comments, or gear.
+ */
+export function reconcileStravaWorkouts(
+  existingWorkouts: WorkoutRun[],
+  incomingStravaWorkouts: WorkoutRun[]
+): WorkoutRun[] {
+  if (!incomingStravaWorkouts || incomingStravaWorkouts.length === 0) {
+    return existingWorkouts;
+  }
+
+  // Step 1: Delete any existing non-Strava calendar/prescribed runs on the same date
+  // for the same runner in exchange for the synced Strava run(s).
+  const filteredExisting = existingWorkouts.filter((existing) => {
+    if (existing.source === 'strava') {
+      return true;
+    }
+    const replacedByStrava = incomingStravaWorkouts.some(
+      (sRun) =>
+        sRun.source === 'strava' &&
+        existing.workoutDate === sRun.workoutDate &&
+        isSameRunner(existing, sRun)
+    );
+    return !replacedByStrava;
+  });
+
+  // Step 2: Merge incoming Strava workouts, updating existing Strava workouts in-place
+  // while preserving user-customized fields (runType, multiplier, load, comments, shoe).
+  const result = [...filteredExisting];
+
+  for (const incoming of incomingStravaWorkouts) {
+    const existingIdx = result.findIndex((w) => isSameStravaActivity(w, incoming));
+    if (existingIdx >= 0) {
+      const prev = result[existingIdx];
+      const preservedMultiplier = prev.multiplier;
+      const preservedLoad = calculateRunLoad(
+        incoming.distance,
+        incoming.distanceUnit,
+        preservedMultiplier
+      );
+      result[existingIdx] = {
+        ...incoming,
+        id: prev.id,
+        runType: prev.runType,
+        multiplier: preservedMultiplier,
+        load: preservedLoad,
+        comments: prev.comments,
+        title: prev.title || incoming.title,
+        shoeId: prev.shoeId || incoming.shoeId,
+        shoeName: prev.shoeName || incoming.shoeName,
+        rpe: prev.rpe ?? incoming.rpe,
+        feeling: prev.feeling ?? incoming.feeling,
+        athleteComment: prev.athleteComment ?? incoming.athleteComment,
+        editReason: prev.editReason ?? incoming.editReason,
+        athleteId: prev.athleteId || incoming.athleteId,
+        athleteName: prev.athleteName || incoming.athleteName,
+      };
+    } else {
+      result.push(incoming);
+    }
+  }
+
+  return result;
+}

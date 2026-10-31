@@ -49,6 +49,7 @@ import {
   encodeStravaOAuthState,
   decodeStravaOAuthState,
   extractCodeFromUrlOrInput,
+  reconcileStravaWorkouts,
 } from '../src/utils/stravaSync';
 import type { StravaSummaryActivity } from '../src/utils/stravaSync';
 import {
@@ -1747,6 +1748,209 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       const extracted3 = extractCodeFromUrlOrInput(rawCode);
       expect(extracted3.code).toBe('raw_auth_code_112233');
       expect(extracted3.state).toBeNull();
+    });
+
+    it('test_reconcileStravaWorkouts_deletesSameDayAndPreviousPrescribedRuns() - replaces same-day and past prescribed runs with synced Strava runs while keeping future prescribed runs', () => {
+      const existingCalendarWorkouts: WorkoutRun[] = [
+        {
+          id: 'prescribed_oct27',
+          workoutDate: '2026-10-27',
+          runOrder: 1,
+          distance: 6.0,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 18.0,
+          comments: 'Prescribed Tuesday easy run',
+          completed: false,
+          isPlanAssigned: true,
+          source: 'google_sheets',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+        {
+          id: 'prescribed_oct29',
+          workoutDate: '2026-10-29',
+          runOrder: 1,
+          distance: 8.0,
+          distanceUnit: 'mi',
+          runType: 'fartlek',
+          multiplier: 5.0,
+          load: 40.0,
+          comments: 'Prescribed Thursday fartlek',
+          completed: false,
+          isPlanAssigned: true,
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+        {
+          id: 'prescribed_oct31_today',
+          workoutDate: '2026-10-31',
+          runOrder: 1,
+          distance: 5.0,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 15.0,
+          comments: 'Prescribed 5 mile easy run today',
+          completed: false,
+          isPlanAssigned: true,
+          athleteId: 'user_michael_athlete',
+          athleteName: 'Michael Carey (Athlete)',
+        },
+        {
+          id: 'prescribed_nov02_future',
+          workoutDate: '2026-11-02',
+          runOrder: 1,
+          distance: 10.0,
+          distanceUnit: 'mi',
+          runType: 'long_run',
+          multiplier: 3.0,
+          load: 30.0,
+          comments: 'Future Monday long run',
+          completed: false,
+          isPlanAssigned: true,
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+        {
+          id: 'rob_oct31',
+          workoutDate: '2026-10-31',
+          runOrder: 1,
+          distance: 7.0,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 21.0,
+          comments: 'Rob assigned run',
+          completed: false,
+          isPlanAssigned: true,
+          athleteId: 'user_rob',
+          athleteName: 'Rob',
+        },
+      ];
+
+      const incomingStravaRuns: WorkoutRun[] = [
+        {
+          id: 'strava_5001',
+          workoutDate: '2026-10-27',
+          runOrder: 1,
+          distance: 6.12,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 18.4,
+          comments: 'Synced via Strava (Garmin Forerunner 265)',
+          completed: true,
+          source: 'strava',
+          externalActivityId: '5001',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+        {
+          id: 'strava_5002',
+          workoutDate: '2026-10-29',
+          runOrder: 1,
+          distance: 8.25,
+          distanceUnit: 'mi',
+          runType: 'fartlek',
+          multiplier: 5.0,
+          load: 41.3,
+          comments: 'Synced via Strava (Garmin Forerunner 265)',
+          completed: true,
+          source: 'strava',
+          externalActivityId: '5002',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+        {
+          id: 'strava_5003',
+          workoutDate: '2026-10-31',
+          runOrder: 1,
+          distance: 5.08,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 15.2,
+          comments: 'Synced via Strava (Garmin Forerunner 265)',
+          completed: true,
+          source: 'strava',
+          externalActivityId: '5003',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+      ];
+
+      const reconciled = reconcileStravaWorkouts(existingCalendarWorkouts, incomingStravaRuns);
+
+      // Prescribed runs on 10/27, 10/29, and 10/31 for Michael Carey are deleted in exchange for Strava runs
+      expect(reconciled.find((w) => w.id === 'prescribed_oct27')).toBeUndefined();
+      expect(reconciled.find((w) => w.id === 'prescribed_oct29')).toBeUndefined();
+      expect(reconciled.find((w) => w.id === 'prescribed_oct31_today')).toBeUndefined();
+
+      // The 3 Strava runs are present
+      expect(reconciled.find((w) => w.id === 'strava_5001')?.distance).toBe(6.12);
+      expect(reconciled.find((w) => w.id === 'strava_5002')?.distance).toBe(8.25);
+      expect(reconciled.find((w) => w.id === 'strava_5003')?.distance).toBe(5.08);
+
+      // Future prescribed run on 11/02 and other athlete's run on 10/31 remain untouched
+      expect(reconciled.find((w) => w.id === 'prescribed_nov02_future')).toBeDefined();
+      expect(reconciled.find((w) => w.id === 'rob_oct31')).toBeDefined();
+      expect(reconciled.length).toBe(5);
+    });
+
+    it('test_reconcileStravaWorkouts_autoResyncPreservesEditsAndPreventsDuplicates() - re-syncing on app open preserves edited runType and comments without duplicating', () => {
+      const previouslySyncedAndEdited: WorkoutRun[] = [
+        {
+          id: 'strava_9001',
+          workoutDate: '2026-10-29',
+          startTime: '07:30',
+          runOrder: 1,
+          distance: 8.0,
+          distanceUnit: 'mi',
+          // Athlete previously edited this Strava run from 'fartlek' (5.0x) to 'easy' (3.0x) and added custom notes
+          runType: 'easy',
+          multiplier: 3.0,
+          load: 24.0,
+          comments: 'Changed from fartlek to easy recovery jog — legs felt heavy',
+          completed: true,
+          source: 'strava',
+          externalActivityId: '9001',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+      ];
+
+      // Auto-resync on app open pulls the raw Strava activity again (classified as fartlek by default)
+      const incomingAutoResync: WorkoutRun[] = [
+        {
+          id: 'strava_9001',
+          workoutDate: '2026-10-29',
+          startTime: '07:30',
+          runOrder: 1,
+          distance: 8.0,
+          distanceUnit: 'mi',
+          runType: 'fartlek',
+          multiplier: 5.0,
+          load: 40.0,
+          comments: 'Synced via Strava (Garmin Forerunner 265)',
+          completed: true,
+          source: 'strava',
+          externalActivityId: '9001',
+          athleteId: 'user_michael_carey',
+          athleteName: 'Michael Carey',
+        },
+      ];
+
+      const reconciled = reconcileStravaWorkouts(previouslySyncedAndEdited, incomingAutoResync);
+      expect(reconciled.length).toBe(1);
+      expect(reconciled[0].id).toBe('strava_9001');
+      expect(reconciled[0].runType).toBe('easy');
+      expect(reconciled[0].multiplier).toBe(3.0);
+      expect(reconciled[0].load).toBe(24.0);
+      expect(reconciled[0].comments).toBe(
+        'Changed from fartlek to easy recovery jog — legs felt heavy'
+      );
     });
   });
 

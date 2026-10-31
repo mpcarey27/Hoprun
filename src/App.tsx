@@ -53,9 +53,11 @@ import { InviteAthletesModal } from './components/InviteAthletesModal';
 import { StravaConnectModal } from './components/StravaConnectModal';
 import {
   exchangeStravaCode,
+  refreshStravaToken,
   fetchStravaActivities,
   normalizeStravaActivity,
   decodeStravaOAuthState,
+  reconcileStravaWorkouts,
 } from './utils/stravaSync';
 
 const globalProcessedStravaCodes = new Set<string>();
@@ -311,24 +313,157 @@ export const App: React.FC = () => {
     parseUrlPlan();
   }, [plans]);
 
+  // Automatically re-sync Strava every time the user opens the app (and on tab visibility focus)
+  const lastAutoSyncTimeRef = useRef<number>(0);
+  const isAutoSyncingRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('code')) {
+      return;
+    }
+
+    const runAutoStravaSync = async () => {
+      const freshSettings = loadStoredSettings();
+      const isConnected = Boolean(
+        (settings.stravaConnected || freshSettings.stravaConnected) &&
+          (settings.stravaAccessToken ||
+            freshSettings.stravaAccessToken ||
+            settings.stravaRefreshToken ||
+            freshSettings.stravaRefreshToken)
+      );
+      if (!isConnected || isAutoSyncingRef.current) return;
+
+      const accessToken = settings.stravaAccessToken || freshSettings.stravaAccessToken || '';
+      const refreshToken = settings.stravaRefreshToken || freshSettings.stravaRefreshToken;
+      const clientId = settings.stravaClientId || freshSettings.stravaClientId;
+      const clientSecret = settings.stravaClientSecret || freshSettings.stravaClientSecret;
+
+      if (!accessToken && !(refreshToken && clientId && clientSecret)) return;
+
+      isAutoSyncingRef.current = true;
+      lastAutoSyncTimeRef.current = Date.now();
+
+      try {
+        let activeToken = accessToken;
+        if (!activeToken && refreshToken && clientId && clientSecret) {
+          const refreshed = await refreshStravaToken(clientId, clientSecret, refreshToken);
+          activeToken = refreshed.access_token;
+          handleUpdateSettings({
+            stravaAccessToken: refreshed.access_token,
+            stravaRefreshToken: refreshed.refresh_token,
+            stravaExpiresAt: refreshed.expires_at,
+          });
+        }
+
+        const activities = await fetchStravaActivities(activeToken, 1, 30, {
+          clientId,
+          clientSecret,
+          refreshToken,
+          onTokenRefreshed: (tokenData) => {
+            handleUpdateSettings({
+              stravaAccessToken: tokenData.access_token,
+              stravaRefreshToken: tokenData.refresh_token,
+              stravaExpiresAt: tokenData.expires_at,
+            });
+          },
+        });
+
+        const defaultShoe = (settings.shoes || freshSettings.shoes || []).find(
+          (s) => !s.isRetired && s.isDefault
+        );
+        const unit = settings.distanceUnit || freshSettings.distanceUnit || 'mi';
+        const athleteName =
+          settings.stravaAthleteName ||
+          freshSettings.stravaAthleteName ||
+          currentUser.name ||
+          'Strava Athlete';
+
+        const normalizedWorkouts = activities.map((act) =>
+          normalizeStravaActivity(
+            act,
+            unit,
+            currentUser.id || COACH_PROFILE.id,
+            currentUser.name || athleteName,
+            defaultShoe?.id,
+            defaultShoe?.name
+          )
+        );
+
+        if (normalizedWorkouts.length > 0) {
+          handleBatchImportWorkouts(normalizedWorkouts);
+        }
+
+        handleUpdateSettings({
+          stravaLastSyncTime: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('Background Strava auto-sync skipped or failed:', err);
+      } finally {
+        isAutoSyncingRef.current = false;
+      }
+    };
+
+    runAutoStravaSync();
+
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === 'visible' &&
+        Date.now() - lastAutoSyncTimeRef.current >= 60_000
+      ) {
+        runAutoStravaSync();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentUser?.id, settings.stravaConnected]);
+
   // Coach Athlete Roster Filter ('all' or specific athlete id)
   const [selectedAthleteFilter, setSelectedAthleteFilter] = useState<string>('all');
 
   // Compute visible workouts based on role and athlete filter
   const visibleWorkouts = useMemo(() => {
     if (!currentUser) return [];
+    const isMichaelUser =
+      currentUser.id === COACH_PROFILE.id || currentUser.id === COACH_ATHLETE_PROFILE.id;
+
     if (currentUser.role === 'runner') {
       // Athlete (e.g. Rob, or Coach Michael Carey in athlete mode) only has access to their own workouts
-      return workouts.filter(
-        (w) =>
+      return workouts.filter((w) => {
+        if (
+          isMichaelUser &&
+          (w.athleteId === COACH_PROFILE.id ||
+            w.athleteId === COACH_ATHLETE_PROFILE.id ||
+            w.athleteName === COACH_PROFILE.name ||
+            w.athleteName === COACH_ATHLETE_PROFILE.name)
+        ) {
+          return true;
+        }
+        return (
           w.athleteId === currentUser.id ||
           w.athleteName === currentUser.name ||
           (!w.athleteId && !w.isPlanAssigned)
-      );
+        );
+      });
     }
     // Coach Admin (Michael Carey) can view all athletes or focus on an individual athlete
     if (selectedAthleteFilter === 'all') {
       return workouts;
+    }
+    if (
+      selectedAthleteFilter === COACH_PROFILE.id ||
+      selectedAthleteFilter === COACH_ATHLETE_PROFILE.id
+    ) {
+      return workouts.filter(
+        (w) =>
+          w.athleteId === COACH_PROFILE.id ||
+          w.athleteId === COACH_ATHLETE_PROFILE.id ||
+          w.athleteName === COACH_PROFILE.name ||
+          w.athleteName === COACH_ATHLETE_PROFILE.name
+      );
     }
     return workouts.filter(
       (w) => w.athleteId === selectedAthleteFilter || w.athleteName === selectedAthleteFilter
@@ -409,9 +544,15 @@ export const App: React.FC = () => {
     });
   };
 
-  // Batch import workouts from Garmin or external files with deduplication
+  // Batch import workouts from Strava, Garmin, or external files with reconciliation & deduplication
   const handleBatchImportWorkouts = (newWorkouts: WorkoutRun[]) => {
     setWorkouts((prev) => {
+      if (newWorkouts.some((w) => w.source === 'strava')) {
+        const reconciled = reconcileStravaWorkouts(prev, newWorkouts);
+        saveStoredWorkouts(reconciled);
+        return reconciled;
+      }
+
       const existingSignatures = new Set(
         prev.map((w) => `${w.athleteId || ''}_${w.workoutDate}_${w.distance.toFixed(1)}`)
       );
