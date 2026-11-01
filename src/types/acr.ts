@@ -197,4 +197,7 @@ export interface AppSettings {
   stravaAutoSync?: boolean;
   stravaLastSyncTime?: string;
   stravaSyncStartDate?: string; // 'YYYY-MM-DD' - timeline start date for activities (e.g. '2026-01-01')
+  dailyEmailRemindersEnabled?: boolean; // Opt into morning workout briefing email
+  dailyEmailRemindersHour?: number; // Delivery hour (e.g. 6 for 6:00 AM)
+  dailyEmailRemindersTimezone?: string;
 }

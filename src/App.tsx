@@ -54,6 +54,7 @@ import { AssignedRunsModal } from './components/AssignedRunsModal';
 import { LoginPage } from './components/LoginPage';
 import { InviteAthletesModal } from './components/InviteAthletesModal';
 import { StravaConnectModal } from './components/StravaConnectModal';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import {
   exchangeStravaCode,
   refreshStravaToken,
@@ -971,16 +972,31 @@ export const App: React.FC = () => {
         {/* Coach Admin Athlete Roster Bar (Only visible in Coach Mode) */}
         {currentUser.role === 'coach' && (
           <div className="coach-roster-bar mb-4 p-3.5 rounded-2xl bg-surface border border-subtle">
-            <div className="coach-roster-header flex items-center justify-between mb-2.5">
-              <div className="flex items-center gap-2">
-                <span className="badge-safe font-mono text-xxs font-bold">
+            <div className="coach-roster-header flex items-center justify-between gap-2 mb-2.5 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="badge-safe font-mono text-xxs font-bold flex-shrink-0">
                   COACH MODE
                 </span>
-                <span className="text-xs font-mono font-bold text-primary">
+                <span className="text-xs font-mono font-bold text-primary truncate">
                   Athlete Roster
                 </span>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="coach-roster-actions flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  className="btn-roster-invite"
+                  onClick={() => setIsAssignRunOpen(true)}
+                  title="Assign run to athlete calendar"
+                  style={{
+                    background: 'rgba(56, 189, 248, 0.14)',
+                    borderColor: 'rgba(56, 189, 248, 0.4)',
+                    color: '#38bdf8',
+                  }}
+                >
+                  <span className="text-xs">⚡</span>
+                  <span className="desktop-text">Assign Run</span>
+                  <span className="mobile-text">Assign</span>
+                </button>
                 <button
                   type="button"
                   className="btn-roster-invite"
@@ -993,7 +1009,8 @@ export const App: React.FC = () => {
                   }}
                 >
                   <span className="text-xs">📊</span>
-                  <span>Link Athlete Google Sheet</span>
+                  <span className="desktop-text">Link Google Sheet</span>
+                  <span className="mobile-text">Sheet / Plan</span>
                 </button>
                 <button
                   type="button"
@@ -1002,16 +1019,14 @@ export const App: React.FC = () => {
                   title="Send invite link to new athletes"
                 >
                   <span className="text-xs">✉️</span>
-                  <span>Invite Athletes</span>
+                  <span className="desktop-text">Invite Athletes</span>
+                  <span className="mobile-text">Invite</span>
                 </button>
-                <span className="text-xxs text-muted font-mono hidden sm:inline">
-                  Filter feed by athlete
-                </span>
               </div>
             </div>
 
-            {/* Roster Filter Pills */}
-            <div className="coach-roster-pills flex flex-wrap items-center gap-2">
+            {/* Roster Filter Pills (Smooth horizontal scroll on mobile) */}
+            <div className="coach-roster-pills flex items-center gap-2">
               <button
                 type="button"
                 className={`btn-filter-pill ${selectedAthleteFilter === 'all' ? 'active' : ''}`}
@@ -1222,6 +1237,13 @@ export const App: React.FC = () => {
         onUpdateSettings={handleUpdateSettings}
         onImportRuns={handleBatchImportWorkouts}
         oauthStatus={stravaOAuthStatus}
+      />
+
+      {/* Native Mobile Bottom Navigation Bar */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        pendingAssignedCount={todayPendingAssignedCount}
       />
     </div>
   );

@@ -1,8 +1,9 @@
-import { onRequest } from './api/[[route]]';
+import { onRequest, dispatchScheduledDailyEmails } from './api/[[route]]';
 
 export interface Env {
   DB?: any;
   ASSETS: { fetch: (req: Request) => Promise<Response> };
+  RESEND_API_KEY?: string;
 }
 
 export default {
@@ -16,5 +17,13 @@ export default {
       } as any);
     }
     return env.ASSETS.fetch(request);
+  },
+
+  async scheduled(event: any, env: Env, ctx: any): Promise<void> {
+    if (ctx?.waitUntil) {
+      ctx.waitUntil(dispatchScheduledDailyEmails(env));
+    } else {
+      await dispatchScheduledDailyEmails(env);
+    }
   },
 };

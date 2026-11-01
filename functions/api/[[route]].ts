@@ -1,8 +1,15 @@
 // Cloudflare Pages Functions API Handler
 // Free Tier: Edge compute with zero cold starts + D1 SQLite database
 
+import {
+  generateWorkoutEmailHtml,
+  sendEmailMessage,
+  type WorkoutEmailData,
+} from '../emailService';
+
 interface Env {
   DB?: any; // Cloudflare D1 Database binding
+  RESEND_API_KEY?: string;
 }
 
 export const onRequest: PagesFunction<Env> = async (context) => {
@@ -397,6 +404,218 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
     }
 
+    // Daily Workout Email Reminders: /api/email-reminders/*
+    if (path.startsWith('email-reminders')) {
+      const subpath = path.replace(/^email-reminders\/?/, '');
+
+      // Ensure D1 database tables exist
+      if (env.DB) {
+        await env.DB.prepare(
+          `CREATE TABLE IF NOT EXISTS athlete_email_preferences (
+            athlete_id TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            name TEXT,
+            enabled INTEGER DEFAULT 1,
+            preferred_hour INTEGER DEFAULT 6,
+            timezone TEXT DEFAULT 'America/New_York',
+            updated_at TEXT
+          )`
+        ).run();
+
+        await env.DB.prepare(
+          `CREATE TABLE IF NOT EXISTS assigned_plan_workouts (
+            id TEXT PRIMARY KEY,
+            athlete_id TEXT NOT NULL,
+            workout_date TEXT NOT NULL,
+            distance REAL DEFAULT 0,
+            unit TEXT DEFAULT 'mi',
+            run_type TEXT DEFAULT 'easy',
+            target_pace TEXT,
+            duration_text TEXT,
+            comments TEXT,
+            coach_name TEXT,
+            updated_at TEXT
+          )`
+        ).run();
+      }
+
+      // 1. GET /api/email-reminders/preferences?athleteId=...
+      if (subpath === 'preferences' && method === 'GET') {
+        const athleteId = url.searchParams.get('athleteId') || '';
+        if (!athleteId || !env.DB) {
+          return new Response(
+            JSON.stringify({
+              preferences: {
+                athleteId,
+                enabled: true,
+                preferredHour: 6,
+                timezone: 'America/New_York',
+              },
+            }),
+            { headers: corsHeaders }
+          );
+        }
+
+        const row = await env.DB.prepare(
+          'SELECT * FROM athlete_email_preferences WHERE athlete_id = ?'
+        )
+          .bind(athleteId)
+          .first();
+
+        return new Response(
+          JSON.stringify({
+            preferences: row
+              ? {
+                  athleteId: row.athlete_id,
+                  email: row.email,
+                  name: row.name,
+                  enabled: Boolean(row.enabled),
+                  preferredHour: Number(row.preferred_hour ?? 6),
+                  timezone: row.timezone || 'America/New_York',
+                }
+              : {
+                  athleteId,
+                  enabled: true,
+                  preferredHour: 6,
+                  timezone: 'America/New_York',
+                },
+          }),
+          { headers: corsHeaders }
+        );
+      }
+
+      // 2. POST /api/email-reminders/preferences
+      if (subpath === 'preferences' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const athleteId = String(body.athleteId || '').trim();
+        const email = String(body.email || '').trim().toLowerCase();
+        const name = String(body.name || '').trim();
+        const enabled = body.enabled !== false ? 1 : 0;
+        const preferredHour = Number.isInteger(body.preferredHour) ? body.preferredHour : 6;
+        const timezone = String(body.timezone || 'America/New_York');
+
+        if (!athleteId || !email) {
+          return new Response(JSON.stringify({ error: 'Missing athleteId or email' }), {
+            status: 400,
+            headers: corsHeaders,
+          });
+        }
+
+        if (env.DB) {
+          await env.DB.prepare(
+            `INSERT INTO athlete_email_preferences (athlete_id, email, name, enabled, preferred_hour, timezone, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(athlete_id) DO UPDATE SET
+               email = excluded.email,
+               name = excluded.name,
+               enabled = excluded.enabled,
+               preferred_hour = excluded.preferred_hour,
+               timezone = excluded.timezone,
+               updated_at = excluded.updated_at`
+          )
+            .bind(athleteId, email, name, enabled, preferredHour, timezone, new Date().toISOString())
+            .run();
+        }
+
+        return new Response(JSON.stringify({ success: true, enabled: Boolean(enabled), preferredHour }), {
+          headers: corsHeaders,
+        });
+      }
+
+      // 3. POST /api/email-reminders/sync-plans: syncs coach assigned workouts into cloud table
+      if (subpath === 'sync-plans' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const workouts: any[] = Array.isArray(body.workouts) ? body.workouts : [];
+
+        if (env.DB && workouts.length > 0) {
+          const nowIso = new Date().toISOString();
+          for (const w of workouts) {
+            const athId = w.athleteId || 'user_coach_1';
+            const wDate = w.workoutDate;
+            if (!athId || !wDate) continue;
+
+            const workoutId = w.id || `plan_${athId}_${wDate}_${w.runOrder || 1}`;
+            await env.DB.prepare(
+              `INSERT INTO assigned_plan_workouts (id, athlete_id, workout_date, distance, unit, run_type, target_pace, duration_text, comments, coach_name, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 distance = excluded.distance,
+                 unit = excluded.unit,
+                 run_type = excluded.run_type,
+                 target_pace = excluded.target_pace,
+                 duration_text = excluded.duration_text,
+                 comments = excluded.comments,
+                 coach_name = excluded.coach_name,
+                 updated_at = excluded.updated_at`
+            )
+              .bind(
+                workoutId,
+                athId,
+                wDate,
+                Number(w.distance) || 0,
+                w.distanceUnit || w.unit || 'mi',
+                w.runType || 'easy',
+                w.targetPace || w.paceFormatted || null,
+                w.durationFormatted || null,
+                w.comments || w.athleteComment || '',
+                w.assignedByCoachName || 'Michael Carey',
+                nowIso
+              )
+              .run();
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, count: workouts.length }), {
+          headers: corsHeaders,
+        });
+      }
+
+      // 4. POST /api/email-reminders/send-daily: immediate test email or manual/cron trigger
+      if (subpath === 'send-daily' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+
+        // A. Immediate Test Email requested by user from Settings
+        if (body.testEmail) {
+          const testEmail = String(body.testEmail).trim().toLowerCase();
+          const athName = body.athleteName || 'Michael Carey';
+          const todayDate = body.date || new Date().toISOString().split('T')[0];
+
+          // Use provided workout or a realistic default workout
+          const testWorkout = body.workout || {
+            distance: 8,
+            unit: 'mi',
+            runType: 'easy',
+            targetPace: '7:45 - 8:00 /mi',
+            durationFormatted: '1:02:30',
+            comments: 'Keep heart rate in zone 2. Easy conversational effort. Enjoy the morning miles!',
+            coachName: 'Michael Carey',
+          };
+
+          const emailData: WorkoutEmailData = {
+            athleteName: athName,
+            athleteEmail: testEmail,
+            date: todayDate,
+            workout: testWorkout,
+          };
+
+          const readableDate = testWorkout ? `${testWorkout.distance} ${testWorkout.unit.toUpperCase()} ${(testWorkout.runType || 'EASY').toUpperCase()}` : 'Rest Day';
+          const subject = `🏃 Today's Hop Run: ${readableDate}`;
+          const html = generateWorkoutEmailHtml(emailData);
+
+          const result = await sendEmailMessage(env, testEmail, subject, html);
+          return new Response(JSON.stringify(result), { headers: corsHeaders });
+        }
+
+        // B. Specific Athlete dispatch or force all
+        const dispatchRes = await dispatchScheduledDailyEmails(
+          env,
+          body.athleteId || undefined,
+          body.date || undefined
+        );
+        return new Response(JSON.stringify(dispatchRes), { headers: corsHeaders });
+      }
+    }
+
     return new Response(JSON.stringify({ error: 'Endpoint not found' }), {
       status: 404,
       headers: corsHeaders,
@@ -408,3 +627,121 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     });
   }
 };
+
+/**
+ * Scheduled Cron Trigger: Dispatches daily morning workout briefing emails
+ * Runs automatically every hour to evaluate athlete local delivery time (e.g. 6:00 AM)
+ */
+export async function dispatchScheduledDailyEmails(
+  env: any,
+  specificAthleteId?: string,
+  overrideDate?: string
+): Promise<{ sent: number; errors: number; details: any[] }> {
+  if (!env?.DB) {
+    return { sent: 0, errors: 0, details: [] };
+  }
+
+  // Ensure tables exist
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS athlete_email_preferences (
+      athlete_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      name TEXT,
+      enabled INTEGER DEFAULT 1,
+      preferred_hour INTEGER DEFAULT 6,
+      timezone TEXT DEFAULT 'America/New_York',
+      updated_at TEXT
+    )`
+  ).run();
+
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS assigned_plan_workouts (
+      id TEXT PRIMARY KEY,
+      athlete_id TEXT NOT NULL,
+      workout_date TEXT NOT NULL,
+      distance REAL DEFAULT 0,
+      unit TEXT DEFAULT 'mi',
+      run_type TEXT DEFAULT 'easy',
+      target_pace TEXT,
+      duration_text TEXT,
+      comments TEXT,
+      coach_name TEXT,
+      updated_at TEXT
+    )`
+  ).run();
+
+  const query = specificAthleteId
+    ? env.DB.prepare('SELECT * FROM athlete_email_preferences WHERE athlete_id = ?').bind(specificAthleteId)
+    : env.DB.prepare('SELECT * FROM athlete_email_preferences WHERE enabled = 1');
+
+  const { results: athletes } = await query.all();
+  if (!athletes || athletes.length === 0) {
+    return { sent: 0, errors: 0, details: [] };
+  }
+
+  let sent = 0;
+  let errors = 0;
+  const details: any[] = [];
+  const now = new Date();
+  const todayIso = overrideDate || now.toISOString().split('T')[0];
+
+  for (const ath of athletes) {
+    // If not manual dispatch (no specificAthleteId), check if this is their preferred hour
+    if (!specificAthleteId && ath.timezone) {
+      try {
+        const athDateStr = new Intl.DateTimeFormat('en-US', {
+          timeZone: ath.timezone || 'America/New_York',
+          hour: 'numeric',
+          hour12: false,
+        }).format(now);
+        const currentLocalHour = parseInt(athDateStr, 10);
+        if (currentLocalHour !== Number(ath.preferred_hour ?? 6)) {
+          continue; // not their delivery hour yet
+        }
+      } catch {
+        // Fallback: proceed
+      }
+    }
+
+    // Look up today's assigned workout
+    const workout = await env.DB.prepare(
+      'SELECT * FROM assigned_plan_workouts WHERE athlete_id = ? AND workout_date = ? ORDER BY distance DESC LIMIT 1'
+    )
+      .bind(ath.athlete_id, todayIso)
+      .first();
+
+    const emailData: WorkoutEmailData = {
+      athleteName: ath.name || 'Runner',
+      athleteEmail: ath.email,
+      date: todayIso,
+      workout: workout
+        ? {
+            distance: Number(workout.distance) || 0,
+            unit: workout.unit || 'mi',
+            runType: workout.run_type || 'easy',
+            targetPace: workout.target_pace || undefined,
+            durationFormatted: workout.duration_text || undefined,
+            comments: workout.comments || undefined,
+            coachName: workout.coach_name || 'Michael Carey',
+          }
+        : null,
+    };
+
+    const subject =
+      workout && workout.distance > 0
+        ? `🏃 Today's Hop Run: ${workout.distance} ${(workout.unit || 'mi').toUpperCase()} ${(workout.run_type || 'EASY').toUpperCase()}`
+        : `🌴 Today's Hop Run: Rest & Active Recovery`;
+
+    const html = generateWorkoutEmailHtml(emailData);
+    const result = await sendEmailMessage(env, ath.email, subject, html);
+    if (result.success) {
+      sent++;
+      details.push({ athlete: ath.email, status: 'sent', id: result.id });
+    } else {
+      errors++;
+      details.push({ athlete: ath.email, status: 'failed', error: result.error });
+    }
+  }
+
+  return { sent, errors, details };
+}

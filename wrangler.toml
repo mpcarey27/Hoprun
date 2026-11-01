@@ -17,3 +17,7 @@ not_found_handling = "single-page-application"
 binding = "DB"
 database_name = "acr_running_db"
 database_id = "01fb2ca5-2fbf-4d2a-aaac-692d54b551e1"
+
+# Hourly Cron Trigger: dispatches daily workout briefing emails
+[triggers]
+crons = ["0 * * * *"]

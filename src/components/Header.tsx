@@ -181,11 +181,11 @@ export const Header: React.FC<Props> = ({
 
         {/* Right Actions: Plan Builder, Notifications & Profile/Settings Drawer */}
         <div className="header-actions">
-          {/* Coach Assign Run Button (Only visible for Coach) */}
+          {/* Coach Assign Run Button (Only visible for Coach on desktop) */}
           {currentUser.role === 'coach' && onOpenAssignRun && (
             <button
               type="button"
-              className="btn-assign-run-header"
+              className="btn-assign-run-header header-btn-desktop-only"
               onClick={onOpenAssignRun}
               title="Assign recurring runs to athlete calendar"
             >
@@ -194,11 +194,11 @@ export const Header: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Plan Builder & Google Sheet Integration (Strictly Coach Admin Only) */}
+          {/* Plan Builder & Google Sheet Integration (Strictly Coach Admin Only on desktop) */}
           {currentUser.role === 'coach' && isCoachEmail(currentUser.email) && (
             <button
               type="button"
-              className="btn-plan-header"
+              className="btn-plan-header header-btn-desktop-only"
               onClick={onOpenPlanBuilder}
               title="Coach Only: Select athlete & link their color-coded Google Sheet plan"
             >
@@ -207,11 +207,11 @@ export const Header: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Coach Invite Athletes Button */}
+          {/* Coach Invite Athletes Button (desktop) */}
           {currentUser.role === 'coach' && onOpenInvite && (
             <button
               type="button"
-              className="btn-invite-header"
+              className="btn-invite-header header-btn-desktop-only"
               onClick={onOpenInvite}
               title="Invite athletes to your roster"
             >
@@ -224,7 +224,7 @@ export const Header: React.FC<Props> = ({
           {isCoachEmail(currentUser.email) && currentUser.role === 'runner' && (
             <button
               type="button"
-              className="btn-coach-view-pill"
+              className="btn-coach-view-pill header-btn-desktop-only"
               onClick={onToggleRole}
               title="Currently testing as Athlete. Click to return to Coach Michael Carey."
             >
@@ -234,11 +234,11 @@ export const Header: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Strava Cloud Sync Header Pill */}
+          {/* Strava Cloud Sync Header Pill (desktop) */}
           {onOpenStravaConnect && (
             <button
               type="button"
-              className={`btn-header-strava ${stravaConnected ? 'connected' : ''}`}
+              className={`btn-header-strava header-btn-desktop-only ${stravaConnected ? 'connected' : ''}`}
               onClick={onOpenStravaConnect}
               title={stravaConnected ? 'Strava Sync Active — Click to manage sync' : 'Connect Strava to sync runs automatically'}
               aria-label="Strava Sync"
@@ -369,6 +369,41 @@ export const Header: React.FC<Props> = ({
                     >
                       ✉️ Invite Athletes
                     </button>
+                  </div>
+                )}
+
+                {/* Coach Mobile Quick Tools */}
+                {currentUser.role === 'coach' && (
+                  <div className="coach-dropdown-tools p-2 rounded-lg bg-surface border border-subtle mb-3 space-y-1.5">
+                    <span className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                      Coach Tools
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {onOpenAssignRun && (
+                        <button
+                          type="button"
+                          className="btn-settings-pill text-xs py-1.5 px-2 text-center"
+                          onClick={() => {
+                            setIsSettingsOpen(false);
+                            onOpenAssignRun();
+                          }}
+                        >
+                          ⚡ Assign Run
+                        </button>
+                      )}
+                      {onOpenPlanBuilder && isCoachEmail(currentUser.email) && (
+                        <button
+                          type="button"
+                          className="btn-settings-pill text-xs py-1.5 px-2 text-center"
+                          onClick={() => {
+                            setIsSettingsOpen(false);
+                            onOpenPlanBuilder();
+                          }}
+                        >
+                          📊 Sheet / Plan
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
 

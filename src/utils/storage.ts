@@ -26,6 +26,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   warningThreshold: 1.2,
   themeMode: 'dark',
   weeklyMileageTarget: 35.0,
+  dailyEmailRemindersEnabled: true,
+  dailyEmailRemindersHour: 6,
   shoes: [
     {
       id: 'shoe_default_1',
@@ -347,6 +349,7 @@ export function saveStoredWorkouts(workouts: WorkoutRun[]): void {
   try {
     localStorage.setItem(STORAGE_KEYS.WORKOUTS, JSON.stringify(workouts));
     syncWorkoutsWithCloudflare(workouts).catch(() => {});
+    syncAssignedWorkoutsToCloud(workouts).catch(() => {});
   } catch (e) {
     console.error('Error saving workouts to localStorage:', e);
   }
@@ -634,4 +637,72 @@ async function syncWorkoutsWithCloudflare(workouts: WorkoutRun[]): Promise<void>
   } catch {
     // Offline mode
   }
+}
+
+/**
+ * Syncs assigned workouts into Cloudflare D1 so the daily morning workout email dispatcher
+ * can look up the athlete's prescribed workout for the day.
+ */
+export async function syncAssignedWorkoutsToCloud(workouts: WorkoutRun[]): Promise<void> {
+  if (typeof fetch === 'undefined' || !workouts || workouts.length === 0) return;
+  try {
+    // Sync runs that have an assigned date and are not deleted
+    await fetch('/api/email-reminders/sync-plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workouts }),
+    });
+  } catch {
+    // Offline / non-blocking
+  }
+}
+
+/**
+ * Saves athlete daily workout email reminder preferences to Cloudflare D1
+ */
+export async function saveAthleteEmailPreferences(
+  athleteId: string,
+  email: string,
+  name: string,
+  enabled: boolean,
+  preferredHour: number,
+  timezone?: string
+): Promise<void> {
+  if (typeof fetch === 'undefined' || !athleteId || !email) return;
+  try {
+    const tz = timezone || (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'America/New_York');
+    await fetch('/api/email-reminders/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        athleteId,
+        email,
+        name,
+        enabled,
+        preferredHour,
+        timezone: tz,
+      }),
+    });
+  } catch {
+    // Offline / non-blocking
+  }
+}
+
+/**
+ * Loads athlete daily workout email reminder preferences from Cloudflare D1
+ */
+export async function loadAthleteEmailPreferences(
+  athleteId: string
+): Promise<{ enabled: boolean; preferredHour: number; timezone?: string } | null> {
+  if (typeof fetch === 'undefined' || !athleteId) return null;
+  try {
+    const res = await fetch(`/api/email-reminders/preferences?athleteId=${encodeURIComponent(athleteId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return data?.preferences || null;
+    }
+  } catch {
+    // Offline
+  }
+  return null;
 }

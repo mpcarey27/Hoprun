@@ -4198,6 +4198,170 @@ button:focus-visible {
   }
 }
 
+/* Mobile Bottom Navigation Bar & Responsive Viewport Helpers */
+.desktop-text { display: inline; }
+.mobile-text { display: none; }
+
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(3.85rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background-color: var(--header-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1px solid var(--border-subtle);
+  z-index: 1000;
+  justify-content: space-around;
+  align-items: center;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="light"] .mobile-bottom-nav {
+  background-color: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.mobile-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.35rem 0.25rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.16s ease, transform 0.12s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-nav-item:active {
+  transform: scale(0.92);
+}
+
+.mobile-nav-icon {
+  width: 1.45rem;
+  height: 1.45rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.16s ease;
+}
+
+.mobile-nav-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.mobile-nav-label {
+  font-size: 0.68rem;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.mobile-nav-item.active {
+  color: var(--color-accent);
+}
+
+.mobile-nav-item.active .mobile-nav-icon {
+  transform: translateY(-1px);
+}
+
+.mobile-nav-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 9999px;
+  background-color: var(--color-accent);
+  color: var(--btn-accent-text);
+  font-size: 0.6rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+@media (max-width: 768px) {
+  .mobile-bottom-nav {
+    display: flex;
+  }
+
+  .mobile-tab-selector-container {
+    display: none !important;
+  }
+
+  .header-btn-desktop-only {
+    display: none !important;
+  }
+
+  .desktop-text {
+    display: none !important;
+  }
+
+  .mobile-text {
+    display: inline !important;
+  }
+
+  .header-actions {
+    flex-wrap: nowrap !important;
+    gap: 0.45rem !important;
+  }
+
+  .coach-roster-header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.65rem !important;
+  }
+
+  .coach-roster-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 0.4rem !important;
+    width: 100% !important;
+  }
+
+  .coach-roster-actions .btn-roster-invite {
+    justify-content: center !important;
+    padding: 0.45rem 0.25rem !important;
+    font-size: 0.72rem !important;
+    text-align: center;
+  }
+
+  .coach-roster-pills {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .coach-roster-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .coach-roster-pills .btn-filter-pill {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+  }
+
+  main.main-content {
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 12px)) !important;
+  }
+}
+
 @media (max-width: 768px) {
   .header-container {
     padding: 0.5rem 0.75rem;
@@ -4209,8 +4373,7 @@ button:focus-visible {
   }
 
   .mobile-tab-selector-container {
-    display: flex !important;
-    align-items: center;
+    display: none !important;
   }
 
   .desktop-only-text {

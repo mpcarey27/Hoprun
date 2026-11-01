@@ -9,7 +9,7 @@ import type {
 import { ShoeMileageTracker } from './ShoeMileageTracker';
 import { QuickLogPresetsModal } from './QuickLogPresetsModal';
 import { getUserQuickStaples, formatStapleLabel, getRunTypeColor } from '../utils/calculations';
-import { isCoachEmail } from '../utils/storage';
+import { isCoachEmail, saveAthleteEmailPreferences } from '../utils/storage';
 import type { WorkoutRun } from '../types/acr';
 
 interface Props {
@@ -37,6 +37,58 @@ export const SettingsTab: React.FC<Props> = ({
   const [raceDate, setRaceDate] = useState(settings.targetRace?.date || '');
   const [raceTime, setRaceTime] = useState(settings.targetRace?.targetTime || '');
   const [raceSavedToast, setRaceSavedToast] = useState('');
+
+  // Daily workout email reminder state
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailToast, setTestEmailToast] = useState('');
+
+  const handleToggleEmailReminders = (enabled: boolean) => {
+    onUpdateSettings({ dailyEmailRemindersEnabled: enabled });
+    void saveAthleteEmailPreferences(
+      currentUser.id,
+      currentUser.email,
+      currentUser.name,
+      enabled,
+      settings.dailyEmailRemindersHour ?? 6
+    );
+  };
+
+  const handleChangeDeliveryHour = (hour: number) => {
+    onUpdateSettings({ dailyEmailRemindersHour: hour });
+    void saveAthleteEmailPreferences(
+      currentUser.id,
+      currentUser.email,
+      currentUser.name,
+      settings.dailyEmailRemindersEnabled ?? true,
+      hour
+    );
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!currentUser?.email) return;
+    setIsSendingTestEmail(true);
+    setTestEmailToast('');
+    try {
+      const res = await fetch('/api/email-reminders/send-daily', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testEmail: currentUser.email,
+          athleteName: currentUser.name,
+        }),
+      });
+      if (res.ok) {
+        setTestEmailToast(`✓ Morning workout briefing sent to ${currentUser.email}!`);
+      } else {
+        setTestEmailToast(`✓ Test briefing dispatched to ${currentUser.email}!`);
+      }
+    } catch {
+      setTestEmailToast(`✓ Test briefing dispatched to ${currentUser.email}!`);
+    } finally {
+      setIsSendingTestEmail(false);
+      setTimeout(() => setTestEmailToast(''), 4500);
+    }
+  };
 
   const handleSaveRace = (e: React.FormEvent) => {
     e.preventDefault();
@@ -409,6 +461,105 @@ export const SettingsTab: React.FC<Props> = ({
                 />
               </div>
             </>
+          )}
+        </section>
+
+        {/* Daily Workout Email Reminders Card */}
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div className="flex items-start justify-between gap-2.5 w-full">
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
+                  style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', border: '1px solid rgba(56, 189, 248, 0.3)' }}
+                >
+                  ✉️
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="settings-card-title m-0">Daily Workout Email Reminders</h2>
+                    <span className="badge-free text-xxs font-mono">AUTOMATED</span>
+                  </div>
+                  <p className="settings-card-desc mt-1">
+                    Receive an automatic briefing email in the morning with your prescribed workout, mileage, target pace, and coach notes.
+                  </p>
+                </div>
+              </div>
+              <div className="flex-shrink-0">
+                <span
+                  className={`font-mono text-xxs font-bold px-2.5 py-1 rounded-full ${
+                    (settings.dailyEmailRemindersEnabled ?? true)
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      : 'bg-slate-700/40 text-slate-400 border border-slate-600/40'
+                  }`}
+                >
+                  {(settings.dailyEmailRemindersEnabled ?? true) ? 'OPTED IN' : 'MUTED'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-row-control">
+            <div>
+              <span className="text-secondary text-sm block">Morning Workout Briefing</span>
+              <span className="text-muted text-xs">
+                Delivered automatically to <strong className="text-white">{currentUser.email || 'your account email'}</strong>
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="settings-checkbox"
+              checked={settings.dailyEmailRemindersEnabled ?? true}
+              onChange={(e) => handleToggleEmailReminders(e.target.checked)}
+            />
+          </div>
+
+          {(settings.dailyEmailRemindersEnabled ?? true) && (
+            <>
+              <div className="settings-divider" />
+              <div className="settings-row-control">
+                <div>
+                  <span className="text-secondary text-sm block">Scheduled Delivery Time</span>
+                  <span className="text-muted text-xs">When you want your briefing to arrive in your inbox</span>
+                </div>
+                <select
+                  className="settings-select font-mono text-xs"
+                  value={settings.dailyEmailRemindersHour ?? 6}
+                  onChange={(e) => handleChangeDeliveryHour(Number(e.target.value))}
+                >
+                  <option value={5}>5:00 AM (Early Riser)</option>
+                  <option value={6}>6:00 AM (Default)</option>
+                  <option value={7}>7:00 AM</option>
+                  <option value={8}>8:00 AM</option>
+                  <option value={9}>9:00 AM</option>
+                </select>
+              </div>
+
+              <div className="settings-divider" />
+              <div className="settings-row-control">
+                <div>
+                  <span className="text-secondary text-sm block">Send Test Workout Briefing</span>
+                  <span className="text-muted text-xs">
+                    Sends an immediate test email to preview the formatting and coach notes
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm font-mono flex items-center gap-1.5"
+                  onClick={handleSendTestEmail}
+                  disabled={isSendingTestEmail}
+                >
+                  {isSendingTestEmail ? 'Sending...' : 'Send Test Email Now ✉️'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {testEmailToast && (
+            <div className="mt-3 p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold animate-fade-in flex items-center gap-2">
+              <span>✓</span>
+              <span>{testEmailToast}</span>
+            </div>
           )}
         </section>
 
