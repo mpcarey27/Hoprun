@@ -599,12 +599,14 @@ export function buildStravaAuthUrl(
   redirectUri: string,
   state?: string
 ): string {
+  const cleanId = (clientId || '').trim();
+  const validId = /^\d+$/.test(cleanId) ? cleanId : DEFAULT_MASTER_STRAVA_CLIENT_ID;
   const scope = 'read,activity:read,activity:read_all';
   const base = `https://www.strava.com/oauth/authorize?client_id=${encodeURIComponent(
-    clientId.trim()
+    validId
   )}&response_type=code&redirect_uri=${encodeURIComponent(
     redirectUri
-  )}&approval_prompt=force&scope=${encodeURIComponent(scope)}`;
+  )}&approval_prompt=auto&scope=${encodeURIComponent(scope)}`;
   if (state) {
     return `${base}&state=${encodeURIComponent(state)}`;
   }

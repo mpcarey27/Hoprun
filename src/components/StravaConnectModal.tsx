@@ -109,18 +109,14 @@ export const StravaConnectModal: React.FC<Props> = ({
       : 'https://hoprun.app';
 
   const selectedRedirectUri =
-    callbackDomainMode === 'hoprun'
-      ? 'https://hoprun.app/'
-      : callbackDomainMode === 'localhost'
-        ? 'http://localhost:5173/'
-        : `${currentOrigin}/`;
+    callbackDomainMode === 'localhost' || currentHostname === 'localhost'
+      ? 'http://localhost:5173/'
+      : 'https://hoprun.app/';
 
   const selectedCallbackHostname =
-    callbackDomainMode === 'hoprun'
-      ? 'hoprun.app'
-      : callbackDomainMode === 'localhost'
-        ? 'localhost'
-        : currentHostname;
+    callbackDomainMode === 'localhost' || currentHostname === 'localhost'
+      ? 'localhost'
+      : 'hoprun.app';
 
   const handleCopyDomain = async () => {
     try {
@@ -135,8 +131,11 @@ export const StravaConnectModal: React.FC<Props> = ({
   // 1. Centralized 1-Click Strava Connect (Works for 100% Free Strava Accounts)
   const handleCentralizedConnect = () => {
     setErrorMessage('');
-    const effectiveId = clientId.trim() || masterClientId;
-    const effectiveSecret = clientSecret.trim();
+    const rawId = showAdvanced ? clientId.trim() : '';
+    const effectiveId = /^\d+$/.test(rawId)
+      ? rawId
+      : (masterClientId || DEFAULT_MASTER_STRAVA_CLIENT_ID);
+    const effectiveSecret = showAdvanced ? clientSecret.trim() : '';
     const effectiveStartDate = customStartDate || ytdDateString;
 
     // Save timeline preference
