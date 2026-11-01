@@ -86,7 +86,7 @@ export const SettingsTab: React.FC<Props> = ({
       setTestEmailToast(`✓ Test briefing dispatched to ${currentUser.email}!`);
     } finally {
       setIsSendingTestEmail(false);
-      setTimeout(() => setTestEmailToast(''), 4500);
+      setTimeout(() => setTestEmailToast(''), 6000);
     }
   };
 
@@ -543,23 +543,23 @@ export const SettingsTab: React.FC<Props> = ({
                     Sends an immediate test email to preview the formatting and coach notes
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm font-mono flex items-center gap-1.5"
-                  onClick={handleSendTestEmail}
-                  disabled={isSendingTestEmail}
-                >
-                  {isSendingTestEmail ? 'Sending...' : 'Send Test Email Now ✉️'}
-                </button>
+                <div className="flex flex-col items-stretch sm:items-end gap-1.5 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm font-mono flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                    onClick={handleSendTestEmail}
+                    disabled={isSendingTestEmail}
+                  >
+                    {isSendingTestEmail ? 'Sending...' : 'Send Test Email Now ✉️'}
+                  </button>
+                  {testEmailToast && (
+                    <div className="p-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold animate-fade-in w-full text-center">
+                      {testEmailToast}
+                    </div>
+                  )}
+                </div>
               </div>
             </>
-          )}
-
-          {testEmailToast && (
-            <div className="mt-3 p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold animate-fade-in flex items-center gap-2">
-              <span>✓</span>
-              <span>{testEmailToast}</span>
-            </div>
           )}
         </section>
 
