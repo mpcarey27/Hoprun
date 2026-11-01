@@ -1,12 +1,19 @@
 import type { DistanceUnit, WorkoutRun } from '../types/acr';
+import JSZip from 'jszip';
 import {
   convertDistance,
   calculateRunLoad,
   formatDurationStrava,
   calculatePaceSeconds,
   formatPace,
+  formatDate,
   getRunTypeMultiplier,
 } from './calculations';
+import {
+  parseTCXContent,
+  parseGPXContent,
+  parseFITBinary,
+} from './garminParser';
 
 export interface StravaSummaryActivity {
   id: number;
@@ -57,11 +64,7 @@ export interface StravaOAuthStatePayload {
  * Encodes OAuth state payload as base64url so Strava credentials and origin
  * survive cross-domain redirects (www.hoprun.app <-> hoprun.app <-> localhost).
  */
-export function encodeStravaOAuthState(payload: {
-  clientId: string;
-  clientSecret: string;
-  origin?: string;
-}): string {
+export function encodeStravaOAuthState(payload: StravaOAuthStatePayload): string {
   try {
     const json = JSON.stringify(payload);
     const base64 =
@@ -255,22 +258,80 @@ async function callStravaEndpoint(path: string, options: RequestInit): Promise<R
   return fetch(`https://www.strava.com${path}`, options);
 }
 
+export const DEFAULT_MASTER_STRAVA_CLIENT_ID = '291001';
+
+/**
+ * Fetches the centralized master Strava Client ID configured on Cloudflare
+ */
+export async function fetchMasterStravaClientId(): Promise<string> {
+  if (typeof fetch === 'function') {
+    try {
+      const res = await fetch('/api/strava/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.clientId) return String(data.clientId).trim();
+      }
+    } catch {
+      // Fallback to default
+    }
+  }
+  return DEFAULT_MASTER_STRAVA_CLIENT_ID;
+}
+
 /**
  * Exchanges Strava OAuth authorization code for Access & Refresh tokens.
+ * Supports both centralized backend exchange (when clientSecret is omitted or handled via server)
+ * and direct client-side exchange.
  */
 export async function exchangeStravaCode(
-  clientId: string,
-  clientSecret: string,
-  code: string
+  clientId?: string,
+  clientSecret?: string,
+  code?: string,
+  extra?: { athleteEmail?: string; athleteName?: string }
 ): Promise<StravaTokenResponse> {
-  const { code: cleanCode } = extractCodeFromUrlOrInput(code);
+  const { code: cleanCode } = extractCodeFromUrlOrInput(code || '');
+  if (!cleanCode) throw new Error('Missing Strava authorization code');
+
+  const effClientId = (clientId || '').trim();
+  const effClientSecret = (clientSecret || '').trim();
+
+  // If clientSecret is not present on client, use the secure Cloudflare backend endpoint
+  if (!effClientSecret && typeof fetch === 'function') {
+    try {
+      const response = await fetch('/api/strava/exchange-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: cleanCode,
+          clientId: effClientId || undefined,
+          athleteEmail: extra?.athleteEmail,
+          athleteName: extra?.athleteName,
+        }),
+      });
+
+      if (response.ok) {
+        return response.json();
+      }
+      const err = await response.json().catch(() => ({}));
+      if (err.message) {
+        throw new Error(err.message);
+      }
+    } catch (e: any) {
+      if (e.message && !e.message.includes('fetch')) {
+        throw e;
+      }
+      // If endpoint unreachable, fall through to direct attempt
+    }
+  }
+
+  // Fallback direct endpoint
   const response = await callStravaEndpoint('/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      client_id: clientId.trim(),
-      client_secret: clientSecret.trim(),
-      code: cleanCode.trim(),
+      client_id: effClientId || DEFAULT_MASTER_STRAVA_CLIENT_ID,
+      client_secret: effClientSecret,
+      code: cleanCode,
       grant_type: 'authorization_code',
     }),
   });
@@ -296,17 +357,44 @@ export async function exchangeStravaCode(
  * Refreshes an expired Strava access token using the refresh token.
  */
 export async function refreshStravaToken(
-  clientId: string,
-  clientSecret: string,
-  refreshToken: string
+  clientId?: string,
+  clientSecret?: string,
+  refreshToken?: string,
+  athleteEmail?: string
 ): Promise<StravaTokenResponse> {
+  const cleanRefresh = (refreshToken || '').trim();
+  if (!cleanRefresh) throw new Error('Missing refresh token');
+
+  const effClientId = (clientId || '').trim();
+  const effClientSecret = (clientSecret || '').trim();
+
+  // If clientSecret is omitted, refresh via server endpoint
+  if (!effClientSecret && typeof fetch === 'function') {
+    try {
+      const res = await fetch('/api/strava/refresh-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          refreshToken: cleanRefresh,
+          clientId: effClientId || undefined,
+          athleteEmail,
+        }),
+      });
+      if (res.ok) {
+        return res.json();
+      }
+    } catch {
+      // Fallback to direct attempt
+    }
+  }
+
   const response = await callStravaEndpoint('/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      client_id: clientId.trim(),
-      client_secret: clientSecret.trim(),
-      refresh_token: refreshToken.trim(),
+      client_id: effClientId || DEFAULT_MASTER_STRAVA_CLIENT_ID,
+      client_secret: effClientSecret,
+      refresh_token: cleanRefresh,
       grant_type: 'refresh_token',
     }),
   });
@@ -369,6 +457,7 @@ export async function fetchAllStravaActivitiesSince(
     clientId?: string;
     clientSecret?: string;
     refreshToken?: string;
+    athleteEmail?: string;
     onTokenRefreshed?: (tokenData: StravaTokenResponse) => void;
   },
   onProgress?: (totalFetched: number, page: number) => void
@@ -431,6 +520,7 @@ export async function fetchStravaActivities(
     clientId?: string;
     clientSecret?: string;
     refreshToken?: string;
+    athleteEmail?: string;
     onTokenRefreshed?: (tokenData: StravaTokenResponse) => void;
   },
   afterEpochSeconds?: number
@@ -445,17 +535,13 @@ export async function fetchStravaActivities(
     },
   });
 
-  if (
-    response.status === 401 &&
-    refreshConfig?.clientId &&
-    refreshConfig?.clientSecret &&
-    refreshConfig?.refreshToken
-  ) {
+  if (response.status === 401 && refreshConfig?.refreshToken) {
     try {
       const refreshed = await refreshStravaToken(
-        refreshConfig.clientId,
+        refreshConfig.clientId || DEFAULT_MASTER_STRAVA_CLIENT_ID,
         refreshConfig.clientSecret,
-        refreshConfig.refreshToken
+        refreshConfig.refreshToken,
+        refreshConfig.athleteEmail
       );
       if (refreshConfig.onTokenRefreshed) {
         refreshConfig.onTokenRefreshed(refreshed);
@@ -715,4 +801,457 @@ export function reconcileStravaWorkouts(
   }
 
   return result;
+}
+
+export function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result.map((s) => s.trim().replace(/^"(.*)"$/, '$1'));
+}
+
+/**
+ * Parses activities.csv from a Strava data export archive into WorkoutRun items.
+ * Sub-second client-side execution for hundreds or thousands of runs.
+ */
+export function parseStravaArchiveCsv(
+  csvText: string,
+  preferredUnit: DistanceUnit = 'mi',
+  athleteId: string,
+  athleteName: string,
+  shoeId?: string,
+  shoeName?: string
+): WorkoutRun[] {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase());
+  const colIndex = (names: string[]): number => {
+    for (const n of names) {
+      const idx = headers.findIndex((h) => h === n || h.includes(n));
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  };
+
+  const idCol = colIndex(['activity id', 'id']);
+  const dateCol = colIndex(['activity date', 'date']);
+  const nameCol = colIndex(['activity name', 'name', 'title']);
+  const typeCol = colIndex(['activity type', 'type', 'sport']);
+  const descCol = colIndex(['activity description', 'description']);
+  const distCol = colIndex(['distance']);
+  const movingTimeCol = colIndex(['moving time', 'moving_time']);
+  const elapsedTimeCol = colIndex(['elapsed time', 'elapsed_time']);
+  const maxHrCol = colIndex(['max heart rate', 'max heartrate', 'max hr']);
+  const avgHrCol = colIndex(['average heart rate', 'avg heart rate', 'average heartrate', 'avg hr']);
+  const elevCol = colIndex(['elevation gain', 'total elevation gain']);
+
+  const runs: WorkoutRun[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCsvLine(lines[i]);
+    if (row.length < 4) continue;
+
+    const rawType = (typeCol >= 0 ? row[typeCol] : '').toLowerCase();
+    // Only import running activities
+    if (
+      !rawType.includes('run') &&
+      !rawType.includes('jog') &&
+      !rawType.includes('treadmill')
+    ) {
+      continue;
+    }
+
+    const rawId = idCol >= 0 && row[idCol] ? row[idCol] : `csv_${i}`;
+    const rawName = nameCol >= 0 && row[nameCol] ? row[nameCol] : 'Morning Run';
+    const rawDate = dateCol >= 0 ? row[dateCol] : '';
+    const rawDesc = descCol >= 0 ? row[descCol] : '';
+
+    // Parse date & time
+    let workoutDate = formatDate(new Date());
+    let startTime = '08:00';
+    if (rawDate) {
+      try {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          workoutDate = formatDate(d);
+          const hh = String(d.getHours()).padStart(2, '0');
+          const mm = String(d.getMinutes()).padStart(2, '0');
+          startTime = `${hh}:${mm}`;
+        } else {
+          // Fallback match YYYY-MM-DD
+          const matchYmd = rawDate.match(/(\d{4})-(\d{2})-(\d{2})/);
+          if (matchYmd) {
+            workoutDate = `${matchYmd[1]}-${matchYmd[2]}-${matchYmd[3]}`;
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    // Parse distance: in Strava exports, Distance is in meters (e.g. 8046.72 or 16093.4)
+    let distMeters = 0;
+    if (distCol >= 0 && row[distCol]) {
+      const val = parseFloat(row[distCol].replace(/,/g, ''));
+      if (!isNaN(val)) distMeters = val;
+    }
+    let distanceVal = 0;
+    if (distMeters > 150) {
+      // In meters
+      const distanceMiles = distMeters / 1609.344;
+      distanceVal = Number(convertDistance(distanceMiles, 'mi', preferredUnit).toFixed(2));
+    } else {
+      distanceVal = Number(convertDistance(distMeters, 'mi', preferredUnit).toFixed(2));
+    }
+
+    if (distanceVal <= 0.05) continue; // Skip zero-distance runs
+
+    // Duration (Moving time preferred, else elapsed time)
+    let durationSeconds = 0;
+    if (movingTimeCol >= 0 && row[movingTimeCol]) {
+      const val = parseFloat(row[movingTimeCol]);
+      if (!isNaN(val)) durationSeconds = Math.round(val);
+    }
+    if (durationSeconds <= 0 && elapsedTimeCol >= 0 && row[elapsedTimeCol]) {
+      const val = parseFloat(row[elapsedTimeCol]);
+      if (!isNaN(val)) durationSeconds = Math.round(val);
+    }
+
+    const paceSec =
+      distanceVal > 0 && durationSeconds > 0
+        ? calculatePaceSeconds(durationSeconds, distanceVal) || 0
+        : 0;
+
+    // Heart rates
+    let avgHr: number | undefined;
+    let maxHr: number | undefined;
+    if (avgHrCol >= 0 && row[avgHrCol]) {
+      const n = Math.round(parseFloat(row[avgHrCol]));
+      if (!isNaN(n) && n > 40 && n < 230) avgHr = n;
+    }
+    if (maxHrCol >= 0 && row[maxHrCol]) {
+      const n = Math.round(parseFloat(row[maxHrCol]));
+      if (!isNaN(n) && n > 40 && n < 230) maxHr = n;
+    }
+
+    // Elevation
+    let elevMeters = 0;
+    if (elevCol >= 0 && row[elevCol]) {
+      const n = parseFloat(row[elevCol]);
+      if (!isNaN(n)) elevMeters = n;
+    }
+
+    const runType = 'easy';
+    const multiplier = getRunTypeMultiplier('easy');
+    const load = calculateRunLoad(distanceVal, preferredUnit, multiplier);
+
+    runs.push({
+      id: `strava_${rawId}`,
+      workoutDate,
+      runOrder: 1,
+      distance: distanceVal,
+      distanceUnit: preferredUnit,
+      runType,
+      multiplier,
+      load,
+      comments: rawDesc ? `${rawDesc} (Strava Archive)` : 'Imported via Strava Archive',
+      completed: true,
+      title: rawName,
+      startTime,
+      athleteId,
+      athleteName,
+      durationSeconds,
+      durationFormatted: formatDurationStrava(durationSeconds),
+      paceSeconds: paceSec,
+      paceFormatted: formatPace(paceSec, preferredUnit),
+      averageHeartRate: avgHr,
+      maxHeartRate: maxHr,
+      elevationGainMeters: Math.round(elevMeters),
+      elevationGainFeet: Math.round(elevMeters * 3.28084),
+      source: 'strava',
+      externalActivityId: String(rawId),
+      shoeId,
+      shoeName,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  // Sort ascending by date
+  runs.sort((a, b) => a.workoutDate.localeCompare(b.workoutDate));
+  return runs;
+}
+
+/**
+ * Parses a downloaded Strava Archive ZIP buffer.
+ * Extracts activities.csv and any .fit/.tcx/.gpx files inside.
+ */
+export async function parseStravaArchiveZip(
+  zipBuffer: ArrayBuffer,
+  preferredUnit: DistanceUnit = 'mi',
+  athleteId: string,
+  athleteName: string,
+  shoeId?: string,
+  shoeName?: string
+): Promise<WorkoutRun[]> {
+  const zip = await JSZip.loadAsync(zipBuffer);
+
+  // 1. Look for activities.csv (fastest and most comprehensive)
+  const csvMatch = zip.file(/^.*activities\.csv$/i)[0] || zip.file('activities.csv');
+  if (csvMatch) {
+    const csvContent = await csvMatch.async('text');
+    const workouts = parseStravaArchiveCsv(csvContent, preferredUnit, athleteId, athleteName, shoeId, shoeName);
+    if (workouts.length > 0) {
+      return workouts;
+    }
+  }
+
+  // 2. Fallback: Parse individual TCX/GPX/FIT files inside the ZIP
+  const runs: WorkoutRun[] = [];
+  const entries = Object.keys(zip.files);
+  for (const name of entries) {
+    const file = zip.files[name];
+    if (file.dir) continue;
+    const lower = name.toLowerCase();
+
+    try {
+      if (lower.endsWith('.tcx')) {
+        const text = await file.async('text');
+        const parsed = parseTCXContent(text, preferredUnit);
+        runs.push({
+          id: parsed.id,
+          workoutDate: parsed.workoutDate,
+          runOrder: 1,
+          distance: parsed.distance,
+          distanceUnit: parsed.distanceUnit,
+          runType: parsed.runType,
+          multiplier: parsed.multiplier,
+          load: parsed.load,
+          comments: parsed.comments || 'Imported via Archive',
+          completed: true,
+          title: parsed.title,
+          startTime: parsed.startTime,
+          athleteId,
+          athleteName,
+          durationSeconds: parsed.durationSeconds,
+          durationFormatted: parsed.durationFormatted,
+          paceSeconds: parsed.paceSeconds,
+          paceFormatted: parsed.paceFormatted,
+          source: 'file_import',
+          averageHeartRate: parsed.averageHeartRate,
+          maxHeartRate: parsed.maxHeartRate,
+          elevationGainMeters: parsed.elevationGainMeters,
+          elevationGainFeet: parsed.elevationGainFeet,
+          shoeId,
+          shoeName,
+        });
+      } else if (lower.endsWith('.gpx')) {
+        const text = await file.async('text');
+        const parsed = parseGPXContent(text, preferredUnit);
+        runs.push({
+          id: parsed.id,
+          workoutDate: parsed.workoutDate,
+          runOrder: 1,
+          distance: parsed.distance,
+          distanceUnit: parsed.distanceUnit,
+          runType: parsed.runType,
+          multiplier: parsed.multiplier,
+          load: parsed.load,
+          comments: parsed.comments || 'Imported via Archive',
+          completed: true,
+          title: parsed.title,
+          startTime: parsed.startTime,
+          athleteId,
+          athleteName,
+          durationSeconds: parsed.durationSeconds,
+          durationFormatted: parsed.durationFormatted,
+          paceSeconds: parsed.paceSeconds,
+          paceFormatted: parsed.paceFormatted,
+          source: 'file_import',
+          averageHeartRate: parsed.averageHeartRate,
+          maxHeartRate: parsed.maxHeartRate,
+          elevationGainMeters: parsed.elevationGainMeters,
+          elevationGainFeet: parsed.elevationGainFeet,
+          shoeId,
+          shoeName,
+        });
+      } else if (lower.endsWith('.fit')) {
+        const buf = await file.async('arraybuffer');
+        const parsed = parseFITBinary(buf, preferredUnit);
+        runs.push({
+          id: parsed.id,
+          workoutDate: parsed.workoutDate,
+          runOrder: 1,
+          distance: parsed.distance,
+          distanceUnit: parsed.distanceUnit,
+          runType: parsed.runType,
+          multiplier: parsed.multiplier,
+          load: parsed.load,
+          comments: parsed.comments || 'Imported via Archive',
+          completed: true,
+          title: parsed.title,
+          startTime: parsed.startTime,
+          athleteId,
+          athleteName,
+          durationSeconds: parsed.durationSeconds,
+          durationFormatted: parsed.durationFormatted,
+          paceSeconds: parsed.paceSeconds,
+          paceFormatted: parsed.paceFormatted,
+          source: 'file_import',
+          averageHeartRate: parsed.averageHeartRate,
+          maxHeartRate: parsed.maxHeartRate,
+          elevationGainMeters: parsed.elevationGainMeters,
+          elevationGainFeet: parsed.elevationGainFeet,
+          shoeId,
+          shoeName,
+        });
+      }
+    } catch {
+      // Skip unparseable
+    }
+  }
+
+  runs.sort((a, b) => a.workoutDate.localeCompare(b.workoutDate));
+  return runs;
+}
+
+/**
+ * Handles bulk dropped activity files (.fit, .tcx, .gpx, or Strava archive .zip).
+ */
+export async function parseDroppedActivityFiles(
+  files: File[],
+  preferredUnit: DistanceUnit = 'mi',
+  athleteId: string,
+  athleteName: string,
+  shoeId?: string,
+  shoeName?: string,
+  onProgress?: (processed: number, total: number) => void
+): Promise<WorkoutRun[]> {
+  const allWorkouts: WorkoutRun[] = [];
+  let count = 0;
+
+  for (const file of files) {
+    const name = file.name.toLowerCase();
+    try {
+      if (name.endsWith('.zip')) {
+        const buf = await file.arrayBuffer();
+        const extracted = await parseStravaArchiveZip(buf, preferredUnit, athleteId, athleteName, shoeId, shoeName);
+        allWorkouts.push(...extracted);
+      } else if (name.endsWith('.tcx')) {
+        const text = await file.text();
+        const parsed = parseTCXContent(text, preferredUnit);
+        allWorkouts.push({
+          id: parsed.id,
+          workoutDate: parsed.workoutDate,
+          runOrder: 1,
+          distance: parsed.distance,
+          distanceUnit: parsed.distanceUnit,
+          runType: parsed.runType,
+          multiplier: parsed.multiplier,
+          load: parsed.load,
+          comments: parsed.comments || 'File Upload',
+          completed: true,
+          title: parsed.title,
+          startTime: parsed.startTime,
+          athleteId,
+          athleteName,
+          durationSeconds: parsed.durationSeconds,
+          durationFormatted: parsed.durationFormatted,
+          paceSeconds: parsed.paceSeconds,
+          paceFormatted: parsed.paceFormatted,
+          source: 'file_import',
+          averageHeartRate: parsed.averageHeartRate,
+          maxHeartRate: parsed.maxHeartRate,
+          elevationGainMeters: parsed.elevationGainMeters,
+          elevationGainFeet: parsed.elevationGainFeet,
+          shoeId,
+          shoeName,
+        });
+      } else if (name.endsWith('.gpx')) {
+        const text = await file.text();
+        const parsed = parseGPXContent(text, preferredUnit);
+        allWorkouts.push({
+          id: parsed.id,
+          workoutDate: parsed.workoutDate,
+          runOrder: 1,
+          distance: parsed.distance,
+          distanceUnit: parsed.distanceUnit,
+          runType: parsed.runType,
+          multiplier: parsed.multiplier,
+          load: parsed.load,
+          comments: parsed.comments || 'File Upload',
+          completed: true,
+          title: parsed.title,
+          startTime: parsed.startTime,
+          athleteId,
+          athleteName,
+          durationSeconds: parsed.durationSeconds,
+          durationFormatted: parsed.durationFormatted,
+          paceSeconds: parsed.paceSeconds,
+          paceFormatted: parsed.paceFormatted,
+          source: 'file_import',
+          averageHeartRate: parsed.averageHeartRate,
+          maxHeartRate: parsed.maxHeartRate,
+          elevationGainMeters: parsed.elevationGainMeters,
+          elevationGainFeet: parsed.elevationGainFeet,
+          shoeId,
+          shoeName,
+        });
+      } else if (name.endsWith('.fit')) {
+        const buf = await file.arrayBuffer();
+        const parsed = parseFITBinary(buf, preferredUnit);
+        allWorkouts.push({
+          id: parsed.id,
+          workoutDate: parsed.workoutDate,
+          runOrder: 1,
+          distance: parsed.distance,
+          distanceUnit: parsed.distanceUnit,
+          runType: parsed.runType,
+          multiplier: parsed.multiplier,
+          load: parsed.load,
+          comments: parsed.comments || 'File Upload',
+          completed: true,
+          title: parsed.title,
+          startTime: parsed.startTime,
+          athleteId,
+          athleteName,
+          durationSeconds: parsed.durationSeconds,
+          durationFormatted: parsed.durationFormatted,
+          paceSeconds: parsed.paceSeconds,
+          paceFormatted: parsed.paceFormatted,
+          source: 'file_import',
+          averageHeartRate: parsed.averageHeartRate,
+          maxHeartRate: parsed.maxHeartRate,
+          elevationGainMeters: parsed.elevationGainMeters,
+          elevationGainFeet: parsed.elevationGainFeet,
+          shoeId,
+          shoeName,
+        });
+      }
+    } catch (err) {
+      console.warn(`Could not parse file ${file.name}:`, err);
+    }
+    count++;
+    if (onProgress) onProgress(count, files.length);
+  }
+
+  allWorkouts.sort((a, b) => a.workoutDate.localeCompare(b.workoutDate));
+  return allWorkouts;
 }

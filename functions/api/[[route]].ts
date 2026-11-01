@@ -10,6 +10,8 @@ import {
 interface Env {
   DB?: any; // Cloudflare D1 Database binding
   RESEND_API_KEY?: string;
+  STRAVA_CLIENT_ID?: string;
+  STRAVA_CLIENT_SECRET?: string;
 }
 
 export const onRequest: PagesFunction<Env> = async (context) => {
@@ -30,6 +32,126 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   try {
+    // Strava Centralized App Credentials & Token Exchange
+    if (path === 'strava/config' || path === 'strava-config') {
+      const masterClientId = env.STRAVA_CLIENT_ID || '291001';
+      return new Response(JSON.stringify({ clientId: masterClientId }), {
+        headers: corsHeaders,
+      });
+    }
+
+    if (path === 'strava/exchange-token' && method === 'POST') {
+      const body: any = await request.json().catch(() => ({}));
+      const code = String(body.code || '').trim();
+      if (!code) {
+        return new Response(JSON.stringify({ error: 'Missing authorization code' }), {
+          status: 400,
+          headers: corsHeaders,
+        });
+      }
+      const clientId = String(body.clientId || env.STRAVA_CLIENT_ID || '291001').trim();
+      const clientSecret = String(
+        body.clientSecret || env.STRAVA_CLIENT_SECRET || 'e511adf8ab6bf1bd1fd5bd53b157f9ff886354e6'
+      ).trim();
+
+      const upstream = await fetch('https://www.strava.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          grant_type: 'authorization_code',
+        }),
+      });
+
+      const tokenData: any = await upstream.json().catch(() => ({}));
+      if (!upstream.ok) {
+        return new Response(JSON.stringify(tokenData), {
+          status: upstream.status,
+          headers: corsHeaders,
+        });
+      }
+
+      // If user email is provided, save connection in D1
+      if (env.DB && (body.athleteEmail || body.email)) {
+        const email = String(body.athleteEmail || body.email).trim().toLowerCase();
+        const athleteName = tokenData.athlete
+          ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
+          : body.athleteName || '';
+        await env.DB.prepare(
+          `INSERT OR REPLACE INTO strava_connections (
+            user_email, client_id, client_secret, access_token, refresh_token, expires_at, athlete_name, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+          .bind(
+            email,
+            clientId,
+            clientSecret,
+            tokenData.access_token || '',
+            tokenData.refresh_token || '',
+            tokenData.expires_at || 0,
+            athleteName,
+            new Date().toISOString()
+          )
+          .run();
+      }
+
+      return new Response(JSON.stringify(tokenData), { headers: corsHeaders });
+    }
+
+    if (path === 'strava/refresh-token' && method === 'POST') {
+      const body: any = await request.json().catch(() => ({}));
+      const refreshToken = String(body.refreshToken || '').trim();
+      if (!refreshToken) {
+        return new Response(JSON.stringify({ error: 'Missing refreshToken' }), {
+          status: 400,
+          headers: corsHeaders,
+        });
+      }
+      const clientId = String(body.clientId || env.STRAVA_CLIENT_ID || '291001').trim();
+      const clientSecret = String(
+        body.clientSecret || env.STRAVA_CLIENT_SECRET || 'e511adf8ab6bf1bd1fd5bd53b157f9ff886354e6'
+      ).trim();
+
+      const upstream = await fetch('https://www.strava.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        }),
+      });
+
+      const tokenData: any = await upstream.json().catch(() => ({}));
+      if (!upstream.ok) {
+        return new Response(JSON.stringify(tokenData), {
+          status: upstream.status,
+          headers: corsHeaders,
+        });
+      }
+
+      // If user email is provided, update connection in D1
+      if (env.DB && (body.athleteEmail || body.email)) {
+        const email = String(body.athleteEmail || body.email).trim().toLowerCase();
+        await env.DB.prepare(
+          `UPDATE strava_connections SET access_token = ?, refresh_token = ?, expires_at = ?, updated_at = ? WHERE user_email = ?`
+        )
+          .bind(
+            tokenData.access_token || '',
+            tokenData.refresh_token || '',
+            tokenData.expires_at || 0,
+            new Date().toISOString(),
+            email
+          )
+          .run();
+      }
+
+      return new Response(JSON.stringify(tokenData), { headers: corsHeaders });
+    }
+
     // Production replacement for the Vite dev proxy: /api/strava/* -> https://www.strava.com/*
     // Restricted to Strava's OAuth token + v3 API paths so this is not an open proxy.
     if (path.startsWith('strava/')) {

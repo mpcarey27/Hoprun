@@ -4,6 +4,8 @@ export interface Env {
   DB?: any;
   ASSETS: { fetch: (req: Request) => Promise<Response> };
   RESEND_API_KEY?: string;
+  STRAVA_CLIENT_ID?: string;
+  STRAVA_CLIENT_SECRET?: string;
 }
 
 export default {

@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { UserProfile, AppSettings, WorkoutRun } from '../types/acr';
 import {
+  DEFAULT_MASTER_STRAVA_CLIENT_ID,
+  fetchMasterStravaClientId,
   fetchAllStravaActivitiesSince,
   parseDateToEpochSeconds,
   normalizeStravaActivity,
@@ -9,6 +11,7 @@ import {
   encodeStravaOAuthState,
   decodeStravaOAuthState,
   extractCodeFromUrlOrInput,
+  parseDroppedActivityFiles,
 } from '../utils/stravaSync';
 import { loadStoredSettings, saveStoredSettings } from '../utils/storage';
 
@@ -43,11 +46,15 @@ export const StravaConnectModal: React.FC<Props> = ({
     settings.stravaConnected && (settings.stravaAccessToken || settings.stravaClientId)
   );
 
-  // Form state
+  // Mode state: 'oauth' (1-click free connect), 'archive' (ZIP / FIT / GPX dropzone), 'token' (manual PAT)
+  const [activeMode, setActiveMode] = useState<'oauth' | 'archive' | 'token'>('oauth');
+  const [masterClientId, setMasterClientId] = useState<string>(DEFAULT_MASTER_STRAVA_CLIENT_ID);
+
+  // Form / OAuth state
   const [clientId, setClientId] = useState(settings.stravaClientId || '');
   const [clientSecret, setClientSecret] = useState(settings.stravaClientSecret || '');
   const [accessToken, setAccessToken] = useState(settings.stravaAccessToken || '');
-  const [activeMode, setActiveMode] = useState<'token' | 'oauth'>('oauth');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [callbackDomainMode, setCallbackDomainMode] = useState<
     'current' | 'hoprun' | 'localhost'
   >('current');
@@ -62,6 +69,27 @@ export const StravaConnectModal: React.FC<Props> = ({
     () => settings.stravaSyncStartDate || ytdDateString
   );
   const [syncProgressMessage, setSyncProgressMessage] = useState<string>('');
+
+  // File Dropzone / Archive Import state
+  const [isDragging, setIsDragging] = useState(false);
+  const [archiveProgress, setArchiveProgress] = useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Fetch master app credentials on modal mount
+  useEffect(() => {
+    let cancelled = false;
+    void fetchMasterStravaClientId().then((id) => {
+      if (!cancelled && id) {
+        setMasterClientId(id);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (settings.stravaClientId && !clientId) setClientId(settings.stravaClientId);
@@ -104,7 +132,38 @@ export const StravaConnectModal: React.FC<Props> = ({
     }
   };
 
-  // 1. Direct Access Token Connect (Fastest, zero OAuth callback redirect needed)
+  // 1. Centralized 1-Click Strava Connect (Works for 100% Free Strava Accounts)
+  const handleCentralizedConnect = () => {
+    setErrorMessage('');
+    const effectiveId = clientId.trim() || masterClientId;
+    const effectiveSecret = clientSecret.trim();
+    const effectiveStartDate = customStartDate || ytdDateString;
+
+    // Save timeline preference
+    const currentStored = loadStoredSettings();
+    saveStoredSettings({
+      ...currentStored,
+      stravaClientId: effectiveId,
+      stravaClientSecret: effectiveSecret || undefined,
+      stravaSyncStartDate: effectiveStartDate,
+    });
+    onUpdateSettings({
+      stravaClientId: effectiveId,
+      stravaClientSecret: effectiveSecret || undefined,
+      stravaSyncStartDate: effectiveStartDate,
+    });
+
+    const state = encodeStravaOAuthState({
+      clientId: effectiveId,
+      clientSecret: effectiveSecret || undefined,
+      origin: currentOrigin,
+    });
+
+    const authUrl = buildStravaAuthUrl(effectiveId, selectedRedirectUri, state);
+    window.location.href = authUrl;
+  };
+
+  // 1b. Direct Access Token Connect (Optional manual token fallback)
   const handleConnectWithToken = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -171,47 +230,7 @@ export const StravaConnectModal: React.FC<Props> = ({
     }
   };
 
-  // 2. Full OAuth Connect (Redirects to Strava authorization page with activity:read_all scope)
-  const handleOAuthConnect = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage('');
-    const cleanId = clientId.trim();
-    const cleanSecret = clientSecret.trim();
-
-    if (!cleanId) {
-      setErrorMessage('Please enter your Strava Client ID.');
-      return;
-    }
-    if (!cleanSecret) {
-      setErrorMessage('Please enter your Strava Client Secret (from strava.com/settings/api).');
-      return;
-    }
-
-    // Persist synchronously to localStorage so App.tsx can read them immediately on callback
-    const effectiveStartDate = customStartDate || ytdDateString;
-    const currentStored = loadStoredSettings();
-    saveStoredSettings({
-      ...currentStored,
-      stravaClientId: cleanId,
-      stravaClientSecret: cleanSecret,
-      stravaSyncStartDate: effectiveStartDate,
-    });
-    onUpdateSettings({
-      stravaClientId: cleanId,
-      stravaClientSecret: cleanSecret,
-      stravaSyncStartDate: effectiveStartDate,
-    });
-
-    const state = encodeStravaOAuthState({
-      clientId: cleanId,
-      clientSecret: cleanSecret,
-      origin: currentOrigin,
-    });
-    const authUrl = buildStravaAuthUrl(cleanId, selectedRedirectUri, state);
-    window.location.href = authUrl;
-  };
-
-  // 2b. Manual Callback URL or Authorization Code Completion (Fallback for localhost / cross-origin redirects)
+  // 1c. Manual Callback URL / Code Completion (Fallback for localhost or redirect bounces)
   const handleCompleteManualCallback = async () => {
     setErrorMessage('');
     const { code: extractedCode, state: extractedState } = extractCodeFromUrlOrInput(callbackInput);
@@ -224,20 +243,16 @@ export const StravaConnectModal: React.FC<Props> = ({
 
     const decoded = decodeStravaOAuthState(extractedState);
     const effectiveId =
-      clientId.trim() || decoded?.clientId || settings.stravaClientId || '';
+      clientId.trim() || decoded?.clientId || settings.stravaClientId || masterClientId;
     const effectiveSecret =
       clientSecret.trim() || decoded?.clientSecret || settings.stravaClientSecret || '';
 
-    if (!effectiveId || !effectiveSecret) {
-      setErrorMessage(
-        'Please enter your Strava Client ID and Client Secret above so Hop Run can exchange the authorization code.'
-      );
-      return;
-    }
-
     setIsSyncing(true);
     try {
-      const tokenData = await exchangeStravaCode(effectiveId, effectiveSecret, extractedCode);
+      const tokenData = await exchangeStravaCode(effectiveId, effectiveSecret, extractedCode, {
+        athleteEmail: currentUser.email,
+        athleteName: currentUser.name,
+      });
       const athleteName = tokenData.athlete
         ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
         : currentUser.name || 'Strava Athlete';
@@ -247,7 +262,19 @@ export const StravaConnectModal: React.FC<Props> = ({
       const activities = await fetchAllStravaActivitiesSince(
         tokenData.access_token,
         afterEpoch,
-        undefined,
+        {
+          clientId: effectiveId,
+          clientSecret: effectiveSecret,
+          refreshToken: tokenData.refresh_token,
+          athleteEmail: currentUser.email,
+          onTokenRefreshed: (refreshed) => {
+            onUpdateSettings({
+              stravaAccessToken: refreshed.access_token,
+              stravaRefreshToken: refreshed.refresh_token,
+              stravaExpiresAt: refreshed.expires_at,
+            });
+          },
+        },
         (count, page) => {
           setSyncProgressMessage(
             `Pulling activities from ${effectiveStartDate}... (Page ${page}, ${count} runs found)`
@@ -274,7 +301,7 @@ export const StravaConnectModal: React.FC<Props> = ({
 
       onUpdateSettings({
         stravaClientId: effectiveId,
-        stravaClientSecret: effectiveSecret,
+        stravaClientSecret: effectiveSecret || undefined,
         stravaConnected: true,
         stravaAccessToken: tokenData.access_token,
         stravaRefreshToken: tokenData.refresh_token,
@@ -293,17 +320,64 @@ export const StravaConnectModal: React.FC<Props> = ({
     } catch (err: any) {
       setSyncProgressMessage('');
       setErrorMessage(
-        err.message || 'Failed to exchange authorization code. Please check your Client ID, Secret, and pasted URL.'
+        err.message || 'Failed to exchange authorization code. Please verify the code and try again.'
       );
     } finally {
       setIsSyncing(false);
     }
   };
 
+  // 2. Archive ZIP / Files Dropzone Processor
+  const handleFilesSelected = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    setIsSyncing(true);
+    setErrorMessage('');
+    setArchiveProgress({ processed: 0, total: fileArray.length });
+    const defaultShoe = (settings.shoes || []).find((s) => !s.isRetired && s.isDefault);
+    const unit = settings.distanceUnit || 'mi';
+
+    try {
+      const importedRuns = await parseDroppedActivityFiles(
+        fileArray,
+        unit,
+        currentUser.id,
+        currentUser.name,
+        defaultShoe?.id,
+        defaultShoe?.name,
+        (processed, total) => {
+          setArchiveProgress({ processed, total });
+        }
+      );
+
+      if (importedRuns.length === 0) {
+        setErrorMessage(
+          'No valid running activities were found in the uploaded file(s). Please verify the ZIP contains activities.csv or .fit/.tcx/.gpx files.'
+        );
+      } else {
+        if (onImportRuns) {
+          onImportRuns(importedRuns);
+        }
+        setToastMessage(
+          `✓ Success! Imported and calculated ${importedRuns.length} runs across your training history.`
+        );
+        setTimeout(() => setToastMessage(''), 5000);
+      }
+    } catch (err: any) {
+      console.error('File import error:', err);
+      setErrorMessage(err.message || 'Failed to process activity files.');
+    } finally {
+      setIsSyncing(false);
+      setArchiveProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   // 3. Sync timeline activities starting from a specific date forward
   const handleSyncTimeline = async (targetStartDate?: string) => {
-    if (!settings.stravaAccessToken) {
-      setErrorMessage('No active Strava token found. Please re-enter your access token.');
+    if (!settings.stravaAccessToken && !settings.stravaRefreshToken) {
+      setErrorMessage('No active Strava connection found. Please connect with Strava first.');
       return;
     }
 
@@ -315,11 +389,12 @@ export const StravaConnectModal: React.FC<Props> = ({
     setSyncProgressMessage(`Starting timeline sync from ${effectiveStartDate}...`);
 
     try {
-      let activeToken = settings.stravaAccessToken;
+      let activeToken = settings.stravaAccessToken || '';
       const refreshConfig = {
-        clientId: settings.stravaClientId,
+        clientId: settings.stravaClientId || masterClientId,
         clientSecret: settings.stravaClientSecret,
         refreshToken: settings.stravaRefreshToken,
+        athleteEmail: currentUser.email,
         onTokenRefreshed: (tokenData: any) => {
           activeToken = tokenData.access_token;
           onUpdateSettings({
@@ -532,7 +607,7 @@ export const StravaConnectModal: React.FC<Props> = ({
                 </div>
 
                 <p className="text-xs text-secondary leading-relaxed">
-                  Choose a starting date (e.g. <strong>1/1/2026</strong>) to pull all activities from that date forward. Hop Run will automatically pull and reconcile all runs from this date forward.
+                  Choose a starting date (e.g. <strong>1/1/2026</strong>) to pull all activities from that date forward. Hop Run automatically reconciles workouts to avoid duplicates.
                 </p>
 
                 {/* Preset Timeline Buttons */}
@@ -582,7 +657,7 @@ export const StravaConnectModal: React.FC<Props> = ({
                     />
                     <button
                       type="button"
-                      className="btn-strava-primary py-2 px-3 text-xs font-bold font-mono whitespace-nowrap"
+                      className="btn-strava-primary py-2 px-3 text-xs font-bold font-mono whitespace-nowrap cursor-pointer"
                       onClick={() => handleSyncTimeline(customStartDate)}
                       disabled={isSyncing || !customStartDate}
                     >
@@ -598,10 +673,52 @@ export const StravaConnectModal: React.FC<Props> = ({
                 )}
               </div>
 
+              {/* Archive ZIP / Bulk File Importer Section (Available when connected too) */}
+              <div className="p-3.5 rounded-xl bg-surface border border-subtle space-y-2">
+                <div className="flex items-center justify-between">
+                  <strong className="text-xs font-bold text-primary flex items-center gap-1.5">
+                    <span>📦</span>
+                    <span>Backfill with Strava Archive ZIP / Files</span>
+                  </strong>
+                  <button
+                    type="button"
+                    className="btn-filter-pill text-xxs font-mono"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Choose Files
+                  </button>
+                </div>
+                <p className="text-xxs text-secondary">
+                  Have a Strava export archive ZIP or watch files (.FIT / .TCX / .GPX)? Drop them here to load years of past runs instantly.
+                </p>
+                <div
+                  className={`border-2 border-dashed rounded-lg p-3 text-center transition-all cursor-pointer ${
+                    isDragging ? 'border-accent bg-accent/10' : 'border-subtle bg-surface-elevated/50 hover:bg-surface-elevated'
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    if (e.dataTransfer.files) void handleFilesSelected(e.dataTransfer.files);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <span className="text-xs text-muted font-mono block">
+                    {archiveProgress
+                      ? `⏳ Parsing ${archiveProgress.processed} / ${archiveProgress.total} activities...`
+                      : 'Drag & Drop Strava Archive ZIP or .FIT / .TCX / .GPX files'}
+                  </span>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  className="btn-strava-primary flex-1 font-mono text-xs font-bold"
+                  className="btn-strava-primary flex-1 font-mono text-xs font-bold cursor-pointer"
                   onClick={handleSyncLatest}
                   disabled={isSyncing}
                 >
@@ -609,7 +726,7 @@ export const StravaConnectModal: React.FC<Props> = ({
                 </button>
                 <button
                   type="button"
-                  className="btn-settings-pill text-xs"
+                  className="btn-settings-pill text-xs cursor-pointer"
                   style={{ color: 'var(--color-critical)' }}
                   onClick={handleDisconnect}
                 >
@@ -618,8 +735,9 @@ export const StravaConnectModal: React.FC<Props> = ({
               </div>
             </div>
           ) : (
-            /* Setup Guide & Connect Form */
+            /* Setup Guide & Connect View */
             <div className="space-y-4">
+              {/* Relay explanation */}
               <div className="p-3.5 rounded-xl bg-surface-elevated border border-subtle">
                 <div className="flex items-center gap-2 mb-1.5">
                   <strong className="text-xs font-bold text-primary">How This Syncs Your Garmin Watch</strong>
@@ -638,172 +756,305 @@ export const StravaConnectModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Mode Switcher: OAuth vs Token */}
+              {/* Mode Switcher Tabs */}
               <div className="login-tab-pills">
                 <button
                   type="button"
                   className={`login-tab-pill ${activeMode === 'oauth' ? 'active' : ''}`}
                   onClick={() => setActiveMode('oauth')}
                 >
-                  1. 1-Click Strava Connect (Recommended)
+                  1. 1-Click Connect 🟠
+                </button>
+                <button
+                  type="button"
+                  className={`login-tab-pill ${activeMode === 'archive' ? 'active' : ''}`}
+                  onClick={() => setActiveMode('archive')}
+                >
+                  2. Archive ZIP / Files 📦
                 </button>
                 <button
                   type="button"
                   className={`login-tab-pill ${activeMode === 'token' ? 'active' : ''}`}
                   onClick={() => setActiveMode('token')}
                 >
-                  2. Manual Access Token
+                  3. Access Token 🔑
                 </button>
               </div>
 
-              {activeMode === 'oauth' ? (
-                /* OAuth Mode: Client ID + Secret + Callback Domain Selector + Manual Callback Fallback */
-                <div className="space-y-3">
-                  <form onSubmit={handleOAuthConnect} className="space-y-3">
-                    <div className="p-3 rounded-lg bg-surface border border-subtle text-xs space-y-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <strong className="text-primary text-xs">Easy 2-Minute Setup:</strong>
-                        <span className="badge-strava font-mono text-xxs font-bold">ACTIVITY ACCESS</span>
-                      </div>
-                      <ol className="list-decimal list-inside space-y-1.5 text-secondary text-xxs leading-relaxed">
-                        <li>
-                          Open your free Strava API page:{' '}
-                          <a
-                            href="https://www.strava.com/settings/api"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-accent underline font-bold"
-                          >
-                            strava.com/settings/api ↗
-                          </a>
-                        </li>
-                        <li>
-                          Set <strong>Authorization Callback Domain</strong> in Strava to match your choice below:
-                          <div className="flex items-center gap-2 pt-1.5 flex-wrap">
-                            <code className="text-emerald-400 bg-surface-elevated px-2 py-0.5 rounded border border-emerald-500/30 font-mono font-bold">
-                              {selectedCallbackHostname}
-                            </code>
+              {activeMode === 'oauth' && (
+                /* Centralized 1-Click OAuth Mode */
+                <div className="space-y-3.5">
+                  {/* Free Account Guarantee Banner */}
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-400 font-bold text-sm">✓</span>
+                      <strong className="text-emerald-400 text-xs font-bold">
+                        Works with 100% Free Strava Accounts
+                      </strong>
+                    </div>
+                    <p className="text-xxs text-secondary leading-relaxed pl-5">
+                      No Strava subscription or developer API app needed! Hop Run connects securely through Coach Michael Carey's verified application relay.
+                    </p>
+                  </div>
+
+                  {/* Timeline Start Date selection */}
+                  <div className="p-3 rounded-xl bg-surface border border-subtle space-y-2">
+                    <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                      Sync Timeline: Pull runs starting from date forward
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        className={`btn-filter-pill text-xxs font-mono ${customStartDate === ytdDateString ? 'active' : ''}`}
+                        onClick={() => setCustomStartDate(ytdDateString)}
+                      >
+                        Jan 1, 2026 (YTD)
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn-filter-pill text-xxs font-mono ${customStartDate === getDaysAgoDateString(90) ? 'active' : ''}`}
+                        onClick={() => setCustomStartDate(getDaysAgoDateString(90))}
+                      >
+                        Last 3 Months (90d)
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn-filter-pill text-xxs font-mono ${customStartDate === getDaysAgoDateString(180) ? 'active' : ''}`}
+                        onClick={() => setCustomStartDate(getDaysAgoDateString(180))}
+                      >
+                        Last 6 Months (180d)
+                      </button>
+                    </div>
+                    <input
+                      type="date"
+                      className="input-field text-xs font-mono w-full"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+
+                  {/* The Big 1-Click Connect Button */}
+                  <button
+                    type="button"
+                    onClick={handleCentralizedConnect}
+                    className="btn-strava-primary w-full py-3 font-mono text-sm font-bold text-center flex items-center justify-center gap-2 shadow-lg hover:shadow-orange-500/20 transition-all cursor-pointer"
+                    disabled={isSyncing}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="#FFFFFF"
+                      style={{ width: '18px', height: '18px' }}
+                      aria-hidden="true"
+                    >
+                      <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7.01 13.828h4.172" />
+                    </svg>
+                    <span>Connect with Strava ➔</span>
+                  </button>
+
+                  <p className="text-center text-xxs text-muted font-mono">
+                    You'll be directed to Strava's login page to authorize Hop Run to view your activities.
+                  </p>
+
+                  {/* Expandable Advanced Options for Custom API Keys or Callback Bounce */}
+                  <div className="pt-2 border-t border-subtle">
+                    <button
+                      type="button"
+                      className="text-xxs font-mono text-muted hover:text-primary flex items-center gap-1.5 transition-colors cursor-pointer"
+                      onClick={() => setShowAdvanced(!showAdvanced)}
+                    >
+                      <span>{showAdvanced ? '▾ Hide' : '▸ Show'} Advanced API &amp; Manual Callback Options</span>
+                    </button>
+
+                    {showAdvanced && (
+                      <div className="mt-3 p-3 rounded-xl bg-surface border border-subtle space-y-3 animate-in">
+                        <div className="space-y-1.5">
+                          <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                            Callback Domain Mode
+                          </label>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setCallbackDomainMode('current')}
+                              className={`btn-filter-pill text-xxs font-mono ${
+                                callbackDomainMode === 'current' ? 'active' : ''
+                              }`}
+                            >
+                              Current ({currentHostname})
+                            </button>
+                            {currentHostname !== 'hoprun.app' && (
+                              <button
+                                type="button"
+                                onClick={() => setCallbackDomainMode('hoprun')}
+                                className={`btn-filter-pill text-xxs font-mono ${
+                                  callbackDomainMode === 'hoprun' ? 'active' : ''
+                                }`}
+                              >
+                                hoprun.app
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setCallbackDomainMode('localhost')}
+                              className={`btn-filter-pill text-xxs font-mono ${
+                                callbackDomainMode === 'localhost' ? 'active' : ''
+                              }`}
+                            >
+                              localhost
+                            </button>
                             <button
                               type="button"
                               onClick={handleCopyDomain}
-                              className="btn-filter-pill text-xxs font-mono py-0.5 px-2"
+                              className="btn-filter-pill text-xxs font-mono"
                             >
-                              {copiedDomain ? '✓ Copied!' : '📋 Copy Domain'}
+                              {copiedDomain ? '✓ Copied' : '📋 Copy'}
                             </button>
                           </div>
-                          <span className="text-amber-400 block pt-1 text-xxs">
-                            ⚠️ Important: In Strava settings, enter just the hostname{' '}
-                            <strong>{selectedCallbackHostname}</strong> (no https:// or slash).
-                          </span>
-                        </li>
-                        <li>Copy your <strong>Client ID</strong> and <strong>Client Secret</strong> below.</li>
-                      </ol>
-                    </div>
+                        </div>
 
-                    {/* Callback Domain Selector */}
-                    <div className="p-2.5 rounded-lg bg-surface-elevated border border-subtle space-y-1.5">
-                      <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
-                        Strava Callback Domain (Match strava.com/settings/api)
-                      </label>
-                      <div className="flex flex-wrap gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setCallbackDomainMode('current')}
-                          className={`btn-filter-pill text-xxs font-mono ${
-                            callbackDomainMode === 'current' ? 'active' : ''
-                          }`}
-                        >
-                          Current ({currentHostname})
-                        </button>
-                        {currentHostname !== 'hoprun.app' && (
-                          <button
-                            type="button"
-                            onClick={() => setCallbackDomainMode('hoprun')}
-                            className={`btn-filter-pill text-xxs font-mono ${
-                              callbackDomainMode === 'hoprun' ? 'active' : ''
-                            }`}
-                          >
-                            hoprun.app
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setCallbackDomainMode('localhost')}
-                          className={`btn-filter-pill text-xxs font-mono ${
-                            callbackDomainMode === 'localhost' ? 'active' : ''
-                          }`}
-                        >
-                          localhost Compatibility
-                        </button>
+                        <div>
+                          <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
+                            Custom Client ID (Optional override)
+                          </label>
+                          <input
+                            type="text"
+                            className="input font-mono text-xs w-full"
+                            placeholder={masterClientId}
+                            value={clientId}
+                            onChange={(e) => setClientId(e.target.value)}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
+                            Custom Client Secret (Optional override)
+                          </label>
+                          <input
+                            type="password"
+                            className="input font-mono text-xs w-full"
+                            placeholder="Optional master secret override"
+                            value={clientSecret}
+                            onChange={(e) => setClientSecret(e.target.value)}
+                          />
+                        </div>
+
+                        {/* Manual Callback URL / Code Paste Fallback */}
+                        <div className="pt-2 border-t border-subtle/50 space-y-2">
+                          <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
+                            Redirected to localhost? Paste the URL or code:
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              className="input font-mono text-xs flex-1"
+                              placeholder="Paste ?code=... URL or code"
+                              value={callbackInput}
+                              onChange={(e) => setCallbackInput(e.target.value)}
+                            />
+                            <button
+                              type="button"
+                              onClick={handleCompleteManualCallback}
+                              disabled={isSyncing || !callbackInput.trim()}
+                              className="btn-strava-primary px-3 py-2 font-mono text-xxs font-bold whitespace-nowrap cursor-pointer"
+                            >
+                              {isSyncing ? 'Connecting...' : 'Complete'}
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-
-                    <div>
-                      <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                        Client ID
-                      </label>
-                      <input
-                        type="text"
-                        className="input font-mono text-xs w-full"
-                        placeholder="e.g. 123456"
-                        value={clientId}
-                        onChange={(e) => setClientId(e.target.value)}
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                        Client Secret
-                      </label>
-                      <input
-                        type="password"
-                        className="input font-mono text-xs w-full"
-                        placeholder="e.g. 8a7b6c5d4e..."
-                        value={clientSecret}
-                        onChange={(e) => setClientSecret(e.target.value)}
-                        required
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="btn-strava-primary w-full py-2.5 font-mono text-xs font-bold text-center mt-2 flex items-center justify-center gap-2"
-                      disabled={isSyncing}
-                    >
-                      <span>Connect &amp; Authorize on Strava →</span>
-                    </button>
-                    <p className="text-center text-xxs text-muted font-mono">
-                      Directs you to Strava to approve activity permissions, then syncs automatically.
-                    </p>
-                  </form>
-
-                  {/* Manual Callback URL / Code Paste Fallback */}
-                  <div className="p-3 rounded-lg bg-surface border border-subtle space-y-2">
-                    <label className="text-xxs uppercase tracking-wider text-muted font-mono block">
-                      Redirected to localhost or another URL? Paste Callback URL or Code here:
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        className="input font-mono text-xs flex-1"
-                        placeholder="Paste http://localhost:5173/?state=...&code=... or raw code"
-                        value={callbackInput}
-                        onChange={(e) => setCallbackInput(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleCompleteManualCallback}
-                        disabled={isSyncing || !callbackInput.trim()}
-                        className="btn-strava-primary px-3 py-2 font-mono text-xxs font-bold whitespace-nowrap"
-                      >
-                        {isSyncing ? 'Connecting...' : 'Complete Connection'}
-                      </button>
-                    </div>
+                    )}
                   </div>
                 </div>
-              ) : (
-                /* Fast Mode: Personal Access Token */
+              )}
+
+              {activeMode === 'archive' && (
+                /* Strava Archive ZIP & Activity Files Importer */
+                <div className="space-y-3.5">
+                  <div className="p-3.5 rounded-xl bg-surface border border-subtle text-xs space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-accent font-bold text-base">📦</span>
+                      <strong className="text-primary text-xs">
+                        Instant Archive &amp; Activity File Importer
+                      </strong>
+                    </div>
+                    <p className="text-secondary text-xxs leading-relaxed">
+                      Download your complete Strava history or export files from Garmin, Coros, or Apple Watch. No API rate limits and zero subscriptions required!
+                    </p>
+                    <ol className="list-decimal list-inside text-secondary text-xxs space-y-1 pt-1">
+                      <li>
+                        In Strava, go to{' '}
+                        <a
+                          href="https://www.strava.com/settings/account"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-accent underline font-bold"
+                        >
+                          strava.com/settings/account ↗
+                        </a>
+                      </li>
+                      <li>
+                        Scroll down to <strong>"Download or Delete Your Account"</strong> and click <strong>"Download Request (your archive)"</strong>.
+                      </li>
+                      <li>
+                        Strava will email you a <strong>.zip</strong> file containing all your historical runs.
+                      </li>
+                      <li>
+                        Drop that <strong>.zip</strong> (or raw <strong>.fit</strong>, <strong>.tcx</strong>, <strong>.gpx</strong> files) right below!
+                      </li>
+                    </ol>
+                  </div>
+
+                  {/* Dropzone */}
+                  <div
+                    className={`border-2 border-dashed rounded-xl p-6 text-center transition-all cursor-pointer ${
+                      isDragging
+                        ? 'border-accent bg-accent/15 scale-[1.01]'
+                        : 'border-subtle bg-surface-elevated/40 hover:bg-surface-elevated hover:border-accent/50'
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      if (e.dataTransfer.files) void handleFilesSelected(e.dataTransfer.files);
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      <span className="text-3xl">📁</span>
+                      <strong className="text-xs font-bold text-primary font-mono">
+                        {isDragging ? 'Drop Files Now' : 'Click or Drag & Drop Strava Archive ZIP here'}
+                      </strong>
+                      <span className="text-xxs text-muted font-mono">
+                        Supports Strava Archive .ZIP, .FIT, .TCX, .GPX
+                      </span>
+                    </div>
+                  </div>
+
+                  {archiveProgress && (
+                    <div className="p-3 rounded-lg bg-surface border border-accent text-xs font-mono text-accent animate-pulse text-center">
+                      ⏳ Processing activity files... {archiveProgress.processed} / {archiveProgress.total} parsed
+                    </div>
+                  )}
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".zip,.fit,.tcx,.gpx"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files) void handleFilesSelected(e.target.files);
+                    }}
+                  />
+                </div>
+              )}
+
+              {activeMode === 'token' && (
+                /* Manual Personal Access Token Form */
                 <form onSubmit={handleConnectWithToken} className="space-y-3">
                   <div className="p-3 rounded-lg bg-surface border border-subtle text-xs space-y-2">
                     <strong className="text-primary text-xs block">Manual Token Connect:</strong>
@@ -811,9 +1062,6 @@ export const StravaConnectModal: React.FC<Props> = ({
                       Enter a Personal Access Token that has been granted the{' '}
                       <code className="text-accent font-mono">activity:read_all</code> scope.
                     </p>
-                    <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xxs leading-normal">
-                      ⚠️ Note: The default token on <em>strava.com/settings/api</em> only grants public profile read and will return 0 activities. If you have not created custom scopes, use the <strong>1-Click Strava Connect</strong> tab above instead.
-                    </div>
                   </div>
 
                   <div>
@@ -832,7 +1080,7 @@ export const StravaConnectModal: React.FC<Props> = ({
 
                   <button
                     type="submit"
-                    className="btn-strava-primary w-full py-2.5 font-mono text-xs font-bold text-center mt-2"
+                    className="btn-strava-primary w-full py-2.5 font-mono text-xs font-bold text-center mt-2 cursor-pointer"
                     disabled={isSyncing}
                   >
                     {isSyncing ? 'Connecting & Pulling Runs...' : 'Connect Strava Token →'}

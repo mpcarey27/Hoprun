@@ -56,6 +56,7 @@ import { InviteAthletesModal } from './components/InviteAthletesModal';
 import { StravaConnectModal } from './components/StravaConnectModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import {
+  DEFAULT_MASTER_STRAVA_CLIENT_ID,
   exchangeStravaCode,
   refreshStravaToken,
   fetchAllStravaActivitiesSince,
@@ -206,27 +207,25 @@ export const App: React.FC = () => {
 
         const freshSettings = loadStoredSettings();
         const effectiveClientId =
-          decodedState?.clientId || settings.stravaClientId || freshSettings.stravaClientId;
+          decodedState?.clientId ||
+          settings.stravaClientId ||
+          freshSettings.stravaClientId ||
+          DEFAULT_MASTER_STRAVA_CLIENT_ID;
         const effectiveClientSecret =
           decodedState?.clientSecret ||
           settings.stravaClientSecret ||
-          freshSettings.stravaClientSecret;
-
-        if (!effectiveClientId || !effectiveClientSecret) {
-          setStravaOAuthStatus({
-            type: 'error',
-            message:
-              'Strava returned an authorization code, but your Client ID or Client Secret was not found in browser storage. Please enter your Client ID and Client Secret below and click Connect.',
-          });
-          setIsStravaModalOpen(true);
-          return;
-        }
+          freshSettings.stravaClientSecret ||
+          '';
 
         try {
           const tokenData = await exchangeStravaCode(
             effectiveClientId,
             effectiveClientSecret,
-            stravaCode
+            stravaCode,
+            {
+              athleteEmail: currentUser?.email,
+              athleteName: currentUser?.name,
+            }
           );
           const athleteName = tokenData.athlete
             ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
@@ -237,7 +236,20 @@ export const App: React.FC = () => {
           const afterEpoch = parseDateToEpochSeconds(effectiveStartDate);
           const activities = await fetchAllStravaActivitiesSince(
             tokenData.access_token,
-            afterEpoch
+            afterEpoch,
+            {
+              clientId: effectiveClientId,
+              clientSecret: effectiveClientSecret,
+              refreshToken: tokenData.refresh_token,
+              athleteEmail: currentUser?.email,
+              onTokenRefreshed: (refreshed) => {
+                handleUpdateSettings({
+                  stravaAccessToken: refreshed.access_token,
+                  stravaRefreshToken: refreshed.refresh_token,
+                  stravaExpiresAt: refreshed.expires_at,
+                });
+              },
+            }
           );
           const defaultShoe = (settings.shoes || freshSettings.shoes || []).find(
             (s) => !s.isRetired && s.isDefault
@@ -261,7 +273,7 @@ export const App: React.FC = () => {
 
           handleUpdateSettings({
             stravaClientId: effectiveClientId,
-            stravaClientSecret: effectiveClientSecret,
+            stravaClientSecret: effectiveClientSecret || undefined,
             stravaConnected: true,
             stravaAccessToken: tokenData.access_token,
             stravaRefreshToken: tokenData.refresh_token,
@@ -384,11 +396,12 @@ export const App: React.FC = () => {
 
       const accessToken = settings.stravaAccessToken || freshSettings.stravaAccessToken || '';
       const refreshToken = settings.stravaRefreshToken || freshSettings.stravaRefreshToken;
-      const clientId = settings.stravaClientId || freshSettings.stravaClientId;
+      const clientId =
+        settings.stravaClientId || freshSettings.stravaClientId || DEFAULT_MASTER_STRAVA_CLIENT_ID;
       const clientSecret = settings.stravaClientSecret || freshSettings.stravaClientSecret;
       const expiresAt = settings.stravaExpiresAt || freshSettings.stravaExpiresAt;
 
-      if (!accessToken && !(refreshToken && clientId && clientSecret)) return;
+      if (!accessToken && !refreshToken) return;
 
       isAutoSyncingRef.current = true;
       setIsStravaAutoSyncing(true);
@@ -400,17 +413,13 @@ export const App: React.FC = () => {
         const nowEpochSec = Math.floor(Date.now() / 1000);
         const isExpiredOrExpiringSoon = Boolean(expiresAt && nowEpochSec >= expiresAt - 300);
 
-        if (
-          (!activeToken || isExpiredOrExpiringSoon) &&
-          activeRefreshToken &&
-          clientId &&
-          clientSecret
-        ) {
+        if ((!activeToken || isExpiredOrExpiringSoon) && activeRefreshToken) {
           try {
             const refreshed = await refreshStravaToken(
               clientId,
               clientSecret,
-              activeRefreshToken
+              activeRefreshToken,
+              currentUser.email
             );
             activeToken = refreshed.access_token;
             activeRefreshToken = refreshed.refresh_token;
@@ -436,6 +445,7 @@ export const App: React.FC = () => {
             clientId,
             clientSecret,
             refreshToken: activeRefreshToken,
+            athleteEmail: currentUser.email,
             onTokenRefreshed: (tokenData) => {
               handleUpdateSettings({
                 stravaConnected: true,
