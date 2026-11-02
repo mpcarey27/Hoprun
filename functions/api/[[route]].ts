@@ -184,7 +184,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     // Restricted to Strava's OAuth token + v3 API paths so this is not an open proxy.
     if (path.startsWith('strava/')) {
       const upstreamPath = url.pathname.replace(/^\/api\/strava/, '');
-      if (!/^\/(oauth\/token|api\/v3\/)/.test(upstreamPath)) {
+      let cleanPath = upstreamPath;
+      if (cleanPath.startsWith('/activities/') || cleanPath.startsWith('/athlete/')) {
+        cleanPath = '/api/v3' + cleanPath;
+      }
+      if (!/^\/(oauth\/token|api\/v3\/)/.test(cleanPath)) {
         return new Response(JSON.stringify({ error: 'Strava path not allowed' }), {
           status: 403,
           headers: corsHeaders,
@@ -197,7 +201,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       if (ctype) fwdHeaders.set('Content-Type', ctype);
       fwdHeaders.set('Accept', 'application/json');
 
-      const upstream = await fetch(`https://www.strava.com${upstreamPath}${url.search}`, {
+      const upstream = await fetch(`https://www.strava.com${cleanPath}${url.search}`, {
         method,
         headers: fwdHeaders,
         body: method === 'GET' || method === 'HEAD' ? undefined : await request.arrayBuffer(),
@@ -268,6 +272,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           comments TEXT,
           completed INTEGER DEFAULT 1,
           title TEXT,
+          duration REAL,
+          pace REAL,
+          heart_rate REAL,
           source TEXT,
           external_activity_id TEXT,
           data_json TEXT,
@@ -280,6 +287,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         'athlete_id TEXT',
         'athlete_name TEXT',
         'title TEXT',
+        'duration REAL',
+        'pace REAL',
+        'heart_rate REAL',
         'source TEXT',
         'external_activity_id TEXT',
         'data_json TEXT',
@@ -365,6 +375,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                   distanceUnit: parsed.distanceUnit || row.distance_unit || 'mi',
                   runType: parsed.runType || row.run_type || 'easy',
                   completed: parsed.completed !== undefined ? Boolean(parsed.completed) : Boolean(row.completed),
+                  durationSeconds: parsed.durationSeconds ?? (row.duration || undefined),
+                  durationFormatted: parsed.durationFormatted,
+                  paceSeconds: parsed.paceSeconds ?? (row.pace || undefined),
+                  paceFormatted: parsed.paceFormatted,
+                  athleteComment: parsed.athleteComment,
+                  comments: parsed.comments ?? row.comments ?? '',
+                  averageHeartRate: parsed.averageHeartRate ?? (row.heart_rate || undefined),
                   updatedAt: parsed.updatedAt || row.updated_at,
                 };
               }
@@ -387,6 +404,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             comments: row.comments || '',
             completed: Boolean(row.completed),
             title: row.title || undefined,
+            durationSeconds: row.duration || undefined,
+            paceSeconds: row.pace || undefined,
+            averageHeartRate: row.heart_rate || undefined,
             source: row.source || undefined,
             externalActivityId: row.external_activity_id || undefined,
             updatedAt: row.updated_at || undefined,
@@ -433,8 +453,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             `INSERT OR REPLACE INTO workouts (
               id, user_id, athlete_id, athlete_name, workout_date, run_order, distance,
               distance_unit, run_type, multiplier, load, comments, completed, title,
-              source, external_activity_id, data_json, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              duration, pace, heart_rate, source, external_activity_id, data_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           );
 
           for (const w of rawWorkouts) {
@@ -491,9 +511,23 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             const comments = w.comments || '';
             const completed = w.completed ? 1 : 0;
             const title = w.title || '';
+            const duration = typeof w.durationSeconds === 'number' ? w.durationSeconds : (typeof w.duration === 'number' ? w.duration : null);
+            const pace = typeof w.paceSeconds === 'number' ? w.paceSeconds : (typeof w.pace === 'number' ? w.pace : null);
+            const heartRate = typeof w.averageHeartRate === 'number' ? w.averageHeartRate : (typeof w.heart_rate === 'number' ? w.heart_rate : null);
             const source = w.source || 'manual';
             const externalActivityId = w.externalActivityId || '';
-            const dataJson = JSON.stringify({ ...w, athleteId, athleteName, userId });
+            const dataJson = JSON.stringify({
+              ...w,
+              athleteId,
+              athleteName,
+              userId,
+              durationSeconds: w.durationSeconds ?? (duration || undefined),
+              durationFormatted: w.durationFormatted,
+              paceSeconds: w.paceSeconds ?? (pace || undefined),
+              paceFormatted: w.paceFormatted,
+              athleteComment: w.athleteComment,
+              comments: w.comments,
+            });
             const updatedAt = w.updatedAt || new Date().toISOString();
 
             await stmt.bind(
@@ -511,6 +545,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
               comments,
               completed,
               title,
+              duration,
+              pace,
+              heartRate,
               source,
               externalActivityId,
               dataJson,

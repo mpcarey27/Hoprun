@@ -360,13 +360,30 @@ export const TrainingLogTab: React.FC<Props> = ({
                                       </span>
                                     </div>
 
+                                    {/* Telemetry Line: Time & Avg Pace */}
+                                    {(r.durationFormatted || r.paceFormatted) && (
+                                      <div className="day-workout-telemetry text-xxs font-mono text-secondary flex items-center gap-1.5 my-0.5 whitespace-nowrap">
+                                        {r.durationFormatted && <span>⏱️ {r.durationFormatted}</span>}
+                                        {r.durationFormatted && r.paceFormatted && <span>·</span>}
+                                        {r.paceFormatted && <span>⚡ {r.paceFormatted}</span>}
+                                      </div>
+                                    )}
+
                                     <span className="day-workout-load-tag font-mono whitespace-nowrap">
                                       Load: {r.load.toFixed(1)}
                                     </span>
 
+                                    {/* Athlete Strava post comments / description */}
+                                    {r.athleteComment && (
+                                      <div className="day-workout-athlete-comment mt-1 p-1 bg-amber-500/15 border-l-2 border-amber-400 rounded-r text-xxs text-amber-200/90 leading-tight">
+                                        <span className="font-semibold block text-[10px] text-amber-300">Athlete Post:</span>
+                                        <span className="line-clamp-2">{r.athleteComment}</span>
+                                      </div>
+                                    )}
+
                                     {/* Wrapped Notes Preview */}
-                                    {r.comments && (
-                                      <p className="day-workout-notes-preview">
+                                    {r.comments && (!r.athleteComment || (r.comments !== r.athleteComment && !r.comments.startsWith(r.athleteComment))) && (
+                                      <p className="day-workout-notes-preview mt-1">
                                         {r.comments}
                                       </p>
                                     )}
@@ -537,10 +554,23 @@ export const TrainingLogTab: React.FC<Props> = ({
                             <span className="font-mono text-xs font-semibold text-primary whitespace-nowrap">
                               {r.distance} {r.distanceUnit.toUpperCase()}
                             </span>
+                            {(r.durationFormatted || r.paceFormatted) && (
+                              <div className="font-mono text-xxs text-secondary flex items-center gap-1.5 my-0.5 whitespace-nowrap">
+                                {r.durationFormatted && <span>⏱️ {r.durationFormatted}</span>}
+                                {r.durationFormatted && r.paceFormatted && <span>·</span>}
+                                {r.paceFormatted && <span>⚡ {r.paceFormatted}</span>}
+                              </div>
+                            )}
                             <span className="font-mono text-xxs text-muted block">
                               {r.runType.replace('_', ' ')} (load: {r.load.toFixed(1)})
                             </span>
-                            {r.comments && (
+                            {r.athleteComment && (
+                              <div className="mt-1 p-1 bg-amber-500/15 border-l-2 border-amber-400 rounded-r text-xxs text-amber-200/90 leading-tight">
+                                <span className="font-semibold block text-[9px] text-amber-300">Athlete Post:</span>
+                                <span className="line-clamp-2">{r.athleteComment}</span>
+                              </div>
+                            )}
+                            {r.comments && (!r.athleteComment || (r.comments !== r.athleteComment && !r.comments.startsWith(r.athleteComment))) && (
                               <p className="day-workout-notes-preview mt-1">
                                 💬 {r.comments}
                               </p>

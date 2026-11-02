@@ -9,6 +9,9 @@ import {
   parseDateToEpochSeconds,
   fetchAllStravaActivitiesSince,
   fetchStravaActivitiesPage,
+  fetchStravaActivityDetail,
+  enrichActivitiesWithDetails,
+  normalizeStravaActivity,
   encodeStravaOAuthState,
   decodeStravaOAuthState,
   reconcileStravaWorkouts,
@@ -196,9 +199,10 @@ describe('Free Strava Sync & Archive Import (TDD)', () => {
       );
 
       // Verify that pagination continued past page 1 even though page 1 had 185 runs (< 200)
-      expect(fetchUrls.length).toBe(2);
-      expect(fetchUrls[0]).toContain('page=1&per_page=200');
-      expect(fetchUrls[1]).toContain('page=2&per_page=200');
+      const pageCalls = fetchUrls.filter((u) => u.includes('/athlete/activities'));
+      expect(pageCalls.length).toBe(2);
+      expect(pageCalls[0]).toContain('page=1&per_page=200');
+      expect(pageCalls[1]).toContain('page=2&per_page=200');
 
       // Verify progress callback was invoked for both pages
       expect(progressUpdates.length).toBe(2);
@@ -556,5 +560,132 @@ describe('Free Strava Sync & Archive Import (TDD)', () => {
     // Any workouts from August, September, October must NOT be present
     const pastWorkouts = result.workouts.filter((w) => w.workoutDate < cutoffDate);
     expect(pastWorkouts.length).toBe(0);
+  });
+
+  it('normalizeStravaActivity defaults runType to easy (multiplier 3.0), calculates pace and duration, and populates comments and athleteComment', () => {
+    const rawActivity = {
+      id: 8881234,
+      name: 'Evening Shakeout with Team',
+      distance: 8046.72, // 5.0 miles
+      moving_time: 2400, // 40 minutes -> 8:00/mi
+      elapsed_time: 2500,
+      total_elevation_gain: 45,
+      type: 'Run',
+      start_date: '2026-10-31T22:00:00Z',
+      start_date_local: '2026-10-31T17:00:00',
+      has_heartrate: true,
+      average_heartrate: 142,
+      max_heartrate: 165,
+      device_name: 'Garmin Forerunner 265',
+      description: 'Felt super smooth, breezy conditions at the track',
+    };
+
+    const run = normalizeStravaActivity(rawActivity, 'mi', 'user_elise', 'Elise Whisler');
+
+    expect(run.runType).toBe('easy');
+    expect(run.multiplier).toBe(3.0);
+    expect(run.distance).toBe(5.0);
+    expect(run.load).toBe(15.0);
+    expect(run.isTypeConfirmed).toBe(false);
+    expect(run.durationSeconds).toBe(2400);
+    expect(run.durationFormatted).toBe('40m');
+    expect(run.paceSeconds).toBe(480);
+    expect(run.paceFormatted).toBe('8:00 /mi');
+    expect(run.athleteComment).toBe('Felt super smooth, breezy conditions at the track');
+    expect(run.comments).toContain('Felt super smooth, breezy conditions at the track');
+    expect(run.source).toBe('strava');
+    expect(run.athleteId).toBe('user_elise');
+    expect(run.athleteName).toBe('Elise Whisler');
+    expect(run.averageHeartRate).toBe(142);
+    expect(run.maxHeartRate).toBe(165);
+  });
+
+  it('fetchStravaActivityDetail and enrichActivitiesWithDetails fetch activity description from Strava v3 endpoint', async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const urlStr = String(input);
+      requestedUrls.push(urlStr);
+      if (urlStr.includes('/api/v3/activities/5551')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: 5551, description: 'Easy recovery run with Elise' }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ id: 5552, description: '' }),
+      } as Response;
+    });
+
+    try {
+      const detail = await fetchStravaActivityDetail('valid_token', 5551);
+      expect(detail?.description).toBe('Easy recovery run with Elise');
+
+      const activities: any[] = [
+        { id: 5551, name: 'Run 1' },
+        { id: 5552, name: 'Run 2' },
+      ];
+      await enrichActivitiesWithDetails(activities, 'valid_token');
+      expect(activities[0].description).toBe('Easy recovery run with Elise');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('sanitizeLegacyWorkouts self-heals unconfirmed non-easy Strava workouts back to easy with multiplier 3.0 and formats pace/duration', () => {
+    const legacyWorkouts: any[] = [
+      {
+        id: 'strava_legacy_1',
+        workoutDate: '2026-10-25',
+        distance: 6.0,
+        distanceUnit: 'mi',
+        runType: 'mod_workout', // automatically assigned legacy non-easy type
+        multiplier: 7.0,
+        load: 42.0,
+        source: 'strava',
+        durationSeconds: 2700,
+        // durationFormatted is missing
+        paceSeconds: 450,
+        // paceFormatted is missing
+        isTypeConfirmed: false,
+        comments: 'Synced via Strava',
+      },
+      {
+        id: 'strava_legacy_confirmed',
+        workoutDate: '2026-10-26',
+        distance: 5.0,
+        distanceUnit: 'mi',
+        runType: 'fartlek',
+        multiplier: 5.0,
+        load: 25.0,
+        source: 'strava',
+        durationSeconds: 2100,
+        durationFormatted: '35:00',
+        paceSeconds: 420,
+        paceFormatted: '7:00 /mi',
+        isTypeConfirmed: true, // user manually confirmed fartlek
+        comments: 'Track workout confirmed by coach',
+      },
+    ];
+
+    const sanitized = sanitizeLegacyWorkouts(legacyWorkouts);
+
+    // Unconfirmed Strava workout is reset to 'easy' (3.0x -> 18.0 load)
+    const run1 = sanitized.find((w) => w.id === 'strava_legacy_1');
+    expect(run1?.runType).toBe('easy');
+    expect(run1?.multiplier).toBe(3.0);
+    expect(run1?.load).toBe(18.0);
+    expect(run1?.durationFormatted).toBe('45m');
+    expect(run1?.paceFormatted).toBe('7:30 /mi');
+
+    // Confirmed Strava workout preserves user adjustment
+    const runConfirmed = sanitized.find((w) => w.id === 'strava_legacy_confirmed');
+    expect(runConfirmed?.runType).toBe('fartlek');
+    expect(runConfirmed?.multiplier).toBe(5.0);
+    expect(runConfirmed?.load).toBe(25.0);
   });
 });

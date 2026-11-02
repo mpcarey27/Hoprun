@@ -275,31 +275,64 @@ export const DayDetailsModal: React.FC<Props> = ({
                       </div>
                     </div>
 
-                    {/* Athlete / Coach Notes with Wrapped Text */}
-                    <div
-                      className="day-run-notes-box p-2.5 rounded"
-                      style={{
-                        backgroundColor: 'var(--bg-surface-subtle)',
-                        border: '1px solid var(--border-subtle)',
-                      }}
-                    >
-                      <span className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
-                        Notes
-                      </span>
-                      <p
-                        className="text-xs font-sans"
+                    {/* Athlete Strava Post Description / Comment */}
+                    {run.athleteComment && (
+                      <div
+                        className="day-run-athlete-post-box p-3 rounded mb-2.5"
                         style={{
-                          color: 'var(--text-secondary)',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                          overflowWrap: 'anywhere',
-                          lineHeight: '1.45',
-                          margin: 0,
+                          backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                          border: '1px solid rgba(245, 158, 11, 0.35)',
+                          borderLeft: '4px solid #f59e0b',
                         }}
                       >
-                        {run.comments ? run.comments : <em className="text-muted">No notes</em>}
-                      </p>
-                    </div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-xs">💬</span>
+                          <span className="text-xxs uppercase tracking-wider text-amber-400 font-mono font-bold">
+                            Athlete Strava Post Description
+                          </span>
+                        </div>
+                        <p
+                          className="text-xs font-sans text-amber-100"
+                          style={{
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere',
+                            lineHeight: '1.45',
+                            margin: 0,
+                          }}
+                        >
+                          {run.athleteComment}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Athlete / Coach Notes with Wrapped Text */}
+                    {(!run.athleteComment || (run.comments && run.comments !== run.athleteComment && !run.comments.startsWith(run.athleteComment))) && (
+                      <div
+                        className="day-run-notes-box p-2.5 rounded"
+                        style={{
+                          backgroundColor: 'var(--bg-surface-subtle)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <span className="text-xxs uppercase tracking-wider text-muted font-mono block mb-1">
+                          Notes
+                        </span>
+                        <p
+                          className="text-xs font-sans"
+                          style={{
+                            color: 'var(--text-secondary)',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'anywhere',
+                            lineHeight: '1.45',
+                            margin: 0,
+                          }}
+                        >
+                          {run.comments ? run.comments : <em className="text-muted">No notes</em>}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })}

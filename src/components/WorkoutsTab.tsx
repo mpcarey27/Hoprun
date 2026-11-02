@@ -522,8 +522,32 @@ export const WorkoutsTab: React.FC<Props> = ({
                       </div>
                     </div>
 
+                    {/* Athlete Strava Post Description Snippet */}
+                    {w.athleteComment && (
+                      <div
+                        className="activity-athlete-comment-box mb-2 p-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-start gap-2.5 cursor-pointer"
+                        onClick={() => onEditRun && onEditRun(w)}
+                        title="Click to edit or adjust this workout"
+                      >
+                        <span className="text-amber-400 text-sm mt-0.5">💬</span>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between gap-2 mb-0.5">
+                            <span className="text-xxs font-mono uppercase text-amber-400 font-bold">
+                              Athlete Strava Post Description
+                            </span>
+                            <span className="text-xxs font-mono text-amber-300/80">
+                              Edit Run ✎
+                            </span>
+                          </div>
+                          <p className="text-xs text-amber-100/90 whitespace-pre-wrap leading-relaxed">
+                            {w.athleteComment}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Runner Comments / Notes Section (Click to Read or Edit) */}
-                    {w.comments ? (
+                    {w.comments && (!w.athleteComment || (w.comments !== w.athleteComment && !w.comments.startsWith(w.athleteComment))) ? (
                       <div
                         className="activity-notes-box cursor-pointer"
                         onClick={() => onEditRun && onEditRun(w)}
@@ -544,7 +568,7 @@ export const WorkoutsTab: React.FC<Props> = ({
                           <p className="activity-notes-text">{w.comments}</p>
                         </div>
                       </div>
-                    ) : (
+                    ) : !w.athleteComment ? (
                       <div className="mt-2">
                         <button
                           type="button"
@@ -554,7 +578,7 @@ export const WorkoutsTab: React.FC<Props> = ({
                           💬 + Add a comment to this run...
                         </button>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </article>

@@ -198,7 +198,7 @@ export function normalizeStravaActivity(
       ? calculatePaceSeconds(durationSec, targetDistance) || 0
       : 0;
 
-  // Default all synced Strava runs to 'easy' unless overridden by a same-day planned workout or manual user edit
+  // Default all synced Strava runs to 'easy' (multiplier 3.0), non-confirmed
   const avgHr = act.has_heartrate && act.average_heartrate ? Math.round(act.average_heartrate) : undefined;
   const maxHr = act.has_heartrate && act.max_heartrate ? Math.round(act.max_heartrate) : undefined;
 
@@ -213,6 +213,13 @@ export function normalizeStravaActivity(
   // Device model from Strava (often "Garmin Forerunner 265", "Garmin Fenix", etc.)
   const deviceModel = act.device_name || 'Garmin Connect';
 
+  // Description from Strava post if available
+  const cleanDescription = (act.description || '').trim();
+  const comments = cleanDescription
+    ? `${cleanDescription} (Synced via Strava)`
+    : `Synced via Strava (${deviceModel})`;
+  const athleteComment = cleanDescription || undefined;
+
   return {
     id: `strava_${act.id}`,
     workoutDate,
@@ -222,7 +229,7 @@ export function normalizeStravaActivity(
     runType,
     multiplier,
     load,
-    comments: act.description ? `${act.description} (Synced via Strava)` : `Synced via Strava (${deviceModel})`,
+    comments,
     completed: true,
     title: act.name || `Garmin Run`,
     startTime,
@@ -241,6 +248,8 @@ export function normalizeStravaActivity(
     deviceModel,
     shoeId,
     shoeName,
+    isTypeConfirmed: false,
+    athleteComment,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -452,6 +461,60 @@ export function parseDateToEpochSeconds(dateStr: string): number {
 }
 
 /**
+ * Fetches detailed activity data from Strava's v3 API to retrieve optional description/comments.
+ * GET /api/v3/activities/{id}
+ */
+export async function fetchStravaActivityDetail(
+  accessToken: string,
+  activityId: number | string
+): Promise<{ description?: string } | null> {
+  if (!accessToken || !activityId) return null;
+  try {
+    const res = await callStravaEndpoint(`/api/v3/activities/${activityId}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken.trim()}`,
+      },
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json().catch(() => null);
+    if (data && typeof data === 'object') {
+      return {
+        description: typeof data.description === 'string' ? data.description.trim() : undefined,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Enriches a list of StravaSummaryActivity items with activity descriptions
+ * by fetching detailed activity data for the most recent activities in parallel chunks.
+ */
+export async function enrichActivitiesWithDetails(
+  activities: StravaSummaryActivity[],
+  accessToken: string,
+  maxToEnrich: number = 25
+): Promise<void> {
+  if (!activities || activities.length === 0 || !accessToken) return;
+  const toEnrich = activities.slice(0, maxToEnrich);
+  const chunkSize = 5;
+  for (let i = 0; i < toEnrich.length; i += chunkSize) {
+    const chunk = toEnrich.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (act) => {
+        if (act.description) return;
+        const detail = await fetchStravaActivityDetail(accessToken, act.id);
+        if (detail?.description) {
+          act.description = detail.description;
+        }
+      })
+    );
+  }
+}
+
+/**
  * Fetches ALL activities from Strava starting at a specific epoch timestamp forward.
  * Automatically paginates through Strava's 200 items/page API until all activities
  * from that timeline date forward have been collected.
@@ -519,6 +582,15 @@ export async function fetchAllStravaActivitiesSince(
     const timeB = new Date(b.start_date).getTime();
     return timeB - timeA;
   });
+
+  // Enrich the most recent activities (up to 25) with descriptions from detailed activity endpoint
+  if (currentToken) {
+    try {
+      await enrichActivitiesWithDetails(allActivities, currentToken, 25);
+    } catch {
+      // Non-blocking enrichment failure
+    }
+  }
 
   return allActivities;
 }
@@ -717,13 +789,14 @@ function isSameStravaActivity(a: WorkoutRun, b: WorkoutRun): boolean {
 
 /**
  * Reconciles incoming synced Strava runs against existing calendar workouts:
- * 1. Defaults all synced Strava runs to 'easy', EXCEPT when a same-day planned/prescribed
- *    calendar workout for that runner has a non-easy runType — in which case the longest
- *    synced Strava run on that date inherits the planned workout's runType.
+ * 1. Defaults all incoming Strava runs to 'easy' (multiplier 3.0), non-confirmed.
+ *    Any manual coach/athlete edits (prev.isTypeConfirmed === true) are strictly preserved.
  * 2. Deletes any non-Strava calendar/prescribed/assigned runs on the same date for the same runner
  *    in exchange for the synced Strava run(s).
- * 3. Deduplicates already-synced Strava runs while preserving any confirmed/edited runType,
- *    multiplier, load, comments, or gear.
+ * 3. Deletes any imported runs from a Google Sheet on that day and previously (workoutDate <= maxDate)
+ *    for any runner receiving Strava sync, while preserving future sheet runs and other athletes' plans.
+ * 4. Deduplicates already-synced Strava runs while preserving any confirmed/edited runType,
+ *    multiplier, load, comments, and gear.
  */
 export function reconcileStravaWorkouts(
   existingWorkouts: WorkoutRun[],
@@ -733,73 +806,20 @@ export function reconcileStravaWorkouts(
     return existingWorkouts;
   }
 
-  const preparedIncoming: WorkoutRun[] = incomingStravaWorkouts.map((r) => ({ ...r }));
-  const uniqueDates = Array.from(
-    new Set(preparedIncoming.filter((r) => r.source === 'strava').map((r) => r.workoutDate))
-  );
-
-  // Step 1: Same-day planned workout type inheritance onto the longest synced Strava run of the day
-  for (const dateStr of uniqueDates) {
-    const stravaRunsOnDay = preparedIncoming.filter(
-      (r) => r.source === 'strava' && r.workoutDate === dateStr
-    );
-    const nonStravaOnDay = existingWorkouts.filter(
-      (w) => w.source !== 'strava' && w.workoutDate === dateStr
-    );
-
-    const processedIndices = new Set<number>();
-    for (let i = 0; i < stravaRunsOnDay.length; i++) {
-      if (processedIndices.has(i)) continue;
-      const rep = stravaRunsOnDay[i];
-      const runnerStravaRuns: WorkoutRun[] = [];
-      for (let j = i; j < stravaRunsOnDay.length; j++) {
-        if (!processedIndices.has(j) && isSameRunner(rep, stravaRunsOnDay[j])) {
-          processedIndices.add(j);
-          runnerStravaRuns.push(stravaRunsOnDay[j]);
-        }
-      }
-
-      // Default all non-confirmed Strava runs on this day to 'easy'
-      for (const sr of runnerStravaRuns) {
-        if (!sr.isTypeConfirmed) {
-          const easyMult = getRunTypeMultiplier('easy');
-          sr.runType = 'easy';
-          sr.multiplier = easyMult;
-          sr.load = calculateRunLoad(sr.distance, sr.distanceUnit, easyMult);
-        }
-      }
-
-      // Check if there is a non-easy planned/prescribed workout on this date for this runner
-      const plannedNonEasyRuns = nonStravaOnDay
-        .filter(
-          (w) =>
-            isSameRunner(w, rep) &&
-            Boolean(w.runType) &&
-            w.runType !== 'easy' &&
-            w.runType !== 'day_off'
-        )
-        .sort(
-          (a, b) => getRunTypeMultiplier(b.runType) - getRunTypeMultiplier(a.runType)
-        );
-
-      if (plannedNonEasyRuns.length > 0 && runnerStravaRuns.length > 0) {
-        const sortedByDistanceDesc = [...runnerStravaRuns].sort(
-          (a, b) => b.distance - a.distance
-        );
-        const longestRun = sortedByDistanceDesc[0];
-        const inheritedType = plannedNonEasyRuns[0].runType;
-        const inheritedMultiplier = getRunTypeMultiplier(inheritedType);
-        longestRun.runType = inheritedType;
-        longestRun.multiplier = inheritedMultiplier;
-        longestRun.load = calculateRunLoad(
-          longestRun.distance,
-          longestRun.distanceUnit,
-          inheritedMultiplier
-        );
-        longestRun.isTypeConfirmed = true;
-      }
+  const preparedIncoming: WorkoutRun[] = incomingStravaWorkouts.map((r) => {
+    // Default all incoming non-confirmed Strava runs to 'easy' (multiplier 3.0)
+    if (r.source === 'strava' && !r.isTypeConfirmed) {
+      const easyMult = getRunTypeMultiplier('easy');
+      return {
+        ...r,
+        runType: 'easy',
+        multiplier: easyMult,
+        load: calculateRunLoad(r.distance, r.distanceUnit, easyMult),
+        isTypeConfirmed: false,
+      };
     }
-  }
+    return { ...r };
+  });
 
   // Step 2:
   // a) Delete any non-Strava calendar/prescribed runs on the exact same date as an incoming Strava run for this runner.
@@ -863,21 +883,33 @@ export function reconcileStravaWorkouts(
       let resolvedMultiplier = getRunTypeMultiplier('easy');
       let resolvedConfirmed: boolean | undefined = undefined;
 
-      if (incoming.isTypeConfirmed) {
-        resolvedRunType = incoming.runType;
-        resolvedMultiplier = incoming.multiplier;
-        resolvedConfirmed = true;
-      } else if (prev.isTypeConfirmed) {
+      if (prev.isTypeConfirmed) {
         resolvedRunType = prev.runType;
         resolvedMultiplier = prev.multiplier;
         resolvedConfirmed = true;
+      } else if (incoming.isTypeConfirmed) {
+        resolvedRunType = incoming.runType;
+        resolvedMultiplier = incoming.multiplier;
+        resolvedConfirmed = true;
       }
 
-      const resolvedLoad = calculateRunLoad(
-        incoming.distance,
-        incoming.distanceUnit,
-        resolvedMultiplier
-      );
+      const resolvedLoad = prev.isTypeConfirmed
+        ? prev.load
+        : calculateRunLoad(
+            incoming.distance,
+            incoming.distanceUnit,
+            resolvedMultiplier
+          );
+
+      const isPrevDefaultStrava =
+        !prev.comments ||
+        prev.comments.startsWith('Synced via Strava (') ||
+        prev.comments === 'Synced via Strava' ||
+        prev.comments.startsWith('Imported via Strava');
+
+      const resolvedComments = (prev.isTypeConfirmed || !isPrevDefaultStrava)
+        ? (prev.comments || incoming.comments)
+        : (incoming.comments || prev.comments);
 
       result[existingIdx] = {
         ...incoming,
@@ -886,14 +918,18 @@ export function reconcileStravaWorkouts(
         multiplier: resolvedMultiplier,
         load: resolvedLoad,
         isTypeConfirmed: resolvedConfirmed,
-        comments: prev.comments,
-        title: prev.title || incoming.title,
+        comments: resolvedComments,
+        title: prev.isTypeConfirmed ? (prev.title || incoming.title) : (incoming.title || prev.title),
         shoeId: prev.shoeId || incoming.shoeId,
         shoeName: prev.shoeName || incoming.shoeName,
         rpe: prev.rpe ?? incoming.rpe,
         feeling: prev.feeling ?? incoming.feeling,
-        athleteComment: prev.athleteComment ?? incoming.athleteComment,
+        athleteComment: incoming.athleteComment ?? prev.athleteComment,
         editReason: prev.editReason ?? incoming.editReason,
+        durationSeconds: incoming.durationSeconds ?? prev.durationSeconds,
+        durationFormatted: incoming.durationFormatted || prev.durationFormatted,
+        paceSeconds: incoming.paceSeconds ?? prev.paceSeconds,
+        paceFormatted: incoming.paceFormatted || prev.paceFormatted,
         athleteId:
           incoming.athleteId && incoming.athleteId !== 'user_coach_1'
             ? incoming.athleteId
@@ -1100,6 +1136,8 @@ export function parseStravaArchiveCsv(
       externalActivityId: String(rawId),
       shoeId,
       shoeName,
+      isTypeConfirmed: false,
+      athleteComment: rawDesc || undefined,
       updatedAt: new Date().toISOString(),
     });
   }

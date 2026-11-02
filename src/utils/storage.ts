@@ -7,6 +7,13 @@ import type {
   RegisteredUser,
 } from '../types/acr';
 import { reconcileStravaWorkouts } from './stravaSync';
+import {
+  getRunTypeMultiplier,
+  calculateRunLoad,
+  formatDurationStrava,
+  calculatePaceSeconds,
+  formatPace,
+} from './calculations';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'acr_workouts_v2',
@@ -460,6 +467,65 @@ export function sanitizeLegacyWorkouts(
   const currentRoster = rosterOverride || loadStoredRoster();
 
   const sanitized = workouts.map((w) => {
+    // 0. Self-heal existing Strava workouts:
+    // - If a Strava workout was automatically set to threshold_work, fartlek, or mod_workout
+    //   without user confirmation (!w.isTypeConfirmed), reset to 'easy' with multiplier 3.0 and load = distance * 3.0.
+    // - If durationSeconds exists but durationFormatted is missing, format it.
+    // - If paceSeconds or (durationSeconds && distance) exists but paceFormatted is missing, calculate and format it.
+    if (w.source === 'strava') {
+      let runType = w.runType;
+      let multiplier = w.multiplier;
+      let load = w.load;
+
+      if (!w.isTypeConfirmed && w.runType !== 'easy') {
+        runType = 'easy';
+        multiplier = getRunTypeMultiplier('easy');
+        load = calculateRunLoad(w.distance, w.distanceUnit || 'mi', multiplier);
+        modified = true;
+      }
+
+      let durationFormatted = w.durationFormatted;
+      if (w.durationSeconds && !durationFormatted) {
+        durationFormatted = formatDurationStrava(w.durationSeconds);
+        modified = true;
+      }
+
+      let paceSeconds = w.paceSeconds;
+      let paceFormatted = w.paceFormatted;
+      if (!paceFormatted) {
+        if (paceSeconds && paceSeconds > 0) {
+          paceFormatted = formatPace(paceSeconds, w.distanceUnit || 'mi');
+          modified = true;
+        } else if (w.durationSeconds && w.durationSeconds > 0 && w.distance > 0) {
+          const calcPace = calculatePaceSeconds(w.durationSeconds, w.distance);
+          if (calcPace) {
+            paceSeconds = calcPace;
+            paceFormatted = formatPace(calcPace, w.distanceUnit || 'mi');
+            modified = true;
+          }
+        }
+      }
+
+      if (
+        runType !== w.runType ||
+        multiplier !== w.multiplier ||
+        load !== w.load ||
+        durationFormatted !== w.durationFormatted ||
+        paceSeconds !== w.paceSeconds ||
+        paceFormatted !== w.paceFormatted
+      ) {
+        w = {
+          ...w,
+          runType,
+          multiplier,
+          load,
+          durationFormatted,
+          paceSeconds,
+          paceFormatted,
+        };
+      }
+    }
+
     const comms = w.comments || '';
     const lowerName = (w.athleteName || '').trim().toLowerCase();
     const id = w.athleteId || '';

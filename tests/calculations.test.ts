@@ -1899,10 +1899,11 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
 
         expect(allRuns.length).toBe(215);
         expect(progressCalled).toBe(true);
-        expect(requestedUrls.length).toBe(2);
-        expect(requestedUrls[0]).toContain(`after=${epochYmd}`);
-        expect(requestedUrls[0]).toContain('page=1&per_page=200');
-        expect(requestedUrls[1]).toContain('page=2&per_page=200');
+        const pageUrls = requestedUrls.filter((u) => u.includes('/athlete/activities'));
+        expect(pageUrls.length).toBe(2);
+        expect(pageUrls[0]).toContain(`after=${epochYmd}`);
+        expect(pageUrls[0]).toContain('page=1&per_page=200');
+        expect(pageUrls[1]).toContain('page=2&per_page=200');
       } finally {
         globalThis.fetch = originalFetch;
       }
@@ -2111,7 +2112,7 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       );
     });
 
-    it('test_reconcileStravaWorkouts_longestRunInheritsSameDayPlannedNonEasyType() - longest Strava run on a planned non-easy day inherits the planned runType while all other Strava runs stay easy', () => {
+    it('test_reconcileStravaWorkouts_allSyncedRunsDefaultToEasyWhileManualEditsPreserved() - all synced Strava runs default to easy (multiplier 3.0) while manual coach/athlete edits are preserved', () => {
       const existingCalendar: WorkoutRun[] = [
         {
           id: 'plan_oct31_moderate',
@@ -2209,27 +2210,33 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(reconciled.find((w) => w.id === 'plan_oct30_easy')).toBeUndefined();
       expect(reconciled.length).toBe(3);
 
-      // Longest run on Oct 31 (6.5 mi) inherited 'mod_workout' (7.0x -> 45.5 load)
+      // All incoming Strava runs default to 'easy' (multiplier 3.0, load = distance * 3.0)
       const oct31Long = reconciled.find((w) => w.id === 'strava_oct31_long');
-      expect(oct31Long?.runType).toBe('mod_workout');
-      expect(oct31Long?.multiplier).toBe(7.0);
-      expect(oct31Long?.load).toBe(45.5);
-      expect(oct31Long?.isTypeConfirmed).toBe(true);
+      expect(oct31Long?.runType).toBe('easy');
+      expect(oct31Long?.multiplier).toBe(3.0);
+      expect(oct31Long?.load).toBe(19.5);
 
-      // Shorter run on Oct 31 (2.0 mi) remained 'easy' (3.0x -> 6.0 load)
       const oct31Short = reconciled.find((w) => w.id === 'strava_oct31_short');
       expect(oct31Short?.runType).toBe('easy');
       expect(oct31Short?.multiplier).toBe(3.0);
       expect(oct31Short?.load).toBe(6.0);
 
-      // Oct 30 run (where plan was easy) remained 'easy'
       const oct30Run = reconciled.find((w) => w.id === 'strava_oct30_only');
       expect(oct30Run?.runType).toBe('easy');
       expect(oct30Run?.multiplier).toBe(3.0);
+      expect(oct30Run?.load).toBe(15.6);
 
-      // Subsequent auto-resync preserves the inherited 'mod_workout' on oct31Long
+      // Coach/user manually confirms an adjustment to 'mod_workout' on oct31Long
+      oct31Long!.runType = 'mod_workout';
+      oct31Long!.multiplier = 7.0;
+      oct31Long!.load = 45.5;
+      oct31Long!.isTypeConfirmed = true;
+
+      // Subsequent auto-resync preserves the manually confirmed 'mod_workout' edit
       const resynced = reconcileStravaWorkouts(reconciled, incomingStrava);
       expect(resynced.find((w) => w.id === 'strava_oct31_long')?.runType).toBe('mod_workout');
+      expect(resynced.find((w) => w.id === 'strava_oct31_long')?.multiplier).toBe(7.0);
+      expect(resynced.find((w) => w.id === 'strava_oct31_long')?.load).toBe(45.5);
       expect(resynced.find((w) => w.id === 'strava_oct31_short')?.runType).toBe('easy');
     });
   });
