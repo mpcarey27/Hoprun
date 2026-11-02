@@ -3,9 +3,37 @@
 
 import {
   generateWorkoutEmailHtml,
+  generateWeeklyPlanEmailHtml,
   sendEmailMessage,
+  formatWeekDateRange,
   type WorkoutEmailData,
+  type WeeklyPlanDayData,
+  type WeeklyPlanEmailData,
 } from '../emailService';
+
+export function calculateMondayDate(refDate?: Date | string): string {
+  const d = refDate ? new Date(refDate) : new Date();
+  const day = d.getDay(); // 0 is Sunday, 1 is Monday, ..., 6 is Saturday
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(d.getFullYear(), d.getMonth(), diff);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, '0');
+  const dt = String(monday.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dt}`;
+}
+
+export function getWeekDatesFromMonday(mondayStr: string): string[] {
+  const [y, m, d] = mondayStr.split('-').map(Number);
+  const dates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const nextDate = new Date(y, m - 1, d + i);
+    const yr = nextDate.getFullYear();
+    const mo = String(nextDate.getMonth() + 1).padStart(2, '0');
+    const da = String(nextDate.getDate()).padStart(2, '0');
+    dates.push(`${yr}-${mo}-${da}`);
+  }
+  return dates;
+}
 
 interface Env {
   DB?: any; // Cloudflare D1 Database binding
@@ -538,11 +566,20 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             email TEXT NOT NULL,
             name TEXT,
             enabled INTEGER DEFAULT 1,
+            weekly_enabled INTEGER DEFAULT 1,
             preferred_hour INTEGER DEFAULT 6,
             timezone TEXT DEFAULT 'America/New_York',
             updated_at TEXT
           )`
         ).run();
+
+        try {
+          await env.DB.prepare(
+            'ALTER TABLE athlete_email_preferences ADD COLUMN weekly_enabled INTEGER DEFAULT 1'
+          ).run();
+        } catch {
+          // Column already exists or error ignored
+        }
 
         await env.DB.prepare(
           `CREATE TABLE IF NOT EXISTS assigned_plan_workouts (
@@ -570,6 +607,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
               preferences: {
                 athleteId,
                 enabled: true,
+                weeklyEnabled: true,
                 preferredHour: 6,
                 timezone: 'America/New_York',
               },
@@ -592,12 +630,14 @@ export const onRequest: PagesFunction<Env> = async (context) => {
                   email: row.email,
                   name: row.name,
                   enabled: Boolean(row.enabled),
+                  weeklyEnabled: row.weekly_enabled !== undefined ? Boolean(row.weekly_enabled) : true,
                   preferredHour: Number(row.preferred_hour ?? 6),
                   timezone: row.timezone || 'America/New_York',
                 }
               : {
                   athleteId,
                   enabled: true,
+                  weeklyEnabled: true,
                   preferredHour: 6,
                   timezone: 'America/New_York',
                 },
@@ -613,6 +653,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         const email = String(body.email || '').trim().toLowerCase();
         const name = String(body.name || '').trim();
         const enabled = body.enabled !== false ? 1 : 0;
+        const weeklyEnabled = body.weeklyEnabled !== false ? 1 : 0;
         const preferredHour = Number.isInteger(body.preferredHour) ? body.preferredHour : 6;
         const timezone = String(body.timezone || 'America/New_York');
 
@@ -625,21 +666,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
         if (env.DB) {
           await env.DB.prepare(
-            `INSERT INTO athlete_email_preferences (athlete_id, email, name, enabled, preferred_hour, timezone, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO athlete_email_preferences (athlete_id, email, name, enabled, weekly_enabled, preferred_hour, timezone, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(athlete_id) DO UPDATE SET
                email = excluded.email,
                name = excluded.name,
                enabled = excluded.enabled,
+               weekly_enabled = excluded.weekly_enabled,
                preferred_hour = excluded.preferred_hour,
                timezone = excluded.timezone,
                updated_at = excluded.updated_at`
           )
-            .bind(athleteId, email, name, enabled, preferredHour, timezone, new Date().toISOString())
+            .bind(athleteId, email, name, enabled, weeklyEnabled, preferredHour, timezone, new Date().toISOString())
             .run();
         }
 
-        return new Response(JSON.stringify({ success: true, enabled: Boolean(enabled), preferredHour }), {
+        return new Response(JSON.stringify({ success: true, enabled: Boolean(enabled), weeklyEnabled: Boolean(weeklyEnabled), preferredHour }), {
           headers: corsHeaders,
         });
       }
@@ -733,6 +775,97 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           env,
           body.athleteId || undefined,
           body.date || undefined
+        );
+        return new Response(JSON.stringify(dispatchRes), { headers: corsHeaders });
+      }
+
+      // 5. POST /api/email-reminders/test-weekly or /api/email-reminders/dispatch-weekly
+      if ((subpath === 'test-weekly' || subpath === 'dispatch-weekly') && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+
+        // A. Immediate Test Weekly Email requested by coach or athlete from Settings
+        if (body.testEmail) {
+          const testEmail = String(body.testEmail).trim().toLowerCase();
+          const athName = body.athleteName || 'Michael Carey';
+          const monday = body.mondayDate || calculateMondayDate();
+          const weekDates = getWeekDatesFromMonday(monday);
+          const formattedRange = formatWeekDateRange(weekDates[0], weekDates[6]);
+
+          // Use provided days, or load from DB if athleteId provided, or generate a realistic sample week
+          let days: WeeklyPlanDayData[] = Array.isArray(body.days) ? body.days : [];
+
+          if (days.length === 0 && env.DB && body.athleteId) {
+            const { results } = await env.DB.prepare(
+              'SELECT * FROM assigned_plan_workouts WHERE athlete_id = ? AND workout_date >= ? AND workout_date <= ? ORDER BY workout_date ASC, distance DESC'
+            ).bind(body.athleteId, weekDates[0], weekDates[6]).all();
+
+            if (results && results.length > 0) {
+              const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+              days = weekDates.map((dateStr, idx) => {
+                const dayWorkout = results.find((w: any) => w.workout_date === dateStr);
+                if (dayWorkout && Number(dayWorkout.distance) > 0) {
+                  return {
+                    date: dateStr,
+                    dayName: DAY_NAMES[idx],
+                    distance: Number(dayWorkout.distance) || 0,
+                    unit: dayWorkout.unit || 'mi',
+                    runType: dayWorkout.run_type || 'easy',
+                    targetPace: dayWorkout.target_pace || undefined,
+                    durationFormatted: dayWorkout.duration_text || undefined,
+                    comments: dayWorkout.comments || undefined,
+                  };
+                }
+                return {
+                  date: dateStr,
+                  dayName: DAY_NAMES[idx],
+                  distance: 0,
+                  unit: 'mi',
+                  runType: 'rest',
+                  comments: dayWorkout?.comments || undefined,
+                };
+              });
+            }
+          }
+
+          if (days.length === 0) {
+            days = [
+              { date: weekDates[0], dayName: 'Monday', distance: 6, unit: 'mi', runType: 'easy', targetPace: '7:45 - 8:00 /mi', durationFormatted: '47:00', comments: 'Smooth aerobic foundation to kick off the training week.' },
+              { date: weekDates[1], dayName: 'Tuesday', distance: 8, unit: 'mi', runType: 'tempo', targetPace: '6:40 /mi', durationFormatted: '58:00', comments: 'Warm-up 2 mi, then 4 miles continuous tempo at half-marathon pace, 2 mi cool down.' },
+              { date: weekDates[2], dayName: 'Wednesday', distance: 0, unit: 'mi', runType: 'rest', comments: 'Active recovery. Hydrate, roll out calves, light 15 min mobility.' },
+              { date: weekDates[3], dayName: 'Thursday', distance: 7, unit: 'mi', runType: 'moderate', targetPace: '7:20 /mi', durationFormatted: '51:20', comments: 'Aerobic threshold progression. Pick up pace slightly over final 2 miles.' },
+              { date: weekDates[4], dayName: 'Friday', distance: 4, unit: 'mi', runType: 'recovery', targetPace: '8:15 /mi', durationFormatted: '33:00', comments: 'Shakeout run before weekend long effort. Keep effort very easy.' },
+              { date: weekDates[5], dayName: 'Saturday', distance: 14, unit: 'mi', runType: 'long', targetPace: '7:35 /mi', durationFormatted: '1:46:10', comments: 'Key weekend long run! Practice race nutrition at 45 min and 75 min.' },
+              { date: weekDates[6], dayName: 'Sunday', distance: 0, unit: 'mi', runType: 'rest', comments: 'Full rest day. Let your muscle glycogen restock.' },
+            ];
+          }
+
+          const totalDist = days.reduce((acc, d) => acc + (Number(d.distance) || 0), 0);
+          const totalDistance = Math.round(totalDist * 10) / 10;
+          const unit = days.find((d) => d.distance > 0)?.unit || 'mi';
+
+          const emailData: WeeklyPlanEmailData = {
+            athleteName: athName,
+            athleteEmail: testEmail,
+            weekStartDate: weekDates[0],
+            weekEndDate: weekDates[6],
+            totalDistance,
+            unit,
+            coachName: body.coachName || 'Michael Carey',
+            days,
+          };
+
+          const subject = `📅 Your Week Ahead: ${formattedRange} • ${totalDistance} ${unit} Planned`;
+          const html = generateWeeklyPlanEmailHtml(emailData);
+
+          const result = await sendEmailMessage(env, testEmail, subject, html);
+          return new Response(JSON.stringify(result), { headers: corsHeaders });
+        }
+
+        // B. Specific Athlete dispatch or force all
+        const dispatchRes = await dispatchScheduledWeeklyPlanEmails(
+          env,
+          body.athleteId || undefined,
+          body.mondayDate || body.date || undefined
         );
         return new Response(JSON.stringify(dispatchRes), { headers: corsHeaders });
       }
@@ -855,6 +988,170 @@ export async function dispatchScheduledDailyEmails(
         : `🌴 Today's Hop Run: Rest & Active Recovery`;
 
     const html = generateWorkoutEmailHtml(emailData);
+    const result = await sendEmailMessage(env, ath.email, subject, html);
+    if (result.success) {
+      sent++;
+      details.push({ athlete: ath.email, status: 'sent', id: result.id });
+    } else {
+      errors++;
+      details.push({ athlete: ath.email, status: 'failed', error: result.error });
+    }
+  }
+
+  return { sent, errors, details };
+}
+
+/**
+ * Scheduled Cron Trigger: Dispatches weekly training roadmap emails on Monday mornings
+ * Evaluates the 7 days of the current week (Monday to Sunday) and delivers an aggregated briefing
+ */
+export async function dispatchScheduledWeeklyPlanEmails(
+  env: any,
+  specificAthleteId?: string,
+  overrideMondayDate?: string
+): Promise<{ sent: number; errors: number; details: any[] }> {
+  if (!env?.DB) {
+    return { sent: 0, errors: 0, details: [] };
+  }
+
+  // Ensure tables and columns exist
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS athlete_email_preferences (
+      athlete_id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      name TEXT,
+      enabled INTEGER DEFAULT 1,
+      weekly_enabled INTEGER DEFAULT 1,
+      preferred_hour INTEGER DEFAULT 6,
+      timezone TEXT DEFAULT 'America/New_York',
+      updated_at TEXT
+    )`
+  ).run();
+
+  try {
+    await env.DB.prepare(
+      'ALTER TABLE athlete_email_preferences ADD COLUMN weekly_enabled INTEGER DEFAULT 1'
+    ).run();
+  } catch {
+    // Column already exists or error ignored
+  }
+
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS assigned_plan_workouts (
+      id TEXT PRIMARY KEY,
+      athlete_id TEXT NOT NULL,
+      workout_date TEXT NOT NULL,
+      distance REAL DEFAULT 0,
+      unit TEXT DEFAULT 'mi',
+      run_type TEXT DEFAULT 'easy',
+      target_pace TEXT,
+      duration_text TEXT,
+      comments TEXT,
+      coach_name TEXT,
+      updated_at TEXT
+    )`
+  ).run();
+
+  const mondayIso = overrideMondayDate || calculateMondayDate();
+  const weekDates = getWeekDatesFromMonday(mondayIso);
+  const weekStartDate = weekDates[0];
+  const weekEndDate = weekDates[6];
+  const formattedRange = formatWeekDateRange(weekStartDate, weekEndDate);
+
+  const query = specificAthleteId
+    ? env.DB.prepare('SELECT * FROM athlete_email_preferences WHERE athlete_id = ?').bind(specificAthleteId)
+    : env.DB.prepare('SELECT * FROM athlete_email_preferences WHERE enabled = 1');
+
+  const { results: athletes } = await query.all();
+  if (!athletes || athletes.length === 0) {
+    return { sent: 0, errors: 0, details: [] };
+  }
+
+  let sent = 0;
+  let errors = 0;
+  const details: any[] = [];
+  const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  for (const ath of athletes) {
+    // If weekly_enabled is explicitly 0 and this is not a manual single-athlete dispatch, skip
+    if (!specificAthleteId && ath.weekly_enabled === 0) {
+      continue;
+    }
+
+    // Query workouts for this athlete during this 7-day period
+    const { results: workouts } = await env.DB.prepare(
+      'SELECT * FROM assigned_plan_workouts WHERE athlete_id = ? AND workout_date >= ? AND workout_date <= ? ORDER BY workout_date ASC, distance DESC'
+    )
+      .bind(ath.athlete_id, weekStartDate, weekEndDate)
+      .all();
+
+    // If athlete has no workouts assigned at all for this week, skip
+    if (!workouts || workouts.length === 0) {
+      continue;
+    }
+
+    let totalDistance = 0;
+    let primaryUnit = 'mi';
+    let coachName = 'Michael Carey';
+
+    const days: WeeklyPlanDayData[] = weekDates.map((dateStr, idx) => {
+      const dayName = DAY_NAMES[idx];
+      const dayWorkout = (workouts || []).find((w: any) => w.workout_date === dateStr);
+
+      if (dayWorkout && Number(dayWorkout.distance) > 0) {
+        const dist = Number(dayWorkout.distance) || 0;
+        totalDistance += dist;
+        if (dayWorkout.unit) primaryUnit = dayWorkout.unit;
+        if (dayWorkout.coach_name) coachName = dayWorkout.coach_name;
+
+        return {
+          date: dateStr,
+          dayName,
+          distance: dist,
+          unit: dayWorkout.unit || primaryUnit,
+          runType: dayWorkout.run_type || 'easy',
+          targetPace: dayWorkout.target_pace || undefined,
+          durationFormatted: dayWorkout.duration_text || undefined,
+          comments: dayWorkout.comments || undefined,
+        };
+      }
+
+      if (dayWorkout) {
+        if (dayWorkout.coach_name) coachName = dayWorkout.coach_name;
+        return {
+          date: dateStr,
+          dayName,
+          distance: 0,
+          unit: dayWorkout.unit || primaryUnit,
+          runType: dayWorkout.run_type || 'rest',
+          comments: dayWorkout.comments || undefined,
+        };
+      }
+
+      return {
+        date: dateStr,
+        dayName,
+        distance: 0,
+        unit: primaryUnit,
+        runType: 'rest',
+      };
+    });
+
+    const roundedTotal = Math.round(totalDistance * 10) / 10;
+    const emailData: WeeklyPlanEmailData = {
+      athleteName: ath.name || 'Runner',
+      athleteEmail: ath.email,
+      weekStartDate,
+      weekEndDate,
+      totalDistance: roundedTotal,
+      unit: primaryUnit,
+      coachName,
+      days,
+    };
+
+    const subject = `📅 Your Week Ahead: ${formattedRange} • ${roundedTotal} ${primaryUnit} Planned`;
+    const html = generateWeeklyPlanEmailHtml(emailData);
+
     const result = await sendEmailMessage(env, ath.email, subject, html);
     if (result.success) {
       sent++;

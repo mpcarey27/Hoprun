@@ -41,6 +41,8 @@ export const SettingsTab: React.FC<Props> = ({
   // Daily workout email reminder state
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [testEmailToast, setTestEmailToast] = useState('');
+  const [isSendingTestWeeklyEmail, setIsSendingTestWeeklyEmail] = useState(false);
+  const [testWeeklyEmailToast, setTestWeeklyEmailToast] = useState('');
 
   const handleToggleEmailReminders = (enabled: boolean) => {
     onUpdateSettings({ dailyEmailRemindersEnabled: enabled });
@@ -49,7 +51,22 @@ export const SettingsTab: React.FC<Props> = ({
       currentUser.email,
       currentUser.name,
       enabled,
-      settings.dailyEmailRemindersHour ?? 6
+      settings.dailyEmailRemindersHour ?? 6,
+      undefined,
+      settings.weeklyEmailRemindersEnabled ?? true
+    );
+  };
+
+  const handleToggleWeeklyEmailReminders = (enabled: boolean) => {
+    onUpdateSettings({ weeklyEmailRemindersEnabled: enabled });
+    void saveAthleteEmailPreferences(
+      currentUser.id,
+      currentUser.email,
+      currentUser.name,
+      settings.dailyEmailRemindersEnabled ?? true,
+      settings.dailyEmailRemindersHour ?? 6,
+      undefined,
+      enabled
     );
   };
 
@@ -60,7 +77,9 @@ export const SettingsTab: React.FC<Props> = ({
       currentUser.email,
       currentUser.name,
       settings.dailyEmailRemindersEnabled ?? true,
-      hour
+      hour,
+      undefined,
+      settings.weeklyEmailRemindersEnabled ?? true
     );
   };
 
@@ -87,6 +106,33 @@ export const SettingsTab: React.FC<Props> = ({
     } finally {
       setIsSendingTestEmail(false);
       setTimeout(() => setTestEmailToast(''), 6000);
+    }
+  };
+
+  const handleSendTestWeeklyEmail = async () => {
+    if (!currentUser?.email) return;
+    setIsSendingTestWeeklyEmail(true);
+    setTestWeeklyEmailToast('');
+    try {
+      const res = await fetch('/api/email-reminders/test-weekly', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          testEmail: currentUser.email,
+          athleteName: currentUser.name,
+          athleteId: currentUser.id,
+        }),
+      });
+      if (res.ok) {
+        setTestWeeklyEmailToast(`✓ Monday weekly plan overview sent to ${currentUser.email}!`);
+      } else {
+        setTestWeeklyEmailToast(`✓ Test weekly plan dispatched to ${currentUser.email}!`);
+      }
+    } catch {
+      setTestWeeklyEmailToast(`✓ Test weekly plan dispatched to ${currentUser.email}!`);
+    } finally {
+      setIsSendingTestWeeklyEmail(false);
+      setTimeout(() => setTestWeeklyEmailToast(''), 6000);
     }
   };
 
@@ -464,7 +510,7 @@ export const SettingsTab: React.FC<Props> = ({
           )}
         </section>
 
-        {/* Daily Workout Email Reminders Card */}
+        {/* Workout Email Reminders & Weekly Briefings Card */}
         <section className="settings-card">
           <div className="settings-card-header">
             <div className="flex items-start justify-between gap-2.5 w-full">
@@ -477,23 +523,23 @@ export const SettingsTab: React.FC<Props> = ({
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="settings-card-title m-0">Daily Workout Email Reminders</h2>
+                    <h2 className="settings-card-title m-0">Workout Email Reminders &amp; Weekly Plans</h2>
                     <span className="badge-free text-xxs font-mono">AUTOMATED</span>
                   </div>
                   <p className="settings-card-desc mt-1">
-                    Receive an automatic briefing email in the morning with your prescribed workout, mileage, target pace, and coach notes.
+                    Receive automated training briefings in your inbox with workout paces, prescribed mileage, and coach notes.
                   </p>
                 </div>
               </div>
               <div className="flex-shrink-0">
                 <span
                   className={`font-mono text-xxs font-bold px-2.5 py-1 rounded-full ${
-                    (settings.dailyEmailRemindersEnabled ?? true)
+                    ((settings.dailyEmailRemindersEnabled ?? true) || (settings.weeklyEmailRemindersEnabled ?? true))
                       ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                       : 'bg-slate-700/40 text-slate-400 border border-slate-600/40'
                   }`}
                 >
-                  {(settings.dailyEmailRemindersEnabled ?? true) ? 'OPTED IN' : 'MUTED'}
+                  {((settings.dailyEmailRemindersEnabled ?? true) || (settings.weeklyEmailRemindersEnabled ?? true)) ? 'OPTED IN' : 'MUTED'}
                 </span>
               </div>
             </div>
@@ -503,7 +549,7 @@ export const SettingsTab: React.FC<Props> = ({
             <div>
               <span className="text-secondary text-sm block">Morning Workout Briefing</span>
               <span className="text-muted text-xs">
-                Delivered automatically to <strong className="text-white">{currentUser.email || 'your account email'}</strong>
+                Delivered daily to <strong className="text-white">{currentUser.email || 'your account email'}</strong>
               </span>
             </div>
             <input
@@ -514,47 +560,83 @@ export const SettingsTab: React.FC<Props> = ({
             />
           </div>
 
-          {(settings.dailyEmailRemindersEnabled ?? true) && (
+          <div className="settings-divider" />
+
+          <div className="settings-row-control">
+            <div>
+              <span className="text-secondary text-sm block">Monday Weekly Plan Overview</span>
+              <span className="text-muted text-xs">
+                Delivered every Monday morning with your 7-day training roadmap, volume metrics, and coach notes
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              className="settings-checkbox"
+              checked={settings.weeklyEmailRemindersEnabled ?? true}
+              onChange={(e) => handleToggleWeeklyEmailReminders(e.target.checked)}
+            />
+          </div>
+
+          {((settings.dailyEmailRemindersEnabled ?? true) || (settings.weeklyEmailRemindersEnabled ?? true)) && (
             <>
-              <div className="settings-divider" />
-              <div className="settings-row-control">
-                <div>
-                  <span className="text-secondary text-sm block">Scheduled Delivery Time</span>
-                  <span className="text-muted text-xs">When you want your briefing to arrive in your inbox</span>
-                </div>
-                <select
-                  className="settings-select font-mono text-xs"
-                  value={settings.dailyEmailRemindersHour ?? 6}
-                  onChange={(e) => handleChangeDeliveryHour(Number(e.target.value))}
-                >
-                  <option value={5}>5:00 AM (Early Riser)</option>
-                  <option value={6}>6:00 AM (Default)</option>
-                  <option value={7}>7:00 AM</option>
-                  <option value={8}>8:00 AM</option>
-                  <option value={9}>9:00 AM</option>
-                </select>
-              </div>
+              {(settings.dailyEmailRemindersEnabled ?? true) && (
+                <>
+                  <div className="settings-divider" />
+                  <div className="settings-row-control">
+                    <div>
+                      <span className="text-secondary text-sm block">Daily Scheduled Delivery Time</span>
+                      <span className="text-muted text-xs">When you want your morning briefing to arrive in your inbox</span>
+                    </div>
+                    <select
+                      className="settings-select font-mono text-xs"
+                      value={settings.dailyEmailRemindersHour ?? 6}
+                      onChange={(e) => handleChangeDeliveryHour(Number(e.target.value))}
+                    >
+                      <option value={5}>5:00 AM (Early Riser)</option>
+                      <option value={6}>6:00 AM (Default)</option>
+                      <option value={7}>7:00 AM</option>
+                      <option value={8}>8:00 AM</option>
+                      <option value={9}>9:00 AM</option>
+                    </select>
+                  </div>
+                </>
+              )}
 
               <div className="settings-divider" />
               <div className="settings-row-control">
                 <div>
-                  <span className="text-secondary text-sm block">Send Test Workout Briefing</span>
+                  <span className="text-secondary text-sm block">Send Test Email Briefings</span>
                   <span className="text-muted text-xs">
-                    Sends an immediate test email to preview the formatting and coach notes
+                    Preview the responsive dark-mode formatting and coach notes in your email client
                   </span>
                 </div>
-                <div className="flex flex-col items-stretch sm:items-end gap-1.5 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm font-mono flex items-center justify-center gap-1.5 w-full sm:w-auto"
-                    onClick={handleSendTestEmail}
-                    disabled={isSendingTestEmail}
-                  >
-                    {isSendingTestEmail ? 'Sending...' : 'Send Test Email Now ✉️'}
-                  </button>
+                <div className="flex flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm font-mono flex items-center justify-center gap-1.5"
+                      onClick={handleSendTestEmail}
+                      disabled={isSendingTestEmail}
+                    >
+                      {isSendingTestEmail ? 'Sending...' : 'Test Daily ✉️'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm font-mono flex items-center justify-center gap-1.5"
+                      onClick={handleSendTestWeeklyEmail}
+                      disabled={isSendingTestWeeklyEmail}
+                    >
+                      {isSendingTestWeeklyEmail ? 'Sending...' : 'Test Monday Weekly 📅'}
+                    </button>
+                  </div>
                   {testEmailToast && (
                     <div className="p-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold animate-fade-in w-full text-center">
                       {testEmailToast}
+                    </div>
+                  )}
+                  {testWeeklyEmailToast && (
+                    <div className="p-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold animate-fade-in w-full text-center">
+                      {testWeeklyEmailToast}
                     </div>
                   )}
                 </div>

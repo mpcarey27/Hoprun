@@ -200,4 +200,5 @@ export interface AppSettings {
   dailyEmailRemindersEnabled?: boolean; // Opt into morning workout briefing email
   dailyEmailRemindersHour?: number; // Delivery hour (e.g. 6 for 6:00 AM)
   dailyEmailRemindersTimezone?: string;
+  weeklyEmailRemindersEnabled?: boolean; // Monday Weekly Training Plan overview email
 }

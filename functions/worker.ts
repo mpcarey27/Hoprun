@@ -1,4 +1,8 @@
-import { onRequest, dispatchScheduledDailyEmails } from './api/[[route]]';
+import {
+  onRequest,
+  dispatchScheduledDailyEmails,
+  dispatchScheduledWeeklyPlanEmails,
+} from './api/[[route]]';
 
 export interface Env {
   DB?: any;
@@ -22,10 +26,16 @@ export default {
   },
 
   async scheduled(event: any, env: Env, ctx: any): Promise<void> {
+    const isMonday = new Date().getUTCDay() === 1;
+    const tasks: Promise<any>[] = [dispatchScheduledDailyEmails(env)];
+    if (isMonday) {
+      tasks.push(dispatchScheduledWeeklyPlanEmails(env));
+    }
+
     if (ctx?.waitUntil) {
-      ctx.waitUntil(dispatchScheduledDailyEmails(env));
+      ctx.waitUntil(Promise.all(tasks));
     } else {
-      await dispatchScheduledDailyEmails(env);
+      await Promise.all(tasks);
     }
   },
 };

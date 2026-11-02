@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   weeklyMileageTarget: 35.0,
   dailyEmailRemindersEnabled: true,
   dailyEmailRemindersHour: 6,
+  weeklyEmailRemindersEnabled: true,
   shoes: [
     {
       id: 'shoe_default_1',
@@ -658,7 +659,7 @@ export async function syncAssignedWorkoutsToCloud(workouts: WorkoutRun[]): Promi
 }
 
 /**
- * Saves athlete daily workout email reminder preferences to Cloudflare D1
+ * Saves athlete daily workout & weekly plan email reminder preferences to Cloudflare D1
  */
 export async function saveAthleteEmailPreferences(
   athleteId: string,
@@ -666,7 +667,8 @@ export async function saveAthleteEmailPreferences(
   name: string,
   enabled: boolean,
   preferredHour: number,
-  timezone?: string
+  timezone?: string,
+  weeklyEnabled: boolean = true
 ): Promise<void> {
   if (typeof fetch === 'undefined' || !athleteId || !email) return;
   try {
@@ -679,6 +681,7 @@ export async function saveAthleteEmailPreferences(
         email,
         name,
         enabled,
+        weeklyEnabled,
         preferredHour,
         timezone: tz,
       }),
@@ -689,11 +692,11 @@ export async function saveAthleteEmailPreferences(
 }
 
 /**
- * Loads athlete daily workout email reminder preferences from Cloudflare D1
+ * Loads athlete workout email reminder preferences from Cloudflare D1
  */
 export async function loadAthleteEmailPreferences(
   athleteId: string
-): Promise<{ enabled: boolean; preferredHour: number; timezone?: string } | null> {
+): Promise<{ enabled: boolean; weeklyEnabled?: boolean; preferredHour: number; timezone?: string } | null> {
   if (typeof fetch === 'undefined' || !athleteId) return null;
   try {
     const res = await fetch(`/api/email-reminders/preferences?athleteId=${encodeURIComponent(athleteId)}`);
