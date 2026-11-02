@@ -24,6 +24,7 @@ import {
   clearStoredUser,
   loadStoredRoster,
   syncRosterFromCloud,
+  syncWorkoutsFromCloud,
   COACH_EMAIL,
   COACH_PROFILE,
   COACH_ATHLETE_PROFILE,
@@ -341,18 +342,33 @@ export const App: React.FC = () => {
   const isAutoSyncingRef = useRef<boolean>(false);
   const [isStravaAutoSyncing, setIsStravaAutoSyncing] = useState<boolean>(false);
 
-  // Pull invited athletes from Cloudflare D1 whenever the coach opens the app (and on tab focus)
+  // Pull invited athletes and sync workouts from Cloudflare D1 whenever user opens app (and on tab focus)
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'coach') return;
     let cancelled = false;
-    const refreshRoster = async () => {
-      const merged = await syncRosterFromCloud();
-      if (!cancelled) setRoster(merged);
+
+    const refreshData = async () => {
+      if (currentUser?.role === 'coach') {
+        const mergedRoster = await syncRosterFromCloud();
+        if (!cancelled && mergedRoster) setRoster(mergedRoster);
+      }
+
+      try {
+        const isCoach = !currentUser || currentUser.role === 'coach';
+        const syncedWorkouts = await syncWorkoutsFromCloud(isCoach ? true : currentUser.id);
+        if (!cancelled && syncedWorkouts && syncedWorkouts.length > 0) {
+          setWorkouts(syncedWorkouts);
+        }
+      } catch (err) {
+        console.warn('Unable to sync workouts from cloud on focus:', err);
+      }
     };
-    void refreshRoster();
+
+    void refreshData();
+
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void refreshRoster();
+      if (document.visibilityState === 'visible') void refreshData();
     };
+
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
@@ -638,25 +654,35 @@ export const App: React.FC = () => {
   // Batch import workouts from Strava, Garmin, or external files with reconciliation & deduplication
   const handleBatchImportWorkouts = (newWorkouts: WorkoutRun[]) => {
     setWorkouts((prev) => {
+      let updated: WorkoutRun[];
       if (newWorkouts.some((w) => w.source === 'strava')) {
-        const reconciled = reconcileStravaWorkouts(prev, newWorkouts);
-        saveStoredWorkouts(reconciled);
-        return reconciled;
+        updated = reconcileStravaWorkouts(prev, newWorkouts);
+      } else {
+        const existingSignatures = new Set(
+          prev.map((w) => `${w.athleteId || ''}_${w.workoutDate}_${w.distance.toFixed(1)}`)
+        );
+        const uniqueNew = newWorkouts.filter(
+          (nw) =>
+            !existingSignatures.has(
+              `${nw.athleteId || ''}_${nw.workoutDate}_${nw.distance.toFixed(1)}`
+            )
+        );
+        updated = [...prev, ...uniqueNew];
       }
-
-      const existingSignatures = new Set(
-        prev.map((w) => `${w.athleteId || ''}_${w.workoutDate}_${w.distance.toFixed(1)}`)
-      );
-      const uniqueNew = newWorkouts.filter(
-        (nw) =>
-          !existingSignatures.has(
-            `${nw.athleteId || ''}_${nw.workoutDate}_${nw.distance.toFixed(1)}`
-          )
-      );
-      const updated = [...prev, ...uniqueNew];
       saveStoredWorkouts(updated);
       return updated;
     });
+
+    // When handleBatchImportWorkouts is called on any device (athlete or coach), immediately push to /api/workouts/bulk
+    if (typeof fetch !== 'undefined' && newWorkouts && newWorkouts.length > 0) {
+      fetch('/api/workouts/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workouts: newWorkouts }),
+      }).catch((err) => {
+        console.warn('Unable to push imported workouts to /api/workouts/bulk:', err);
+      });
+    }
   };
 
   // Athlete editing from plan or input

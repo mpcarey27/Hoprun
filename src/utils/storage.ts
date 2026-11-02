@@ -6,6 +6,7 @@ import type {
   AppSettings,
   RegisteredUser,
 } from '../types/acr';
+import { reconcileStravaWorkouts } from './stravaSync';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'acr_workouts_v2',
@@ -335,7 +336,10 @@ export function findAuthUserByEmail(email: string): RegisteredUser | undefined {
 
 export function loadStoredWorkouts(): WorkoutRun[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.WORKOUTS);
+    const raw =
+      typeof localStorage !== 'undefined' && typeof localStorage?.getItem === 'function'
+        ? localStorage.getItem(STORAGE_KEYS.WORKOUTS)
+        : null;
     if (raw) {
       return JSON.parse(raw);
     }
@@ -348,7 +352,9 @@ export function loadStoredWorkouts(): WorkoutRun[] {
 
 export function saveStoredWorkouts(workouts: WorkoutRun[]): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.WORKOUTS, JSON.stringify(workouts));
+    if (typeof localStorage !== 'undefined' && typeof localStorage?.setItem === 'function') {
+      localStorage.setItem(STORAGE_KEYS.WORKOUTS, JSON.stringify(workouts));
+    }
     syncWorkoutsWithCloudflare(workouts).catch(() => {});
     syncAssignedWorkoutsToCloud(workouts).catch(() => {});
   } catch (e) {
@@ -627,16 +633,73 @@ export async function loadUserStravaConnection(
 }
 
 // Background sync with Cloudflare Pages Functions / D1 API
-async function syncWorkoutsWithCloudflare(workouts: WorkoutRun[]): Promise<void> {
+export async function syncWorkoutsWithCloudflare(workouts: WorkoutRun[]): Promise<void> {
+  if (typeof fetch === 'undefined' || !workouts || workouts.length === 0) return;
   try {
     const response = await fetch('/api/workouts/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ workouts }),
     });
-    if (!response.ok) return;
-  } catch {
-    // Offline mode
+    if (!response.ok) {
+      console.warn(`Cloudflare workouts sync responded with status: ${response.status}`);
+      return;
+    }
+  } catch (err) {
+    // Graceful offline mode warning
+    console.warn('Unable to sync workouts to Cloudflare (offline or network error):', err);
+  }
+}
+
+/**
+ * Fetches workouts from Cloudflare D1 and merges them into local storage using reconcileStravaWorkouts.
+ * When coachView=true (or athleteFilter='all' / omitted), pulls all athletes' workouts from GET /api/workouts?coachView=true
+ * so athlete synced runs appear immediately in Coach View.
+ */
+export async function syncWorkoutsFromCloud(
+  coachViewOrAthleteFilter: boolean | string = true
+): Promise<WorkoutRun[]> {
+  const local = loadStoredWorkouts();
+  if (typeof fetch === 'undefined') {
+    return local;
+  }
+
+  try {
+    let url = '/api/workouts?coachView=true';
+    if (typeof coachViewOrAthleteFilter === 'string') {
+      if (coachViewOrAthleteFilter === 'all') {
+        url = '/api/workouts?coachView=true';
+      } else if (coachViewOrAthleteFilter) {
+        url = `/api/workouts?athleteId=${encodeURIComponent(coachViewOrAthleteFilter)}`;
+      }
+    } else if (coachViewOrAthleteFilter === false) {
+      url = '/api/workouts';
+    }
+
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+      console.warn(`Workouts sync from cloud returned status ${res.status}`);
+      return local;
+    }
+
+    const data = await res.json().catch(() => null);
+    const remoteWorkouts: WorkoutRun[] = Array.isArray(data?.workouts) ? data.workouts : [];
+    if (remoteWorkouts.length === 0) {
+      return local;
+    }
+
+    const merged = reconcileStravaWorkouts(local, remoteWorkouts);
+    if (typeof localStorage !== 'undefined' && typeof localStorage?.setItem === 'function') {
+      try {
+        localStorage.setItem(STORAGE_KEYS.WORKOUTS, JSON.stringify(merged));
+      } catch (e) {
+        console.error('Error saving synced workouts to localStorage:', e);
+      }
+    }
+    return merged;
+  } catch (err) {
+    console.warn('Unable to sync workouts from cloud (offline or network error):', err);
+    return local;
   }
 }
 

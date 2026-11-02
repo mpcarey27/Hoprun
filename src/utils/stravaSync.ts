@@ -469,7 +469,7 @@ export async function fetchAllStravaActivitiesSince(
   let currentToken = accessToken;
 
   while (page <= maxPages) {
-    const batch = await fetchStravaActivities(
+    const { runs, rawCount } = await fetchStravaActivitiesPage(
       currentToken,
       page,
       perPage,
@@ -487,32 +487,41 @@ export async function fetchAllStravaActivitiesSince(
       afterEpochSeconds
     );
 
-    if (!batch || batch.length === 0) {
+    if (rawCount === 0) {
       break;
     }
 
-    allActivities.push(...batch);
+    allActivities.push(...runs);
 
     if (onProgress) {
       onProgress(allActivities.length, page);
     }
 
-    if (batch.length < perPage) {
+    // Break ONLY when rawCount < perPage (or rawCount === 0).
+    // This ensures that if page 1 returns 200 items (e.g. 188 runs and 12 hikes/rides),
+    // the loop proceeds to page 2, page 3, etc., until all items up to the current date are collected.
+    if (rawCount < perPage) {
       break; // Reached the most recent activities
     }
 
     page++;
   }
 
+  // Sort all collected activities by start_date descending (newest first) before returning
+  allActivities.sort((a, b) => {
+    const timeA = new Date(a.start_date).getTime();
+    const timeB = new Date(b.start_date).getTime();
+    return timeB - timeA;
+  });
+
   return allActivities;
 }
 
 /**
- * Fetches recent activities from Strava for the authenticated athlete.
- * Defaults to importing the last 3 months (90 days) of runs automatically.
- * Automatically refreshes an expired token if refreshConfig is provided.
+ * Fetches a single page of activities from Strava, tracking raw activity count before filtering.
+ * Returns both the filtered runs and the rawCount from Strava's response to preserve pagination.
  */
-export async function fetchStravaActivities(
+export async function fetchStravaActivitiesPage(
   accessToken: string,
   page: number = 1,
   perPage: number = 200,
@@ -524,7 +533,7 @@ export async function fetchStravaActivities(
     onTokenRefreshed?: (tokenData: StravaTokenResponse) => void;
   },
   afterEpochSeconds?: number
-): Promise<StravaSummaryActivity[]> {
+): Promise<{ runs: StravaSummaryActivity[]; rawCount: number }> {
   const effectiveAfter =
     afterEpochSeconds ?? Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
   const path = `/api/v3/athlete/activities?after=${effectiveAfter}&page=${page}&per_page=${perPage}`;
@@ -580,15 +589,46 @@ export async function fetchStravaActivities(
 
   const list: StravaSummaryActivity[] = await response.json();
   const rawList = Array.isArray(list) ? list : [];
+  const rawCount = rawList.length;
 
   // Filter for runs (Run, TrailRun, VirtualRun)
-  return rawList.filter(
+  const runs = rawList.filter(
     (act) =>
       act.type === 'Run' ||
       act.sport_type === 'Run' ||
       act.sport_type === 'TrailRun' ||
       act.sport_type === 'VirtualRun'
   );
+
+  return { runs, rawCount };
+}
+
+/**
+ * Fetches recent activities from Strava for the authenticated athlete.
+ * Defaults to importing the last 3 months (90 days) of runs automatically.
+ * Automatically refreshes an expired token if refreshConfig is provided.
+ */
+export async function fetchStravaActivities(
+  accessToken: string,
+  page: number = 1,
+  perPage: number = 200,
+  refreshConfig?: {
+    clientId?: string;
+    clientSecret?: string;
+    refreshToken?: string;
+    athleteEmail?: string;
+    onTokenRefreshed?: (tokenData: StravaTokenResponse) => void;
+  },
+  afterEpochSeconds?: number
+): Promise<StravaSummaryActivity[]> {
+  const { runs } = await fetchStravaActivitiesPage(
+    accessToken,
+    page,
+    perPage,
+    refreshConfig,
+    afterEpochSeconds
+  );
+  return runs;
 }
 
 /**

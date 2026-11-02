@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS workouts (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
+  athlete_id TEXT,
+  athlete_name TEXT,
   workout_date TEXT NOT NULL, -- 'YYYY-MM-DD'
   run_order INTEGER DEFAULT 1,
   distance REAL NOT NULL,
@@ -27,11 +29,16 @@ CREATE TABLE IF NOT EXISTS workouts (
   completed INTEGER DEFAULT 1, -- 1 = completed, 0 = planned
   plan_id TEXT,
   plan_day_index INTEGER,
+  title TEXT,
+  source TEXT,
+  external_activity_id TEXT,
+  data_json TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_workouts_user_date ON workouts(user_id, workout_date);
+CREATE INDEX IF NOT EXISTS idx_workouts_athlete_date ON workouts(athlete_id, workout_date);
 
 CREATE TABLE IF NOT EXISTS plans (
   id TEXT PRIMARY KEY,

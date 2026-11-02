@@ -251,39 +251,189 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         });
       }
 
-      if (method === 'GET') {
-        const userId = url.searchParams.get('userId') || 'user_coach_1';
-        const { results } = await env.DB.prepare(
-          'SELECT * FROM workouts WHERE user_id = ? ORDER BY workout_date ASC, run_order ASC'
-        ).bind(userId).all();
+      // Ensure workouts table exists with full metadata columns
+      await env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS workouts (
+          id TEXT PRIMARY KEY,
+          user_id TEXT,
+          athlete_id TEXT,
+          athlete_name TEXT,
+          workout_date TEXT NOT NULL,
+          run_order INTEGER DEFAULT 1,
+          distance REAL NOT NULL,
+          distance_unit TEXT DEFAULT 'mi',
+          run_type TEXT NOT NULL,
+          multiplier REAL NOT NULL,
+          load REAL NOT NULL,
+          comments TEXT,
+          completed INTEGER DEFAULT 1,
+          title TEXT,
+          source TEXT,
+          external_activity_id TEXT,
+          data_json TEXT,
+          updated_at TEXT
+        )`
+      ).run().catch(() => {});
 
-        return new Response(JSON.stringify({ workouts: results }), { headers: corsHeaders });
+      // Add missing columns if upgrading an existing D1 table
+      const alterCols = [
+        'athlete_id TEXT',
+        'athlete_name TEXT',
+        'title TEXT',
+        'source TEXT',
+        'external_activity_id TEXT',
+        'data_json TEXT',
+        'updated_at TEXT',
+      ];
+      for (const col of alterCols) {
+        try {
+          await env.DB.prepare(`ALTER TABLE workouts ADD COLUMN ${col}`).run();
+        } catch {
+          // Column already exists, ignore
+        }
+      }
+
+      if (method === 'GET') {
+        const coachView = url.searchParams.get('coachView') === 'true' || url.searchParams.get('coachView') === '1';
+        const athleteIdParam = url.searchParams.get('athleteId');
+        const userIdParam = url.searchParams.get('userId');
+
+        let rows: any[] = [];
+        if (coachView || athleteIdParam === 'all') {
+          const { results } = await env.DB.prepare(
+            'SELECT * FROM workouts ORDER BY workout_date ASC, run_order ASC'
+          ).all();
+          rows = results || [];
+        } else if (athleteIdParam) {
+          const { results } = await env.DB.prepare(
+            'SELECT * FROM workouts WHERE athlete_id = ? OR user_id = ? ORDER BY workout_date ASC, run_order ASC'
+          ).bind(athleteIdParam, athleteIdParam).all();
+          rows = results || [];
+        } else if (userIdParam) {
+          const { results } = await env.DB.prepare(
+            'SELECT * FROM workouts WHERE user_id = ? OR athlete_id = ? ORDER BY workout_date ASC, run_order ASC'
+          ).bind(userIdParam, userIdParam).all();
+          rows = results || [];
+        } else {
+          const { results } = await env.DB.prepare(
+            'SELECT * FROM workouts ORDER BY workout_date ASC, run_order ASC'
+          ).all();
+          rows = results || [];
+        }
+
+        const workouts = rows.map((row: any) => {
+          if (row.data_json) {
+            try {
+              const parsed = JSON.parse(row.data_json);
+              if (parsed && typeof parsed === 'object') {
+                return {
+                  ...parsed,
+                  id: parsed.id || row.id,
+                  workoutDate: parsed.workoutDate || row.workout_date,
+                  athleteId: parsed.athleteId || row.athlete_id || row.user_id,
+                  athleteName: parsed.athleteName || row.athlete_name || '',
+                  userId: parsed.userId || row.user_id || row.athlete_id,
+                  distance: typeof parsed.distance === 'number' ? parsed.distance : row.distance,
+                  distanceUnit: parsed.distanceUnit || row.distance_unit || 'mi',
+                  runType: parsed.runType || row.run_type || 'easy',
+                  completed: parsed.completed !== undefined ? Boolean(parsed.completed) : Boolean(row.completed),
+                  updatedAt: parsed.updatedAt || row.updated_at,
+                };
+              }
+            } catch {
+              // Fall through to database columns
+            }
+          }
+          return {
+            id: row.id,
+            userId: row.user_id,
+            athleteId: row.athlete_id || row.user_id,
+            athleteName: row.athlete_name || '',
+            workoutDate: row.workout_date,
+            runOrder: row.run_order,
+            distance: row.distance,
+            distanceUnit: row.distance_unit,
+            runType: row.run_type,
+            multiplier: row.multiplier,
+            load: row.load,
+            comments: row.comments || '',
+            completed: Boolean(row.completed),
+            title: row.title || undefined,
+            source: row.source || undefined,
+            externalActivityId: row.external_activity_id || undefined,
+            updatedAt: row.updated_at || undefined,
+          };
+        });
+
+        return new Response(JSON.stringify({ workouts }), { headers: corsHeaders });
       }
 
       if (method === 'POST') {
-        const body: any = await request.json();
-        if (body.workouts && Array.isArray(body.workouts)) {
-          // Bulk upsert
-          for (const w of body.workouts) {
-            await env.DB.prepare(
-              `INSERT OR REPLACE INTO workouts (id, user_id, workout_date, run_order, distance, distance_unit, run_type, multiplier, load, comments, completed)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-            ).bind(
+        const body: any = await request.json().catch(() => ({}));
+        const rawWorkouts: any[] = Array.isArray(body.workouts)
+          ? body.workouts
+          : body.workout
+          ? [body.workout]
+          : Array.isArray(body)
+          ? body
+          : body.id
+          ? [body]
+          : [];
+
+        if (rawWorkouts.length > 0) {
+          const stmt = env.DB.prepare(
+            `INSERT OR REPLACE INTO workouts (
+              id, user_id, athlete_id, athlete_name, workout_date, run_order, distance,
+              distance_unit, run_type, multiplier, load, comments, completed, title,
+              source, external_activity_id, data_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          );
+
+          for (const w of rawWorkouts) {
+            const athleteId = w.athleteId || w.userId || 'user_coach_1';
+            const athleteName = w.athleteName || '';
+            const userId = w.userId || athleteId;
+            const workoutDate = w.workoutDate || new Date().toISOString().slice(0, 10);
+            const runOrder = typeof w.runOrder === 'number' ? w.runOrder : 1;
+            const distance = typeof w.distance === 'number' ? w.distance : Number(w.distance) || 0;
+            const distanceUnit = w.distanceUnit || 'mi';
+            const runType = w.runType || 'easy';
+            const multiplier = typeof w.multiplier === 'number' ? w.multiplier : 1.0;
+            const load = typeof w.load === 'number' ? w.load : 0;
+            const comments = w.comments || '';
+            const completed = w.completed ? 1 : 0;
+            const title = w.title || '';
+            const source = w.source || 'manual';
+            const externalActivityId = w.externalActivityId || '';
+            const dataJson = JSON.stringify(w);
+            const updatedAt = w.updatedAt || new Date().toISOString();
+
+            await stmt.bind(
               w.id,
-              w.userId || 'user_coach_1',
-              w.workoutDate,
-              w.runOrder,
-              w.distance,
-              w.distanceUnit,
-              w.runType,
-              w.multiplier,
-              w.load,
-              w.comments || '',
-              w.completed ? 1 : 0
+              userId,
+              athleteId,
+              athleteName,
+              workoutDate,
+              runOrder,
+              distance,
+              distanceUnit,
+              runType,
+              multiplier,
+              load,
+              comments,
+              completed,
+              title,
+              source,
+              externalActivityId,
+              dataJson,
+              updatedAt
             ).run();
           }
-          return new Response(JSON.stringify({ success: true, count: body.workouts.length }), { headers: corsHeaders });
+
+          return new Response(JSON.stringify({ success: true, count: rawWorkouts.length }), { headers: corsHeaders });
         }
+
+        return new Response(JSON.stringify({ success: true, count: 0 }), { headers: corsHeaders });
       }
     }
 
