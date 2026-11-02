@@ -322,17 +322,28 @@ export const App: React.FC = () => {
           // Select this athlete's tab so their calendar is immediately displayed
           setSelectedAthleteFilter(targetAthleteId);
 
-          handleUpdateSettings({
-            stravaClientId: effectiveClientId,
-            stravaClientSecret: effectiveClientSecret || undefined,
-            stravaConnected: true,
-            stravaAccessToken: tokenData.access_token,
-            stravaRefreshToken: tokenData.refresh_token,
-            stravaExpiresAt: tokenData.expires_at,
-            stravaAthleteName: targetAthleteName,
-            stravaAutoSync: true,
-            stravaLastSyncTime: new Date().toISOString(),
-          });
+          const isCurrentLoggedInUser =
+            currentUser &&
+            (currentUser.id === targetAthleteId ||
+              (currentUser.email && matchedAthlete.email && currentUser.email.toLowerCase() === matchedAthlete.email.toLowerCase()));
+
+          if (isCurrentLoggedInUser) {
+            handleUpdateSettings({
+              stravaClientId: effectiveClientId,
+              stravaClientSecret: effectiveClientSecret || undefined,
+              stravaConnected: true,
+              stravaAccessToken: tokenData.access_token,
+              stravaRefreshToken: tokenData.refresh_token,
+              stravaExpiresAt: tokenData.expires_at,
+              stravaAthleteName: targetAthleteName,
+              stravaAutoSync: true,
+              stravaLastSyncTime: new Date().toISOString(),
+            });
+          }
+
+          if (matchedAthlete.email) {
+            setConnectedStravaEmails((prev) => new Set([...prev, matchedAthlete.email.toLowerCase()]));
+          }
 
           setStravaOAuthStatus({
             type: 'success',
@@ -583,6 +594,36 @@ export const App: React.FC = () => {
     () => loadStoredUser()?.id || COACH_PROFILE.id
   );
 
+  const [connectedStravaEmails, setConnectedStravaEmails] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetch('/api/strava-connection?email=all')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.connections && Array.isArray(data.connections)) {
+          const emails = new Set<string>(
+            data.connections.map((c: any) => String(c.user_email || '').toLowerCase()).filter(Boolean)
+          );
+          setConnectedStravaEmails(emails);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const activeAthlete = useMemo(() => {
+    return roster.find((u) => u.id === selectedAthleteFilter) || currentUser || COACH_PROFILE;
+  }, [roster, selectedAthleteFilter, currentUser]);
+
+  const isActiveAthleteStravaConnected = useMemo(() => {
+    if (!activeAthlete?.email) return Boolean(settings.stravaConnected);
+    const emailLower = activeAthlete.email.toLowerCase();
+    if (connectedStravaEmails.has(emailLower)) return true;
+    if (activeAthlete.id === currentUser?.id || activeAthlete.id === COACH_PROFILE.id) {
+      return Boolean(settings.stravaConnected);
+    }
+    return false;
+  }, [activeAthlete, connectedStravaEmails, currentUser?.id, settings.stravaConnected]);
+
   // Compute visible workouts based on role and athlete filter
   const visibleWorkouts = useMemo(() => {
     if (!currentUser) return [];
@@ -709,10 +750,13 @@ export const App: React.FC = () => {
 
   // Batch import workouts from Strava, Garmin, or external files with reconciliation & deduplication
   const handleBatchImportWorkouts = (newWorkouts: WorkoutRun[]) => {
+    let deletedIds: string[] = [];
     setWorkouts((prev) => {
       let updated: WorkoutRun[];
       if (newWorkouts.some((w) => w.source === 'strava')) {
         updated = reconcileStravaWorkouts(prev, newWorkouts);
+        const updatedIds = new Set(updated.map((w) => w.id));
+        deletedIds = prev.filter((w) => !updatedIds.has(w.id)).map((w) => w.id);
       } else {
         const existingSignatures = new Set(
           prev.map((w) => `${w.athleteId || ''}_${w.workoutDate}_${w.distance.toFixed(1)}`)
@@ -730,11 +774,11 @@ export const App: React.FC = () => {
     });
 
     // When handleBatchImportWorkouts is called on any device (athlete or coach), immediately push to /api/workouts/bulk
-    if (typeof fetch !== 'undefined' && newWorkouts && newWorkouts.length > 0) {
+    if (typeof fetch !== 'undefined' && ((newWorkouts && newWorkouts.length > 0) || deletedIds.length > 0)) {
       fetch('/api/workouts/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workouts: newWorkouts }),
+        body: JSON.stringify({ workouts: newWorkouts, deletedIds }),
       }).catch((err) => {
         console.warn('Unable to push imported workouts to /api/workouts/bulk:', err);
       });
@@ -969,11 +1013,17 @@ export const App: React.FC = () => {
 
   // Coach recurring runs & Google Sheet assignment handler
   const handleAssignRuns = (newRuns: WorkoutRun[], notificationText: string) => {
-    setWorkouts((prev) => {
-      const isSheetSync = newRuns.length > 0 && newRuns[0].source === 'google_sheets';
-      const targetAthId = newRuns[0]?.athleteId;
-      const targetPlanId = newRuns[0]?.planId;
+    const todayStr = formatDate(new Date());
+    const isSheetSync = newRuns.length > 0 && newRuns[0].source === 'google_sheets';
+    const targetAthId = newRuns[0]?.athleteId;
+    const targetPlanId = newRuns[0]?.planId;
 
+    // Any synced Google Sheet must ignore anything up to that date, only uploading runs from today onward
+    const eligibleRuns = isSheetSync
+      ? newRuns.filter((r) => r.workoutDate >= todayStr)
+      : newRuns;
+
+    setWorkouts((prev) => {
       // If syncing a Google Sheet for an athlete, replace previous uncompleted sheet workouts for that athlete/plan to prevent duplicates
       const filteredPrev = isSheetSync
         ? prev.filter(
@@ -987,10 +1037,21 @@ export const App: React.FC = () => {
           )
         : prev;
 
-      const updated = [...filteredPrev, ...newRuns];
+      const updated = [...filteredPrev, ...eligibleRuns];
       saveStoredWorkouts(updated);
       return updated;
     });
+
+    // Sync newly assigned workouts to Cloudflare D1
+    if (typeof fetch !== 'undefined' && eligibleRuns.length > 0) {
+      fetch('/api/workouts/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workouts: eligibleRuns }),
+      }).catch((err) => {
+        console.warn('Unable to push assigned workouts to cloud:', err);
+      });
+    }
 
     const notif: CoachNotification = {
       id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -1056,7 +1117,7 @@ export const App: React.FC = () => {
         onOpenInvite={() => setIsInviteModalOpen(true)}
         onSignOut={handleSignOut}
         onOpenStravaConnect={() => setIsStravaModalOpen(true)}
-        stravaConnected={Boolean(settings.stravaConnected)}
+        stravaConnected={Boolean(isActiveAthleteStravaConnected)}
         isStravaAutoSyncing={isStravaAutoSyncing}
       />
 
@@ -1174,7 +1235,7 @@ export const App: React.FC = () => {
             weeklyMileageTarget={settings.weeklyMileageTarget}
             activeWeekStartDate={activeWeekStartDate}
             onOpenStravaConnect={() => setIsStravaModalOpen(true)}
-            stravaConnected={Boolean(settings.stravaConnected)}
+            stravaConnected={Boolean(isActiveAthleteStravaConnected)}
           />
         )}
 
@@ -1329,9 +1390,7 @@ export const App: React.FC = () => {
           setStravaOAuthStatus(null);
         }}
         currentUser={currentUser}
-        activeAthlete={
-          roster.find((u) => u.id === selectedAthleteFilter) || currentUser
-        }
+        activeAthlete={activeAthlete}
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
         onImportRuns={handleBatchImportWorkouts}

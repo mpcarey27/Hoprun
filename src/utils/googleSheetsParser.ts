@@ -879,6 +879,7 @@ export function convertSheetTabToPlanAndWorkouts(params: {
   athleteName: string;
   distanceUnit?: DistanceUnit;
   doubleRunMode?: DoubleRunSplitMode;
+  minDate?: string;
 }): {
   plan: TrainingPlan;
   workouts: WorkoutRun[];
@@ -892,6 +893,7 @@ export function convertSheetTabToPlanAndWorkouts(params: {
     athleteName,
     distanceUnit = 'mi',
     doubleRunMode = 'combined',
+    minDate,
   } = params;
 
   const planId = `plan_gsheet_${sheetTab.spreadsheetId.slice(0, 8)}_${sheetTab.tabName.toLowerCase()}`;
@@ -915,6 +917,11 @@ export function convertSheetTabToPlanAndWorkouts(params: {
 
       // Only create assigned WorkoutRun calendar entries for active running days (distance > 0)
       if (day.distance <= 0 || day.runType === 'day_off') {
+        return;
+      }
+
+      // Ignore past workouts strictly prior to minDate (e.g. upload runs from today onward)
+      if (minDate && day.date < minDate) {
         return;
       }
 

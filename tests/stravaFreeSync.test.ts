@@ -12,7 +12,12 @@ import {
   encodeStravaOAuthState,
   decodeStravaOAuthState,
   reconcileStravaWorkouts,
+  isGoogleSheetRun,
 } from '../src/utils/stravaSync';
+import {
+  convertSheetTabToPlanAndWorkouts,
+  ELISE_REFERENCE_TABS,
+} from '../src/utils/googleSheetsParser';
 import { syncWorkoutsFromCloud, sanitizeLegacyWorkouts, addAthleteToRoster } from '../src/utils/storage';
 
 describe('Free Strava Sync & Archive Import (TDD)', () => {
@@ -424,5 +429,132 @@ describe('Free Strava Sync & Archive Import (TDD)', () => {
     const coachRun = sanitized.find((w: any) => w.id === 'run_michael_1');
     expect(coachRun?.athleteId).toBe('user_michael_carey');
     expect(coachRun?.athleteName).toBe('Michael Carey');
+  });
+
+  it('reconcileStravaWorkouts deletes imported Google Sheet runs on the synced day and previously, while preserving future sheet runs and other athletes runs', () => {
+    const existingWorkouts: any[] = [
+      // Past Google Sheet run for Elise (e.g. from September)
+      {
+        id: 'gsheet_Indy_2026-09-10_1',
+        workoutDate: '2026-09-10',
+        runOrder: 1,
+        distance: 8,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 24,
+        comments: 'Synced from Google Sheet (Indy tab, Week of 9/7)',
+        completed: false,
+        source: 'google_sheets',
+        athleteId: 'user_1793482686680_2wma',
+        athleteName: 'Elise Whisler',
+      },
+      // Same-day Google Sheet run for Elise on 2026-11-01
+      {
+        id: 'gsheet_Indy_2026-11-01_1',
+        workoutDate: '2026-11-01',
+        runOrder: 1,
+        distance: 12,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 36,
+        comments: 'Synced from Google Sheet (Indy tab, Week of 10/26)',
+        completed: false,
+        source: 'google_sheets',
+        athleteId: 'user_1793482686680_2wma',
+        athleteName: 'Elise Whisler',
+      },
+      // Future Google Sheet run for Elise on 2026-11-05
+      {
+        id: 'gsheet_Indy_2026-11-05_1',
+        workoutDate: '2026-11-05',
+        runOrder: 1,
+        distance: 7,
+        distanceUnit: 'mi',
+        runType: 'tempo',
+        multiplier: 4.5,
+        load: 31.5,
+        comments: 'Synced from Google Sheet (Indy tab, Week of 11/2)',
+        completed: false,
+        source: 'google_sheets',
+        athleteId: 'user_1793482686680_2wma',
+        athleteName: 'Elise Whisler',
+      },
+      // Google Sheet run for Robert Reynoso on 2026-10-31 (should NOT be affected when Elise syncs)
+      {
+        id: 'gsheet_Rob_2026-10-31_1',
+        workoutDate: '2026-10-31',
+        runOrder: 1,
+        distance: 10,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 30,
+        comments: 'Synced from Google Sheet (Rob Plan)',
+        completed: false,
+        source: 'google_sheets',
+        athleteId: 'user_1793563915467_10fr',
+        athleteName: 'Robert Reynoso',
+      },
+    ];
+
+    // Incoming Strava runs synced for Elise up to 2026-11-01
+    const incomingStravaWorkouts: any[] = [
+      {
+        id: 'strava_e_1101',
+        workoutDate: '2026-11-01',
+        runOrder: 1,
+        distance: 12.02,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 36.1,
+        comments: 'Synced via Strava (Garmin Forerunner 265S)',
+        completed: true,
+        source: 'strava',
+        athleteId: 'user_1793482686680_2wma',
+        athleteName: 'Elise Whisler',
+      },
+    ];
+
+    const result = reconcileStravaWorkouts(existingWorkouts, incomingStravaWorkouts);
+
+    // Elise's past and same-day Google Sheet runs (9/10 and 11/01) must be DELETED!
+    expect(result.find((w) => w.id === 'gsheet_Indy_2026-09-10_1')).toBeUndefined();
+    expect(result.find((w) => w.id === 'gsheet_Indy_2026-11-01_1')).toBeUndefined();
+
+    // Elise's completed Strava run on 11/01 must be present
+    expect(result.find((w) => w.id === 'strava_e_1101')).toBeDefined();
+
+    // Elise's future Google Sheet run on 11/05 must be PRESERVED
+    expect(result.find((w) => w.id === 'gsheet_Indy_2026-11-05_1')).toBeDefined();
+
+    // Robert's Google Sheet run must be PRESERVED (Elise's sync doesn't touch Rob's plan)
+    expect(result.find((w) => w.id === 'gsheet_Rob_2026-10-31_1')).toBeDefined();
+  });
+
+  it('convertSheetTabToPlanAndWorkouts with minDate strictly ignores past runs and only returns workouts from minDate onward', () => {
+    const indyTab = ELISE_REFERENCE_TABS['Indy'];
+    const cutoffDate = '2026-11-02';
+
+    const result = convertSheetTabToPlanAndWorkouts({
+      sheetTab: indyTab,
+      sheetUrl: 'https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg',
+      coachId: 'user_michael_carey',
+      coachName: 'Michael Carey',
+      athleteId: 'user_1793482686680_2wma',
+      athleteName: 'Elise Whisler',
+      doubleRunMode: 'combined',
+      minDate: cutoffDate,
+    });
+
+    // All returned workouts must have workoutDate >= 2026-11-02
+    expect(result.workouts.length).toBeGreaterThan(0);
+    expect(result.workouts.every((w) => w.workoutDate >= cutoffDate)).toBe(true);
+
+    // Any workouts from August, September, October must NOT be present
+    const pastWorkouts = result.workouts.filter((w) => w.workoutDate < cutoffDate);
+    expect(pastWorkouts.length).toBe(0);
   });
 });

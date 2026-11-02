@@ -316,9 +316,13 @@ export const AdminPlanModal: React.FC<Props> = ({
 
   const handleAssignPlanDirectly = () => {
     if (!onAssignRuns) return;
-    const plannedDays = activePlan.days.filter((d) => d.targetDistance > 0);
+    const todayStr = formatDate(new Date());
+    const plannedDays = activePlan.days.filter((d) => {
+      const dateStr = addDays(activePlan.startDate, d.dayIndex);
+      return d.targetDistance > 0 && dateStr >= todayStr;
+    });
     if (plannedDays.length === 0) {
-      alert('Please configure at least one day with distance > 0 in the plan before assigning.');
+      alert(`All workouts in this plan are in the past. Please configure at least one workout on or after today (${todayStr}) before assigning.`);
       return;
     }
 
@@ -482,6 +486,7 @@ export const AdminPlanModal: React.FC<Props> = ({
 
   const handleAssignGoogleSheetDirectly = () => {
     if (!isCoach || !onAssignRuns || !parsedSheetTab) return;
+    const todayStr = formatDate(new Date());
     const { plan, workouts: sheetWorkouts } = convertSheetTabToPlanAndWorkouts({
       sheetTab: parsedSheetTab,
       sheetUrl,
@@ -491,15 +496,16 @@ export const AdminPlanModal: React.FC<Props> = ({
       athleteName: targetAthlete.name,
       distanceUnit,
       doubleRunMode,
+      minDate: todayStr,
     });
 
-    const notifMsg = `Coach ${currentUser.name || 'Michael Carey'} synced & assigned "${plan.title}" (${sheetWorkouts.length} color-coded workouts across ${parsedSheetTab.weeks.length} weeks, ${parsedSheetTab.totalMiles} mi) from Google Sheets to ${targetAthlete.name}'s schedule!`;
+    const notifMsg = `Coach ${currentUser.name || 'Michael Carey'} synced & assigned "${plan.title}" (${sheetWorkouts.length} upcoming workouts starting ${todayStr}) from Google Sheets to ${targetAthlete.name}'s schedule!`;
     onAssignRuns(sheetWorkouts, notifMsg);
     onSavePlan(plan);
     setActivePlan(plan);
     setWeeksCount(plan.weeksCount || parsedSheetTab.weeks.length);
     setAssignDirectSuccess(
-      `✓ Assigned ${sheetWorkouts.length} workouts (${parsedSheetTab.weeks.length} weeks, ${parsedSheetTab.totalMiles} miles) from "${parsedSheetTab.tabName}" Google Sheet to ${targetAthlete.name}!`
+      `✓ Assigned ${sheetWorkouts.length} upcoming workouts from "${parsedSheetTab.tabName}" Google Sheet to ${targetAthlete.name} (starting ${todayStr} onward; historical dates prior to today ignored)!`
     );
     setTimeout(() => setAssignDirectSuccess(''), 4500);
   };

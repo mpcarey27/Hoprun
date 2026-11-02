@@ -45,9 +45,29 @@ export const StravaConnectModal: React.FC<Props> = ({
   oauthStatus,
 }) => {
   const effectiveAthlete = activeAthlete || currentUser;
-  const isConnected = Boolean(
-    settings.stravaConnected && (settings.stravaAccessToken || settings.stravaClientId)
+  const isViewingAnotherAthlete = Boolean(
+    currentUser.role === 'coach' &&
+      effectiveAthlete &&
+      (effectiveAthlete.id !== currentUser.id ||
+        (effectiveAthlete.email && currentUser.email && effectiveAthlete.email !== currentUser.email))
   );
+
+  const [athleteConnection, setAthleteConnection] = useState<{
+    accessToken: string;
+    refreshToken: string;
+    expiresAt?: number;
+    athleteName?: string;
+    clientId?: string;
+    clientSecret?: string;
+    lastSynced?: string;
+  } | null>(null);
+
+  const isConnected = isViewingAnotherAthlete
+    ? Boolean(athleteConnection?.accessToken || athleteConnection?.refreshToken)
+    : Boolean(
+        (settings.stravaConnected && (settings.stravaAccessToken || settings.stravaClientId)) ||
+          athleteConnection?.accessToken
+      );
 
   // Mode state: 'oauth' (1-click free connect), 'archive' (ZIP / FIT / GPX dropzone), 'token' (manual PAT)
   const [activeMode, setActiveMode] = useState<'oauth' | 'archive' | 'token'>('oauth');
@@ -93,6 +113,39 @@ export const StravaConnectModal: React.FC<Props> = ({
       cancelled = true;
     };
   }, []);
+
+  // Fetch athlete Strava connection from D1 when modal opens or active athlete changes
+  useEffect(() => {
+    let cancelled = false;
+    const targetEmail = effectiveAthlete?.email || currentUser?.email;
+    if (!targetEmail || !isOpen) return;
+
+    fetch(`/api/strava-connection?email=${encodeURIComponent(targetEmail)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.connection?.access_token) {
+          setAthleteConnection({
+            accessToken: data.connection.access_token,
+            refreshToken: data.connection.refresh_token || '',
+            expiresAt: data.connection.expires_at || 0,
+            athleteName: data.connection.athlete_name || effectiveAthlete?.name || '',
+            clientId: data.connection.client_id || '',
+            clientSecret: data.connection.client_secret || '',
+            lastSynced: data.connection.updated_at,
+          });
+        } else {
+          setAthleteConnection(null);
+        }
+      })
+      .catch((err) => {
+        console.warn('Unable to load athlete Strava connection:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveAthlete?.id, effectiveAthlete?.email, currentUser?.email, isOpen]);
 
   useEffect(() => {
     if (settings.stravaClientId && !clientId) setClientId(settings.stravaClientId);
@@ -142,18 +195,20 @@ export const StravaConnectModal: React.FC<Props> = ({
     const effectiveStartDate = customStartDate || ytdDateString;
 
     // Save timeline preference
-    const currentStored = loadStoredSettings();
-    saveStoredSettings({
-      ...currentStored,
-      stravaClientId: effectiveId,
-      stravaClientSecret: effectiveSecret || undefined,
-      stravaSyncStartDate: effectiveStartDate,
-    });
-    onUpdateSettings({
-      stravaClientId: effectiveId,
-      stravaClientSecret: effectiveSecret || undefined,
-      stravaSyncStartDate: effectiveStartDate,
-    });
+    if (!isViewingAnotherAthlete) {
+      const currentStored = loadStoredSettings();
+      saveStoredSettings({
+        ...currentStored,
+        stravaClientId: effectiveId,
+        stravaClientSecret: effectiveSecret || undefined,
+        stravaSyncStartDate: effectiveStartDate,
+      });
+      onUpdateSettings({
+        stravaClientId: effectiveId,
+        stravaClientSecret: effectiveSecret || undefined,
+        stravaSyncStartDate: effectiveStartDate,
+      });
+    }
 
     const state = encodeStravaOAuthState({
       clientId: effectiveId,
@@ -210,14 +265,32 @@ export const StravaConnectModal: React.FC<Props> = ({
         onImportRuns(normalizedWorkouts);
       }
 
-      onUpdateSettings({
-        stravaConnected: true,
-        stravaAccessToken: cleanToken,
-        stravaAthleteName: effectiveAthlete.name || 'Strava Athlete',
-        stravaAutoSync: true,
-        stravaLastSyncTime: new Date().toISOString(),
-        stravaSyncStartDate: effectiveStartDate,
-      });
+      if (isViewingAnotherAthlete && effectiveAthlete.email) {
+        await fetch('/api/strava-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: effectiveAthlete.email,
+            accessToken: cleanToken,
+            athleteName: effectiveAthlete.name,
+          }),
+        }).catch(console.warn);
+        setAthleteConnection({
+          accessToken: cleanToken,
+          refreshToken: '',
+          athleteName: effectiveAthlete.name,
+          lastSynced: new Date().toISOString(),
+        });
+      } else {
+        onUpdateSettings({
+          stravaConnected: true,
+          stravaAccessToken: cleanToken,
+          stravaAthleteName: effectiveAthlete.name || 'Strava Athlete',
+          stravaAutoSync: true,
+          stravaLastSyncTime: new Date().toISOString(),
+          stravaSyncStartDate: effectiveStartDate,
+        });
+      }
 
       setToastMessage(
         `✓ Connected! Synced ${normalizedWorkouts.length} runs starting from ${effectiveStartDate} forward.`
@@ -255,12 +328,12 @@ export const StravaConnectModal: React.FC<Props> = ({
     setIsSyncing(true);
     try {
       const tokenData = await exchangeStravaCode(effectiveId, effectiveSecret, extractedCode, {
-        athleteEmail: currentUser.email,
-        athleteName: currentUser.name,
+        athleteEmail: effectiveAthlete.email || currentUser.email,
+        athleteName: effectiveAthlete.name || currentUser.name,
       });
       const athleteName = tokenData.athlete
         ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
-        : currentUser.name || 'Strava Athlete';
+        : effectiveAthlete.name || currentUser.name || 'Strava Athlete';
 
       const effectiveStartDate = customStartDate || ytdDateString;
       const afterEpoch = parseDateToEpochSeconds(effectiveStartDate);
@@ -271,13 +344,39 @@ export const StravaConnectModal: React.FC<Props> = ({
           clientId: effectiveId,
           clientSecret: effectiveSecret,
           refreshToken: tokenData.refresh_token,
-          athleteEmail: currentUser.email,
-          onTokenRefreshed: (refreshed) => {
-            onUpdateSettings({
-              stravaAccessToken: refreshed.access_token,
-              stravaRefreshToken: refreshed.refresh_token,
-              stravaExpiresAt: refreshed.expires_at,
-            });
+          athleteEmail: effectiveAthlete.email || currentUser.email,
+          onTokenRefreshed: async (refreshed) => {
+            if (isViewingAnotherAthlete && effectiveAthlete.email) {
+              await fetch('/api/strava-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email: effectiveAthlete.email,
+                  clientId: effectiveId,
+                  clientSecret: effectiveSecret,
+                  accessToken: refreshed.access_token,
+                  refreshToken: refreshed.refresh_token,
+                  expiresAt: refreshed.expires_at,
+                  athleteName: effectiveAthlete.name,
+                }),
+              }).catch(console.warn);
+              setAthleteConnection((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      accessToken: refreshed.access_token,
+                      refreshToken: refreshed.refresh_token,
+                      expiresAt: refreshed.expires_at,
+                    }
+                  : null
+              );
+            } else {
+              onUpdateSettings({
+                stravaAccessToken: refreshed.access_token,
+                stravaRefreshToken: refreshed.refresh_token,
+                stravaExpiresAt: refreshed.expires_at,
+              });
+            }
           },
         },
         (count, page) => {
@@ -304,18 +403,43 @@ export const StravaConnectModal: React.FC<Props> = ({
         onImportRuns(normalizedWorkouts);
       }
 
-      onUpdateSettings({
-        stravaClientId: effectiveId,
-        stravaClientSecret: effectiveSecret || undefined,
-        stravaConnected: true,
-        stravaAccessToken: tokenData.access_token,
-        stravaRefreshToken: tokenData.refresh_token,
-        stravaExpiresAt: tokenData.expires_at,
-        stravaAthleteName: athleteName,
-        stravaAutoSync: true,
-        stravaLastSyncTime: new Date().toISOString(),
-        stravaSyncStartDate: effectiveStartDate,
-      });
+      if (isViewingAnotherAthlete && effectiveAthlete.email) {
+        await fetch('/api/strava-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: effectiveAthlete.email,
+            clientId: effectiveId,
+            clientSecret: effectiveSecret,
+            accessToken: tokenData.access_token,
+            refreshToken: tokenData.refresh_token,
+            expiresAt: tokenData.expires_at,
+            athleteName: effectiveAthlete.name,
+          }),
+        }).catch(console.warn);
+        setAthleteConnection({
+          accessToken: tokenData.access_token,
+          refreshToken: tokenData.refresh_token,
+          expiresAt: tokenData.expires_at,
+          athleteName: effectiveAthlete.name,
+          clientId: effectiveId,
+          clientSecret: effectiveSecret,
+          lastSynced: new Date().toISOString(),
+        });
+      } else {
+        onUpdateSettings({
+          stravaClientId: effectiveId,
+          stravaClientSecret: effectiveSecret || undefined,
+          stravaConnected: true,
+          stravaAccessToken: tokenData.access_token,
+          stravaRefreshToken: tokenData.refresh_token,
+          stravaExpiresAt: tokenData.expires_at,
+          stravaAthleteName: athleteName,
+          stravaAutoSync: true,
+          stravaLastSyncTime: new Date().toISOString(),
+          stravaSyncStartDate: effectiveStartDate,
+        });
+      }
 
       setCallbackInput('');
       setSyncProgressMessage('');
@@ -381,8 +505,28 @@ export const StravaConnectModal: React.FC<Props> = ({
 
   // 3. Sync timeline activities starting from a specific date forward
   const handleSyncTimeline = async (targetStartDate?: string) => {
-    if (!settings.stravaAccessToken && !settings.stravaRefreshToken) {
-      setErrorMessage('No active Strava connection found. Please connect with Strava first.');
+    let activeToken = isViewingAnotherAthlete
+      ? athleteConnection?.accessToken || ''
+      : settings.stravaAccessToken || athleteConnection?.accessToken || '';
+    let activeRefreshToken = isViewingAnotherAthlete
+      ? athleteConnection?.refreshToken || ''
+      : settings.stravaRefreshToken || athleteConnection?.refreshToken || '';
+    const activeClientId = isViewingAnotherAthlete
+      ? athleteConnection?.clientId || masterClientId
+      : settings.stravaClientId || athleteConnection?.clientId || masterClientId;
+    const activeClientSecret = isViewingAnotherAthlete
+      ? athleteConnection?.clientSecret || ''
+      : settings.stravaClientSecret || athleteConnection?.clientSecret || '';
+    const activeEmail = isViewingAnotherAthlete
+      ? effectiveAthlete.email
+      : currentUser.email;
+
+    if (!activeToken && !activeRefreshToken) {
+      setErrorMessage(
+        isViewingAnotherAthlete
+          ? `${effectiveAthlete.name} has not connected their Strava account yet. Connect their Strava first.`
+          : 'No active Strava connection found. Please connect with Strava first.'
+      );
       return;
     }
 
@@ -391,22 +535,48 @@ export const StravaConnectModal: React.FC<Props> = ({
 
     setIsSyncing(true);
     setErrorMessage('');
-    setSyncProgressMessage(`Starting timeline sync from ${effectiveStartDate}...`);
+    setSyncProgressMessage(`Starting timeline sync from ${effectiveStartDate} for ${effectiveAthlete.name}...`);
 
     try {
-      let activeToken = settings.stravaAccessToken || '';
       const refreshConfig = {
-        clientId: settings.stravaClientId || masterClientId,
-        clientSecret: settings.stravaClientSecret,
-        refreshToken: settings.stravaRefreshToken,
-        athleteEmail: currentUser.email,
-        onTokenRefreshed: (tokenData: any) => {
+        clientId: activeClientId || masterClientId,
+        clientSecret: activeClientSecret,
+        refreshToken: activeRefreshToken,
+        athleteEmail: activeEmail,
+        onTokenRefreshed: async (tokenData: any) => {
           activeToken = tokenData.access_token;
-          onUpdateSettings({
-            stravaAccessToken: tokenData.access_token,
-            stravaRefreshToken: tokenData.refresh_token,
-            stravaExpiresAt: tokenData.expires_at,
-          });
+          activeRefreshToken = tokenData.refresh_token;
+          if (isViewingAnotherAthlete && effectiveAthlete.email) {
+            await fetch('/api/strava-connection', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                email: effectiveAthlete.email,
+                clientId: activeClientId,
+                clientSecret: activeClientSecret,
+                accessToken: tokenData.access_token,
+                refreshToken: tokenData.refresh_token,
+                expiresAt: tokenData.expires_at,
+                athleteName: effectiveAthlete.name,
+              }),
+            }).catch(console.warn);
+            setAthleteConnection((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    accessToken: tokenData.access_token,
+                    refreshToken: tokenData.refresh_token,
+                    expiresAt: tokenData.expires_at,
+                  }
+                : null
+            );
+          } else {
+            onUpdateSettings({
+              stravaAccessToken: tokenData.access_token,
+              stravaRefreshToken: tokenData.refresh_token,
+              stravaExpiresAt: tokenData.expires_at,
+            });
+          }
         },
       };
 
@@ -416,7 +586,7 @@ export const StravaConnectModal: React.FC<Props> = ({
         refreshConfig,
         (count, page) => {
           setSyncProgressMessage(
-            `Pulling activities from ${effectiveStartDate}... (Page ${page}, ${count} runs found)`
+            `Pulling activities for ${effectiveAthlete.name} from ${effectiveStartDate}... (Page ${page}, ${count} runs found)`
           );
         }
       );
@@ -439,13 +609,15 @@ export const StravaConnectModal: React.FC<Props> = ({
         onImportRuns(normalizedWorkouts);
       }
 
-      onUpdateSettings({
-        stravaLastSyncTime: new Date().toISOString(),
-        stravaSyncStartDate: effectiveStartDate,
-      });
+      if (!isViewingAnotherAthlete) {
+        onUpdateSettings({
+          stravaLastSyncTime: new Date().toISOString(),
+          stravaSyncStartDate: effectiveStartDate,
+        });
+      }
 
       setToastMessage(
-        `✓ Timeline sync complete! Synced ${normalizedWorkouts.length} runs starting from ${effectiveStartDate} forward.`
+        `✓ Timeline sync complete! Synced ${normalizedWorkouts.length} runs for ${effectiveAthlete.name} starting from ${effectiveStartDate} forward.`
       );
       setSyncProgressMessage('');
       setTimeout(() => setToastMessage(''), 4500);
@@ -463,7 +635,18 @@ export const StravaConnectModal: React.FC<Props> = ({
   };
 
   // 5. Disconnect
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
+    if (isViewingAnotherAthlete && effectiveAthlete.email) {
+      await fetch('/api/strava-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: effectiveAthlete.email, stravaConnected: false }),
+      }).catch(console.warn);
+      setAthleteConnection(null);
+      setToastMessage(`Disconnected Strava for ${effectiveAthlete.name}.`);
+      setTimeout(() => setToastMessage(''), 2000);
+      return;
+    }
     onUpdateSettings({
       stravaConnected: false,
       stravaAccessToken: undefined,
@@ -586,7 +769,9 @@ export const StravaConnectModal: React.FC<Props> = ({
                   <div>
                     <span>Athlete: </span>
                     <span className="text-primary font-bold">
-                      {settings.stravaAthleteName || currentUser.name}
+                      {isViewingAnotherAthlete
+                        ? athleteConnection?.athleteName || effectiveAthlete.name
+                        : settings.stravaAthleteName || athleteConnection?.athleteName || currentUser.name}
                     </span>
                   </div>
                   <div>
@@ -595,11 +780,15 @@ export const StravaConnectModal: React.FC<Props> = ({
                       All runs from {customStartDate || settings.stravaSyncStartDate || ytdDateString} forward
                     </span>
                   </div>
-                  {settings.stravaLastSyncTime && (
+                  {(isViewingAnotherAthlete ? athleteConnection?.lastSynced : settings.stravaLastSyncTime) && (
                     <div>
                       <span>Last Synced: </span>
                       <span className="text-accent">
-                        {new Date(settings.stravaLastSyncTime).toLocaleTimeString([], {
+                        {new Date(
+                          (isViewingAnotherAthlete
+                            ? athleteConnection?.lastSynced
+                            : settings.stravaLastSyncTime)!
+                        ).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
                         })}
@@ -739,7 +928,7 @@ export const StravaConnectModal: React.FC<Props> = ({
                   onClick={handleSyncLatest}
                   disabled={isSyncing}
                 >
-                  {isSyncing ? 'Pulling Runs...' : 'Sync Latest Runs Now 🔄'}
+                  {isSyncing ? 'Pulling Runs...' : `Sync Latest Runs (${effectiveAthlete.name}) 🔄`}
                 </button>
                 <button
                   type="button"
@@ -754,6 +943,19 @@ export const StravaConnectModal: React.FC<Props> = ({
           ) : (
             /* Setup Guide & Connect View */
             <div className="space-y-4">
+              {isViewingAnotherAthlete && (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400 font-bold text-sm">ℹ</span>
+                    <strong className="text-amber-400 text-xs font-bold font-mono">
+                      {effectiveAthlete.name} has not connected their Strava account yet
+                    </strong>
+                  </div>
+                  <p className="text-xs text-secondary leading-relaxed pl-5">
+                    Click <strong>Connect with Strava</strong> below to link {effectiveAthlete.name}&apos;s Strava account directly to their calendar profile.
+                  </p>
+                </div>
+              )}
               {/* Relay explanation */}
               <div className="p-3.5 rounded-xl bg-surface-elevated border border-subtle">
                 <div className="flex items-center gap-2 mb-1.5">

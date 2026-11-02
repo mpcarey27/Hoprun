@@ -408,6 +408,17 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           ? [body]
           : [];
 
+        // Process any deleted workout IDs (e.g. Google Sheet runs replaced by Strava sync)
+        if (Array.isArray(body.deletedIds) && body.deletedIds.length > 0) {
+          for (const delId of body.deletedIds) {
+            try {
+              await env.DB.prepare('DELETE FROM workouts WHERE id = ?').bind(String(delId)).run();
+            } catch {
+              // ignore
+            }
+          }
+        }
+
         if (rawWorkouts.length > 0) {
           // Fetch current roster from D1 so any newly added athlete is dynamically matched
           let rosterAthletes: Array<{ id: string; name: string; email: string }> = [];
@@ -511,6 +522,30 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         }
 
         return new Response(JSON.stringify({ success: true, count: 0 }), { headers: corsHeaders });
+      }
+
+      if (method === 'DELETE') {
+        const id = url.searchParams.get('id');
+        const athleteId = url.searchParams.get('athleteId');
+        const beforeDate = url.searchParams.get('beforeDate');
+        const source = url.searchParams.get('source');
+
+        if (id) {
+          await env.DB.prepare('DELETE FROM workouts WHERE id = ?').bind(id).run();
+          return new Response(JSON.stringify({ success: true, deleted: id }), { headers: corsHeaders });
+        }
+
+        if (athleteId && beforeDate && source === 'google_sheets') {
+          await env.DB.prepare(
+            `DELETE FROM workouts 
+             WHERE athlete_id = ? 
+               AND workout_date <= ? 
+               AND (source = 'google_sheets' OR comments LIKE '%Google Sheet%' OR id LIKE 'gsheet_%')`
+          ).bind(athleteId, beforeDate).run();
+          return new Response(JSON.stringify({ success: true, athleteId, beforeDate }), { headers: corsHeaders });
+        }
+
+        return new Response(JSON.stringify({ success: true, message: 'No match' }), { headers: corsHeaders });
       }
     }
 
@@ -679,6 +714,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
       if (method === 'GET') {
         const email = (url.searchParams.get('email') || '').trim().toLowerCase();
+        if (email === 'all') {
+          const { results } = await env.DB.prepare(
+            'SELECT user_email, athlete_name, updated_at FROM strava_connections'
+          ).all();
+          return new Response(JSON.stringify({ connections: results || [] }), { headers: corsHeaders });
+        }
         if (!email) {
           return new Response(JSON.stringify({ connection: null }), { headers: corsHeaders });
         }

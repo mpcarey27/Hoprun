@@ -680,6 +680,19 @@ function isSameRunner(a: WorkoutRun, b: WorkoutRun): boolean {
   return false;
 }
 
+export function isGoogleSheetRun(w: WorkoutRun): boolean {
+  if (w.source === 'google_sheets') return true;
+  if (w.id && typeof w.id === 'string' && w.id.startsWith('gsheet_')) return true;
+  if (w.planId && typeof w.planId === 'string' && w.planId.startsWith('plan_gsheet_')) return true;
+  if (
+    typeof w.comments === 'string' &&
+    (w.comments.includes('Google Sheet') || w.comments.includes('Synced from Google Sheet'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function isSameStravaActivity(a: WorkoutRun, b: WorkoutRun): boolean {
   if (a.id === b.id) return true;
   if (
@@ -788,19 +801,54 @@ export function reconcileStravaWorkouts(
     }
   }
 
-  // Step 2: Delete any existing non-Strava calendar/prescribed runs on the same date
-  // for the same runner in exchange for the synced Strava run(s).
+  // Step 2:
+  // a) Delete any non-Strava calendar/prescribed runs on the exact same date as an incoming Strava run for this runner.
+  // b) Delete any imported runs from a Google Sheet on that day and previously (workoutDate <= maxDate) for any runner receiving Strava sync.
+  const todayStr = formatDate(new Date());
+
+  // Determine the latest Strava run date for each runner receiving synced runs
+  const runnerMaxStravaDate = new Map<string, string>();
+  for (const sRun of preparedIncoming) {
+    if (sRun.source !== 'strava') continue;
+    const key = sRun.athleteId || sRun.athleteName || 'default';
+    const curr = runnerMaxStravaDate.get(key) || '';
+    if (sRun.workoutDate > curr) {
+      runnerMaxStravaDate.set(key, sRun.workoutDate);
+    }
+  }
+
   const filteredExisting = existingWorkouts.filter((existing) => {
     if (existing.source === 'strava') {
       return true;
     }
+
+    // 1. Same-day replacement: Any non-Strava run on the exact same date as a synced Strava run for this runner is replaced
     const replacedByStrava = preparedIncoming.some(
       (sRun) =>
         sRun.source === 'strava' &&
         existing.workoutDate === sRun.workoutDate &&
         isSameRunner(existing, sRun)
     );
-    return !replacedByStrava;
+    if (replacedByStrava) {
+      return false;
+    }
+
+    // 2. Google Sheet deletion: Delete any imported runs from a Google sheet on that day and previously
+    if (isGoogleSheetRun(existing)) {
+      const runnerKey = existing.athleteId || existing.athleteName || 'default';
+      const matchingIncomingRunner = preparedIncoming.some(
+        (sRun) => sRun.source === 'strava' && isSameRunner(existing, sRun)
+      );
+      if (matchingIncomingRunner) {
+        const maxStravaDate = runnerMaxStravaDate.get(runnerKey) || todayStr;
+        const cutoffDate = maxStravaDate > todayStr ? maxStravaDate : todayStr;
+        if (existing.workoutDate <= cutoffDate) {
+          return false; // Deleted on that day and previously!
+        }
+      }
+    }
+
+    return true;
   });
 
   // Step 3: Merge incoming Strava workouts, updating existing Strava workouts in-place
