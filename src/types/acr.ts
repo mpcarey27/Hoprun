@@ -162,6 +162,7 @@ export interface UserProfile {
   googleId?: string;
   googleSheetUrl?: string;
   googleSheetTab?: string;
+  googleSheetTabs?: string[];
   googleSheetLastSyncedAt?: string;
 }
 

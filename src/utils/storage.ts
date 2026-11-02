@@ -133,6 +133,7 @@ function mergeRoster(entries: UserProfile[]): UserProfile[] {
         ...COACH_PROFILE,
         googleSheetUrl: u.googleSheetUrl ?? existingCoach.googleSheetUrl,
         googleSheetTab: u.googleSheetTab ?? existingCoach.googleSheetTab,
+        googleSheetTabs: u.googleSheetTabs ?? existingCoach.googleSheetTabs,
         googleSheetLastSyncedAt: u.googleSheetLastSyncedAt ?? existingCoach.googleSheetLastSyncedAt,
       });
       continue;
@@ -190,6 +191,7 @@ export async function pushRosterUserToCloud(user: UserProfile): Promise<void> {
         name: user.name,
         googleSheetUrl: user.googleSheetUrl || null,
         googleSheetTab: user.googleSheetTab || null,
+        googleSheetTabs: user.googleSheetTabs ? JSON.stringify(user.googleSheetTabs) : null,
       }),
     });
   } catch (e) {
@@ -209,15 +211,28 @@ export async function syncRosterFromCloud(): Promise<UserProfile[]> {
     if (!res.ok) return local;
     const data = await res.json().catch(() => null);
     const remote: UserProfile[] = Array.isArray(data?.users)
-      ? data.users.map((r: any) => ({
-          id: r.id,
-          email: r.email,
-          name: r.name,
-          role: 'runner' as const,
-          avatarUrl: r.avatar_url || '',
-          googleSheetUrl: r.google_sheet_url || undefined,
-          googleSheetTab: r.google_sheet_tab || undefined,
-        }))
+      ? data.users.map((r: any) => {
+          let tabs: string[] | undefined;
+          if (Array.isArray(r.google_sheet_tabs)) {
+            tabs = r.google_sheet_tabs;
+          } else if (typeof r.google_sheet_tabs === 'string' && r.google_sheet_tabs.trim()) {
+            try {
+              tabs = JSON.parse(r.google_sheet_tabs);
+            } catch {
+              tabs = r.google_sheet_tabs.split(',').map((s: string) => s.trim()).filter(Boolean);
+            }
+          }
+          return {
+            id: r.id,
+            email: r.email,
+            name: r.name,
+            role: 'runner' as const,
+            avatarUrl: r.avatar_url || '',
+            googleSheetUrl: r.google_sheet_url || undefined,
+            googleSheetTab: r.google_sheet_tab || undefined,
+            googleSheetTabs: tabs,
+          };
+        })
       : [];
     // Local entries win for sheet link metadata the coach set on this device
     const merged = mergeRoster([...remote, ...local]);
@@ -251,44 +266,62 @@ export function addAthleteToRoster(athlete: UserProfile): UserProfile[] {
 }
 
 /**
- * Coach-only helper: saves or updates the Google Sheet URL and active tab linked to a specific athlete profile.
+ * Coach-only helper: saves or updates the Google Sheet URL, active tab, and available tabs linked to a specific athlete profile.
  */
 export function updateAthleteGoogleSheetLink(
   athleteId: string,
   googleSheetUrl: string,
-  googleSheetTab?: string
+  googleSheetTab?: string,
+  googleSheetTabs?: string[]
 ): UserProfile[] {
   const currentRoster = loadStoredRoster();
   const nowIso = new Date().toISOString();
   const exists = currentRoster.some((u) => u.id === athleteId);
+  let updatedAthlete: UserProfile | undefined;
   let updated: UserProfile[];
   if (exists) {
     updated = currentRoster.map((u) => {
       if (u.id === athleteId) {
-        return {
+        const isRob = /rob|reynoso/i.test(u.name) || /rob/i.test(u.id);
+        const effectiveTab = googleSheetTab || u.googleSheetTab || (isRob ? '11/14 5k' : 'Indy');
+        const effectiveTabs =
+          googleSheetTabs && googleSheetTabs.length > 0
+            ? googleSheetTabs
+            : u.googleSheetTabs || (isRob ? ['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k'] : undefined);
+        const obj: UserProfile = {
           ...u,
           googleSheetUrl: googleSheetUrl.trim() || undefined,
-          googleSheetTab: googleSheetTab || u.googleSheetTab || 'Indy',
+          googleSheetTab: effectiveTab,
+          googleSheetTabs: effectiveTabs,
           googleSheetLastSyncedAt: googleSheetUrl.trim() ? nowIso : undefined,
         };
+        updatedAthlete = obj;
+        return obj;
       }
       return u;
     });
   } else {
-    updated = [
-      ...currentRoster,
-      {
-        id: athleteId,
-        email: `${athleteId}@example.com`,
-        name: athleteId === 'user_rob' ? 'Rob' : athleteId,
-        role: 'runner',
-        googleSheetUrl: googleSheetUrl.trim() || undefined,
-        googleSheetTab: googleSheetTab || 'Indy',
-        googleSheetLastSyncedAt: googleSheetUrl.trim() ? nowIso : undefined,
-      },
-    ];
+    const isRob = athleteId === 'user_rob' || /rob|reynoso/i.test(athleteId);
+    const defaultTabs = isRob
+      ? ['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k']
+      : ['CIM', 'Boston', 'Indy'];
+    const newUser: UserProfile = {
+      id: athleteId,
+      email: `${athleteId}@example.com`,
+      name: isRob ? 'Rob' : athleteId,
+      role: 'runner',
+      googleSheetUrl: googleSheetUrl.trim() || undefined,
+      googleSheetTab: googleSheetTab || (isRob ? '11/14 5k' : 'Indy'),
+      googleSheetTabs: googleSheetTabs && googleSheetTabs.length > 0 ? googleSheetTabs : defaultTabs,
+      googleSheetLastSyncedAt: googleSheetUrl.trim() ? nowIso : undefined,
+    };
+    updatedAthlete = newUser;
+    updated = [...currentRoster, newUser];
   }
   saveStoredRoster(updated);
+  if (updatedAthlete) {
+    void pushRosterUserToCloud(updatedAthlete);
+  }
   return updated;
 }
 
@@ -334,6 +367,90 @@ export function findAuthUserByEmail(email: string): RegisteredUser | undefined {
   return list.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
 }
 
+/**
+ * Matches a workout to an athlete taking into account IDs, aliases, and hardware signatures:
+ * - Exact ID match (workout.athleteId === athlete.id)
+ * - Rob Reynoso: 'user_1793563915467_10fr', /rob|reynoso/i, or 'Forerunner 955'
+ * - Elise Whisler: 'user_1793482686680_2wma', /elise|whisler/i, '265', or 'Strava App'
+ * - Coach Michael Carey: matches Michael unless explicitly Rob's or Elise's
+ */
+export function isAthleteMatch(
+  workout: WorkoutRun,
+  athlete: { id: string; name?: string; email?: string }
+): boolean {
+  if (!workout || !athlete) return false;
+
+  // Exact ID match
+  if (workout.athleteId && athlete.id && workout.athleteId === athlete.id) {
+    return true;
+  }
+
+  const isAthleteRob =
+    athlete.id === 'user_1793563915467_10fr' ||
+    athlete.id === 'user_rob' ||
+    /rob|reynoso/i.test(athlete.name || '') ||
+    /rob|reynoso/i.test(athlete.email || '');
+
+  const isWorkoutRob =
+    /rob|reynoso/i.test(workout.athleteName || '') ||
+    /rob|reynoso/i.test(workout.athleteId || '') ||
+    workout.athleteId === 'user_1793563915467_10fr' ||
+    Boolean(workout.comments?.includes('Forerunner 955'));
+
+  if (isAthleteRob) {
+    return isWorkoutRob;
+  }
+
+  const isAthleteElise =
+    athlete.id === 'user_1793482686680_2wma' ||
+    athlete.id === 'user_elise' ||
+    /elise|whisler/i.test(athlete.name || '') ||
+    /elise|whisler/i.test(athlete.email || '');
+
+  const isWorkoutElise =
+    /elise|whisler/i.test(workout.athleteName || '') ||
+    /elise|whisler/i.test(workout.athleteId || '') ||
+    workout.athleteId === 'user_1793482686680_2wma' ||
+    Boolean(workout.comments?.includes('265')) ||
+    Boolean(workout.comments?.includes('Strava App'));
+
+  if (isAthleteElise) {
+    return isWorkoutElise;
+  }
+
+  const isAthleteCoach =
+    athlete.id === 'user_michael_carey' ||
+    athlete.id === 'user_coach_1' ||
+    athlete.id === 'user_michael_athlete' ||
+    /michael|carey/i.test(athlete.name || '') ||
+    isCoachEmail(athlete.email || '');
+
+  if (isAthleteCoach) {
+    // Matches Michael Carey unless the workout is explicitly marked as Rob's or Elise's
+    if (isWorkoutRob || isWorkoutElise) {
+      return false;
+    }
+    return (
+      !workout.athleteId ||
+      workout.athleteId === 'user_michael_carey' ||
+      workout.athleteId === 'user_coach_1' ||
+      workout.athleteId === 'user_michael_athlete' ||
+      /michael|carey/i.test(workout.athleteName || '')
+    );
+  }
+
+  // Generic athlete name matching
+  if (athlete.name && workout.athleteName) {
+    const aLower = athlete.name.trim().toLowerCase();
+    const wLower = workout.athleteName.trim().toLowerCase();
+    if (aLower && (wLower === aLower || wLower.includes(aLower) || aLower.includes(wLower))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function sanitizeLegacyWorkouts(
   workouts: WorkoutRun[],
   rosterOverride?: UserProfile[]
@@ -343,35 +460,78 @@ export function sanitizeLegacyWorkouts(
   const currentRoster = rosterOverride || loadStoredRoster();
 
   const sanitized = workouts.map((w) => {
-    if (!w.athleteId || w.athleteId === 'user_coach_1' || !w.athleteName) {
-      modified = true;
-      const comms = w.comments || '';
-      const lowerName = (w.athleteName || '').trim().toLowerCase();
+    const comms = w.comments || '';
+    const lowerName = (w.athleteName || '').trim().toLowerCase();
+    const id = w.athleteId || '';
 
-      // Dynamically check any athlete on the roster first
-      if (lowerName) {
-        const matched = currentRoster.find((u) => {
-          const uLower = u.name.trim().toLowerCase();
-          return uLower === lowerName || lowerName.includes(uLower) || uLower.includes(lowerName);
-        });
-        if (matched) {
-          return { ...w, athleteId: matched.id, athleteName: matched.name };
-        }
-      }
+    // 1. Check Rob
+    const isRob =
+      id === 'user_1793563915467_10fr' ||
+      id === 'user_rob' ||
+      /rob|reynoso/i.test(id) ||
+      /rob|reynoso/i.test(lowerName) ||
+      comms.includes('Forerunner 955');
 
-      if (comms.includes('Forerunner 955') || lowerName.includes('robert') || lowerName.includes('reynoso')) {
+    if (isRob) {
+      if (w.athleteId !== 'user_1793563915467_10fr' || w.athleteName !== 'Robert Reynoso') {
+        modified = true;
         return { ...w, athleteId: 'user_1793563915467_10fr', athleteName: 'Robert Reynoso' };
       }
-      if (
-        comms.includes('265S') ||
-        comms.includes('Strava App') ||
-        lowerName.includes('elise') ||
-        lowerName.includes('whisler')
-      ) {
+      return w;
+    }
+
+    // 2. Check Elise
+    const isElise =
+      id === 'user_1793482686680_2wma' ||
+      id === 'user_elise' ||
+      /elise|whisler/i.test(id) ||
+      /elise|whisler/i.test(lowerName) ||
+      comms.includes('265') ||
+      comms.includes('Strava App');
+
+    if (isElise) {
+      if (w.athleteId !== 'user_1793482686680_2wma' || w.athleteName !== 'Elise Whisler') {
+        modified = true;
         return { ...w, athleteId: 'user_1793482686680_2wma', athleteName: 'Elise Whisler' };
       }
-      return { ...w, athleteId: 'user_michael_carey', athleteName: w.athleteName || 'Michael Carey' };
+      return w;
     }
+
+    // 3. Other known roster athlete
+    if (lowerName || id) {
+      const matched = currentRoster.find((u) => {
+        if (u.id === COACH_PROFILE.id || isCoachEmail(u.email || '')) return false;
+        const uLower = (u.name || '').trim().toLowerCase();
+        return (
+          (id && u.id === id) ||
+          (uLower && (uLower === lowerName || lowerName.includes(uLower) || uLower.includes(lowerName)))
+        );
+      });
+      if (matched) {
+        if (w.athleteId !== matched.id || w.athleteName !== matched.name) {
+          modified = true;
+          return { ...w, athleteId: matched.id, athleteName: matched.name };
+        }
+        return w;
+      }
+    }
+
+    // 4. Default / Michael Carey
+    const isMichael =
+      !id ||
+      id === 'user_michael_carey' ||
+      id === 'user_coach_1' ||
+      id === 'user_michael_athlete' ||
+      /michael|carey/i.test(lowerName);
+
+    if (isMichael || !w.athleteId) {
+      if (w.athleteId !== 'user_michael_carey' || w.athleteName !== 'Michael Carey') {
+        modified = true;
+        return { ...w, athleteId: 'user_michael_carey', athleteName: 'Michael Carey' };
+      }
+      return w;
+    }
+
     return w;
   });
 

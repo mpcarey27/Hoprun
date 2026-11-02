@@ -636,14 +636,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           avatar_url TEXT,
           google_sheet_url TEXT,
           google_sheet_tab TEXT,
+          google_sheet_tabs TEXT,
           created_at TEXT,
           updated_at TEXT
         )`
       ).run();
 
+      // Ensure google_sheet_tabs column exists if table was previously created without it
+      try {
+        await env.DB.prepare('ALTER TABLE athlete_roster ADD COLUMN google_sheet_tabs TEXT').run();
+      } catch {
+        // column already exists
+      }
+
       if (method === 'GET') {
         const { results } = await env.DB.prepare(
-          'SELECT id, email, name, avatar_url, google_sheet_url, google_sheet_tab, created_at FROM athlete_roster ORDER BY created_at ASC'
+          'SELECT id, email, name, avatar_url, google_sheet_url, google_sheet_tab, google_sheet_tabs, created_at FROM athlete_roster ORDER BY created_at ASC'
         ).all();
         return new Response(JSON.stringify({ users: results || [] }), { headers: corsHeaders });
       }
@@ -666,13 +674,18 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           });
         }
         const now = new Date().toISOString();
+        const tabsVal = body.googleSheetTabs
+          ? (typeof body.googleSheetTabs === 'string' ? body.googleSheetTabs : JSON.stringify(body.googleSheetTabs))
+          : null;
+
         await env.DB.prepare(
-          `INSERT INTO athlete_roster (id, email, name, avatar_url, google_sheet_url, google_sheet_tab, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO athlete_roster (id, email, name, avatar_url, google_sheet_url, google_sheet_tab, google_sheet_tabs, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(email) DO UPDATE SET
              name = excluded.name,
              google_sheet_url = COALESCE(excluded.google_sheet_url, athlete_roster.google_sheet_url),
              google_sheet_tab = COALESCE(excluded.google_sheet_tab, athlete_roster.google_sheet_tab),
+             google_sheet_tabs = COALESCE(excluded.google_sheet_tabs, athlete_roster.google_sheet_tabs),
              updated_at = excluded.updated_at`
         )
           .bind(
@@ -682,6 +695,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             body.avatarUrl || '',
             body.googleSheetUrl || null,
             body.googleSheetTab || null,
+            tabsVal,
             now,
             now
           )

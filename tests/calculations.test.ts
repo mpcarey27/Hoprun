@@ -38,6 +38,8 @@ import {
   loadLastRememberedUser,
   saveUserStravaConnection,
   loadUserStravaConnection,
+  isAthleteMatch,
+  sanitizeLegacyWorkouts,
 } from '../src/utils/storage';
 import {
   parseTCXContent,
@@ -62,6 +64,10 @@ import {
   matchColorToRunType,
   parseGoogleSheetHtml,
   ELISE_REFERENCE_TABS,
+  ROB_REFERENCE_TABS,
+  ROB_SHEET_ID,
+  extractGoogleSheetTabNames,
+  fetchAndParseGoogleSheet,
   convertSheetTabToPlanAndWorkouts,
 } from '../src/utils/googleSheetsParser';
 
@@ -2354,6 +2360,145 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(robAfterUnlink?.googleSheetUrl).toBeUndefined();
     });
 
+    it('test_rob5kTab_checksumAndTotals() - verifies Rob 11/14 5k tab with 23 mi week 1, 20 mi week 2 and Sat 11/14 race', () => {
+      const rob5k = ROB_REFERENCE_TABS['11/14 5k'];
+      expect(rob5k).toBeDefined();
+      expect(rob5k.weeks.length).toBe(2);
+      expect(rob5k.totalMiles).toBe(43);
+
+      // Week 1: 11/2/2026 (23 miles total): Mon 0, Tue 5, Wed 4, Thu 0, Fri 5, Sat 3, Sun 6
+      const week1 = rob5k.weeks[0];
+      expect(week1.weekLabel).toBe('11/2');
+      expect(week1.startDate).toBe('2026-11-02');
+      expect(week1.calculatedWeeklyTotal).toBe(23);
+      expect(week1.expectedWeeklyTotal).toBe(23);
+      expect(week1.checksumValid).toBe(true);
+      expect(week1.days[0].distance).toBe(0); // Mon 0 mi (day_off)
+      expect(week1.days[0].runType).toBe('day_off');
+      expect(week1.days[1].distance).toBe(5); // Tue 5 mi (fartlek)
+      expect(week1.days[1].runType).toBe('fartlek');
+      expect(week1.days[2].distance).toBe(4); // Wed 4 mi (fartlek)
+      expect(week1.days[2].runType).toBe('fartlek');
+      expect(week1.days[3].distance).toBe(0); // Thu 0 mi (day_off)
+      expect(week1.days[3].runType).toBe('day_off');
+      expect(week1.days[4].distance).toBe(5); // Fri 5 mi (threshold / threshold_work)
+      expect(week1.days[4].runType).toBe('threshold_work');
+      expect(week1.days[5].distance).toBe(3); // Sat 3 mi (easy)
+      expect(week1.days[5].runType).toBe('easy');
+      expect(week1.days[6].distance).toBe(6); // Sun 6 mi (long_run)
+      expect(week1.days[6].runType).toBe('long_run');
+
+      // Week 2: 11/9/2026 (20 miles total): Mon 3, Tue 3, Wed 4, Thu 3, Fri 2, Sat 5 race, Sun 0
+      const week2 = rob5k.weeks[1];
+      expect(week2.weekLabel).toBe('11/9');
+      expect(week2.startDate).toBe('2026-11-09');
+      expect(week2.calculatedWeeklyTotal).toBe(20);
+      expect(week2.expectedWeeklyTotal).toBe(20);
+      expect(week2.checksumValid).toBe(true);
+      expect(week2.days[0].distance).toBe(3); // Mon 3 mi (easy)
+      expect(week2.days[0].runType).toBe('easy');
+      expect(week2.days[1].distance).toBe(3); // Tue 3 mi (fartlek)
+      expect(week2.days[1].runType).toBe('fartlek');
+      expect(week2.days[2].distance).toBe(4); // Wed 4 mi (fartlek)
+      expect(week2.days[2].runType).toBe('fartlek');
+      expect(week2.days[3].distance).toBe(3); // Thu 3 mi (easy)
+      expect(week2.days[3].runType).toBe('easy');
+      expect(week2.days[4].distance).toBe(2); // Fri 2 mi (easy)
+      expect(week2.days[4].runType).toBe('easy');
+      expect(week2.days[5].distance).toBe(5); // Sat 5 mi (race - 5k)
+      expect(week2.days[5].runType).toBe('race');
+      expect(week2.days[5].date).toBe('2026-11-14'); // Saturday 11/14 race!
+      expect(week2.days[6].distance).toBe(0); // Sun 0 mi (day_off)
+      expect(week2.days[6].runType).toBe('day_off');
+    });
+
+    it('test_tab_isolation_rob_and_elise_dedicated_sheets() - Rob never receives Elise tabs and Elise never receives Rob tabs', async () => {
+      // 1. Fetching for Rob by URL or athleteNameOrId
+      const robResult = await fetchAndParseGoogleSheet('https://docs.google.com/spreadsheets/d/rob_sheet/edit', '11/14 5k', 2026, 'user_rob');
+      expect(robResult.activeTab.tabName).toBe('11/14 5k');
+      expect(robResult.availableTabs).toEqual(['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k']);
+      // None of Elise's tabs should ever leak to Rob
+      expect(robResult.availableTabs).not.toContain('Indy');
+      expect(robResult.availableTabs).not.toContain('Boston');
+      expect(robResult.availableTabs).not.toContain('CIM');
+
+      // 2. Fetching for Elise by URL or athleteNameOrId
+      const eliseResult = await fetchAndParseGoogleSheet('https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg/edit', 'Indy', 2026, 'user_elise');
+      expect(eliseResult.activeTab.tabName).toBe('Indy');
+      expect(eliseResult.availableTabs).toEqual(['CIM', 'Boston', 'Indy']);
+      // None of Rob's tabs should ever leak to Elise
+      expect(eliseResult.availableTabs).not.toContain('11/14 5k');
+      expect(eliseResult.availableTabs).not.toContain('Portland Half');
+      expect(eliseResult.availableTabs).not.toContain('Helvetia Half');
+      expect(eliseResult.availableTabs).not.toContain('4/19 10k plan');
+
+      // 3. Other athlete without live proxy connection throws and never falls back to Elise or Rob
+      await expect(
+        fetchAndParseGoogleSheet('https://docs.google.com/spreadsheets/d/random_other_sheet_12345/edit', 'Sheet1', 2026, 'user_other_runner')
+      ).rejects.toThrow();
+    });
+
+    it('test_convertSheetTabToPlanAndWorkouts_minDate_filter() - strictly ignores past runs and only returns runs from minDate onward', () => {
+      const rob5k = ROB_REFERENCE_TABS['11/14 5k'];
+
+      // Cutoff set to 2026-11-09 (beginning of Week 2)
+      const resWeek2Only = convertSheetTabToPlanAndWorkouts({
+        sheetTab: rob5k,
+        sheetUrl: 'https://docs.google.com/spreadsheets/d/rob_sample',
+        coachId: 'user_michael_carey',
+        coachName: 'Michael Carey',
+        athleteId: 'user_rob',
+        athleteName: 'Rob Reynoso',
+        minDate: '2026-11-09',
+      });
+
+      // Week 1 workouts (11/2 to 11/8) must be strictly omitted
+      expect(resWeek2Only.workouts.length).toBe(6); // Mon, Tue, Wed, Thu, Fri, Sat (Sun is rest)
+      expect(resWeek2Only.workouts.every(w => w.workoutDate >= '2026-11-09')).toBe(true);
+      expect(resWeek2Only.workouts.some(w => w.workoutDate < '2026-11-09')).toBe(false);
+
+      // Cutoff set to Saturday 11/14 race day
+      const resRaceDayOnly = convertSheetTabToPlanAndWorkouts({
+        sheetTab: rob5k,
+        sheetUrl: 'https://docs.google.com/spreadsheets/d/rob_sample',
+        coachId: 'user_michael_carey',
+        coachName: 'Michael Carey',
+        athleteId: 'user_rob',
+        athleteName: 'Rob Reynoso',
+        minDate: '2026-11-14',
+      });
+
+      expect(resRaceDayOnly.workouts.length).toBe(1);
+      expect(resRaceDayOnly.workouts[0].workoutDate).toBe('2026-11-14');
+      expect(resRaceDayOnly.workouts[0].runType).toBe('race');
+      expect(resRaceDayOnly.workouts[0].distance).toBe(5);
+    });
+
+    it('test_extractGoogleSheetTabNames() - dynamically parses tab names from HTML structure', () => {
+      const html1 = `
+        <div id="sheet-menu">
+          <ul>
+            <li class="sheet-button" id="sheet-button-0"><a href="#gid=0">4/19 10k plan</a></li>
+            <li class="sheet-button" id="sheet-button-1"><a href="#gid=1">Helvetia Half</a></li>
+            <li class="sheet-button" id="sheet-button-2"><a href="#gid=2">Portland Half</a></li>
+            <li class="sheet-button" id="sheet-button-3"><a href="#gid=3">11/14 5k</a></li>
+          </ul>
+        </div>
+      `;
+      const tabs1 = extractGoogleSheetTabNames(html1);
+      expect(tabs1).toEqual(['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k']);
+
+      const html2 = `
+        <ul id="sheet-menu">
+          <li>CIM</li>
+          <li>Boston</li>
+          <li>Indy</li>
+        </ul>
+      `;
+      const tabs2 = extractGoogleSheetTabNames(html2);
+      expect(tabs2).toEqual(['CIM', 'Boston', 'Indy']);
+    });
+
     it('test_editPastRun_onlyChangesRunTypeAndComments() - changing fartlek to easy preserves all other run metrics and saves comment', () => {
       const pastFartlekRun: WorkoutRun = {
         id: 'strava_1001',
@@ -2408,6 +2553,136 @@ describe('Strava Time, Pace, & Recording Modes (TDD)', () => {
       expect(updatedPastRun.averageHeartRate).toBe(158);
       expect(updatedPastRun.shoeName).toBe('Nike Pegasus 41');
       expect(updatedPastRun.source).toBe('strava');
+    });
+
+    it('test_rob_sheet_id_and_url_matching() - verifies real sheet ID and URL resolution for Rob', async () => {
+      expect(ROB_SHEET_ID).toBe('1MfGkFzAJAP9PURy5DsQiB9u3mm3Dh5BStKPh8qGwrv0');
+
+      const byId = await fetchAndParseGoogleSheet('1MfGkFzAJAP9PURy5DsQiB9u3mm3Dh5BStKPh8qGwrv0');
+      expect(byId.activeTab.tabName).toBe('11/14 5k');
+      expect(byId.availableTabs).toEqual(['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k']);
+
+      const byUrl = await fetchAndParseGoogleSheet(
+        'https://docs.google.com/spreadsheets/d/1MfGkFzAJAP9PURy5DsQiB9u3mm3Dh5BStKPh8qGwrv0/edit'
+      );
+      expect(byUrl.activeTab.tabName).toBe('11/14 5k');
+      expect(byUrl.availableTabs).toEqual(['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k']);
+    });
+
+    it('test_isAthleteMatch() - robust matching for Rob, Elise, Michael Carey, and roster athletes', () => {
+      const robAthlete = { id: 'user_1793563915467_10fr', name: 'Robert Reynoso' };
+      const eliseAthlete = { id: 'user_1793482686680_2wma', name: 'Elise Whisler' };
+      const coachAthlete = { id: 'user_michael_carey', name: 'Michael Carey', email: 'careyer1234@gmail.com' };
+
+      const robRun1: WorkoutRun = {
+        id: 'r1',
+        workoutDate: '2026-11-01',
+        distance: 5,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        athleteId: 'user_1793563915467_10fr',
+        athleteName: 'Robert Reynoso',
+      };
+      const robRunLegacyHardware: WorkoutRun = {
+        id: 'r2',
+        workoutDate: '2026-11-01',
+        distance: 4,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        comments: 'Morning run with Garmin Forerunner 955 Solar',
+      };
+      const eliseRunHardware: WorkoutRun = {
+        id: 'e1',
+        workoutDate: '2026-11-01',
+        distance: 6,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        comments: 'Recorded on Garmin Forerunner 265S',
+      };
+      const eliseRunStravaApp: WorkoutRun = {
+        id: 'e2',
+        workoutDate: '2026-11-01',
+        distance: 3,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        comments: 'Uploaded from Strava App',
+      };
+      const coachRun: WorkoutRun = {
+        id: 'c1',
+        workoutDate: '2026-11-01',
+        distance: 7,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        athleteId: 'user_michael_carey',
+        athleteName: 'Michael Carey',
+      };
+      const unassignedCoachRun: WorkoutRun = {
+        id: 'c2',
+        workoutDate: '2026-11-01',
+        distance: 8,
+        distanceUnit: 'mi',
+        runType: 'long_run',
+      };
+
+      // Rob matches
+      expect(isAthleteMatch(robRun1, robAthlete)).toBe(true);
+      expect(isAthleteMatch(robRunLegacyHardware, robAthlete)).toBe(true);
+      expect(isAthleteMatch(eliseRunHardware, robAthlete)).toBe(false);
+      expect(isAthleteMatch(coachRun, robAthlete)).toBe(false);
+
+      // Elise matches
+      expect(isAthleteMatch(eliseRunHardware, eliseAthlete)).toBe(true);
+      expect(isAthleteMatch(eliseRunStravaApp, eliseAthlete)).toBe(true);
+      expect(isAthleteMatch(robRun1, eliseAthlete)).toBe(false);
+      expect(isAthleteMatch(coachRun, eliseAthlete)).toBe(false);
+
+      // Coach matches unassigned and coach runs, but never Rob or Elise runs
+      expect(isAthleteMatch(coachRun, coachAthlete)).toBe(true);
+      expect(isAthleteMatch(unassignedCoachRun, coachAthlete)).toBe(true);
+      expect(isAthleteMatch(robRun1, coachAthlete)).toBe(false);
+      expect(isAthleteMatch(robRunLegacyHardware, coachAthlete)).toBe(false);
+      expect(isAthleteMatch(eliseRunHardware, coachAthlete)).toBe(false);
+      expect(isAthleteMatch(eliseRunStravaApp, coachAthlete)).toBe(false);
+    });
+
+    it('test_sanitizeLegacyWorkouts() - normalizes IDs and names for Rob, Elise, and Michael Carey', () => {
+      const rawWorkouts: WorkoutRun[] = [
+        {
+          id: 'w1',
+          workoutDate: '2026-11-01',
+          distance: 5,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          comments: 'Ran with Garmin Forerunner 955',
+        },
+        {
+          id: 'w2',
+          workoutDate: '2026-11-01',
+          distance: 4,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          athleteName: 'Elise',
+          comments: 'Synced from Strava App',
+        },
+        {
+          id: 'w3',
+          workoutDate: '2026-11-01',
+          distance: 6,
+          distanceUnit: 'mi',
+          runType: 'easy',
+          athleteId: 'user_coach_1',
+        },
+      ];
+
+      const sanitized = sanitizeLegacyWorkouts(rawWorkouts);
+      expect(sanitized[0].athleteId).toBe('user_1793563915467_10fr');
+      expect(sanitized[0].athleteName).toBe('Robert Reynoso');
+
+      expect(sanitized[1].athleteId).toBe('user_1793482686680_2wma');
+      expect(sanitized[1].athleteName).toBe('Elise Whisler');
+
+      expect(sanitized[2].athleteId).toBe('user_michael_carey');
+      expect(sanitized[2].athleteName).toBe('Michael Carey');
     });
   });
 });

@@ -32,6 +32,7 @@ import {
   isCoachEmail,
   saveUserStravaConnection,
   loadUserStravaConnection,
+  isAthleteMatch,
 } from './utils/storage';
 import {
   buildWeeklyWorkloadData,
@@ -627,52 +628,21 @@ export const App: React.FC = () => {
   // Compute visible workouts based on role and athlete filter
   const visibleWorkouts = useMemo(() => {
     if (!currentUser) return [];
-    const isMichaelUser =
-      currentUser.id === COACH_PROFILE.id || currentUser.id === COACH_ATHLETE_PROFILE.id;
 
     if (currentUser.role === 'runner') {
       // Athlete (e.g. Rob, or Coach Michael Carey in athlete mode) only has access to their own workouts
-      return workouts.filter((w) => {
-        if (
-          isMichaelUser &&
-          (w.athleteId === COACH_PROFILE.id ||
-            w.athleteId === COACH_ATHLETE_PROFILE.id ||
-            w.athleteName === COACH_PROFILE.name ||
-            w.athleteName === COACH_ATHLETE_PROFILE.name)
-        ) {
-          return true;
-        }
-        return (
-          w.athleteId === currentUser.id ||
-          w.athleteName === currentUser.name ||
-          (!w.athleteId && !w.isPlanAssigned)
-        );
-      });
+      return workouts.filter((w) => isAthleteMatch(w, currentUser));
     }
 
-    // Coach Admin (Michael Carey) views individual athlete calendars.
-    // Synced Strava runs strictly display under that athlete's tab and never appear lumped together.
-    const targetAthId =
-      selectedAthleteFilter && selectedAthleteFilter !== 'all'
-        ? selectedAthleteFilter
-        : currentUser.id || COACH_PROFILE.id;
-
-    if (
-      targetAthId === COACH_PROFILE.id ||
-      targetAthId === COACH_ATHLETE_PROFILE.id
-    ) {
-      return workouts.filter(
-        (w) =>
-          w.athleteId === COACH_PROFILE.id ||
-          w.athleteId === COACH_ATHLETE_PROFILE.id ||
-          w.athleteName === COACH_PROFILE.name ||
-          w.athleteName === COACH_ATHLETE_PROFILE.name
-      );
+    // Coach Admin (Michael Carey) views individual athlete calendars or all
+    if (selectedAthleteFilter === 'all') {
+      return workouts;
     }
-    return workouts.filter(
-      (w) => w.athleteId === targetAthId || w.athleteName === targetAthId
-    );
-  }, [workouts, currentUser, selectedAthleteFilter]);
+
+    const targetAthlete =
+      roster.find((u) => u.id === selectedAthleteFilter) || { id: selectedAthleteFilter };
+    return workouts.filter((w) => isAthleteMatch(w, targetAthlete));
+  }, [workouts, currentUser, selectedAthleteFilter, roster]);
 
   // Recalculate weeks workload data based on visible workouts
   const weeks = useMemo(() => {
@@ -1184,17 +1154,7 @@ export const App: React.FC = () => {
                 const isSelected =
                   selectedAthleteFilter === user.id ||
                   (selectedAthleteFilter === 'all' && user.id === COACH_PROFILE.id);
-                const count = workouts.filter((w) => {
-                  if (user.id === COACH_PROFILE.id || user.id === COACH_ATHLETE_PROFILE.id) {
-                    return (
-                      w.athleteId === COACH_PROFILE.id ||
-                      w.athleteId === COACH_ATHLETE_PROFILE.id ||
-                      w.athleteName === COACH_PROFILE.name ||
-                      w.athleteName === COACH_ATHLETE_PROFILE.name
-                    );
-                  }
-                  return w.athleteId === user.id || w.athleteName === user.name;
-                }).length;
+                const count = workouts.filter((w) => isAthleteMatch(w, user)).length;
                 return (
                   <button
                     key={user.id}

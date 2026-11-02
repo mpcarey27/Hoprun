@@ -96,8 +96,8 @@ export function extractGoogleSheetId(
     };
   }
 
-  // Raw spreadsheet ID
-  if (/^[a-zA-Z0-9-_]{20,60}$/.test(trimmed)) {
+  // Raw spreadsheet ID or workbook key
+  if (/^[a-zA-Z0-9-_]{3,60}$/.test(trimmed)) {
     return { spreadsheetId: trimmed };
   }
 
@@ -253,7 +253,9 @@ function buildSheetTabFromRawRows(
 
     const days: ParsedSheetDayCell[] = row.days.map(([dist, rType], dayOffset) => {
       const legend =
-        SHEET_COLOR_LEGEND.find((l) => l.runType === rType) || SHEET_COLOR_LEGEND[2];
+        SHEET_COLOR_LEGEND.find(
+          (l) => l.runType === rType || (rType === 'threshold' && l.runType === 'threshold_work')
+        ) || SHEET_COLOR_LEGEND[2];
       const multiplier = getRunTypeMultiplier(legend.runType);
       const load = calculateRunLoad(dist, 'mi', multiplier);
       calculatedWeeklyTotal += dist;
@@ -642,6 +644,311 @@ export const ELISE_REFERENCE_TABS: Record<string, ParsedSheetTab> = {
   ),
 };
 
+export const DEFAULT_ELISE_SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg/edit?usp=sharing';
+
+export const ELISE_DEFAULT_TABS = ['CIM', 'Boston', 'Indy'];
+
+export const ROB_SHEET_ID = '1MfGkFzAJAP9PURy5DsQiB9u3mm3Dh5BStKPh8qGwrv0';
+export const DEFAULT_ROB_SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/1MfGkFzAJAP9PURy5DsQiB9u3mm3Dh5BStKPh8qGwrv0/edit';
+
+export const ROB_DEFAULT_TABS = [
+  '4/19 10k plan',
+  'Helvetia Half',
+  'Portland Half',
+  '11/14 5k',
+];
+
+/**
+ * Reference training plans for Rob Reynoso:
+ * - '11/14 5k': 2-week block based on Rob's training schedule
+ * - 'Portland Half': Half marathon block
+ * - 'Helvetia Half': Helvetia Half block
+ * - '4/19 10k plan': 10k race block
+ */
+export const ROB_REFERENCE_TABS: Record<string, ParsedSheetTab> = {
+  '11/14 5k': buildSheetTabFromRawRows(
+    ROB_SHEET_ID,
+    '11/14 5k',
+    'Rob training plan — 11/14 5k Block',
+    2026,
+    [
+      {
+        weekLabel: '11/2',
+        days: [
+          [0, 'day_off'],
+          [5, 'fartlek'],
+          [4, 'fartlek'],
+          [0, 'day_off'],
+          [5, 'threshold_work'],
+          [3, 'easy'],
+          [6, 'long_run'],
+        ],
+        colITotal: 23,
+      },
+      {
+        weekLabel: '11/9',
+        days: [
+          [3, 'easy'],
+          [3, 'fartlek'],
+          [4, 'fartlek'],
+          [3, 'easy'],
+          [2, 'easy'],
+          [5, 'race'],
+          [0, 'day_off'],
+        ],
+        colITotal: 20,
+      },
+    ]
+  ),
+  'Portland Half': buildSheetTabFromRawRows(
+    ROB_SHEET_ID,
+    'Portland Half',
+    'Rob training plan — Portland Half Marathon Block',
+    2026,
+    [
+      {
+        weekLabel: '8/10',
+        days: [
+          [0, 'day_off'],
+          [5, 'fartlek'],
+          [6, 'easy'],
+          [0, 'day_off'],
+          [6, 'threshold_work'],
+          [4, 'easy'],
+          [9, 'long_run'],
+        ],
+        colITotal: 30,
+      },
+      {
+        weekLabel: '8/17',
+        days: [
+          [4, 'easy'],
+          [6, 'fartlek'],
+          [6, 'easy'],
+          [4, 'easy'],
+          [6, 'threshold_work'],
+          [4, 'easy'],
+          [10, 'long_run'],
+        ],
+        colITotal: 40,
+      },
+      {
+        weekLabel: '8/24',
+        days: [
+          [0, 'day_off'],
+          [7, 'fartlek'],
+          [7, 'easy'],
+          [4, 'easy'],
+          [7, 'threshold_work'],
+          [4, 'easy'],
+          [11, 'long_run'],
+        ],
+        colITotal: 40,
+      },
+      {
+        weekLabel: '8/31',
+        days: [
+          [4, 'easy'],
+          [7, 'fartlek'],
+          [7, 'easy'],
+          [5, 'easy'],
+          [8, 'threshold_work'],
+          [4, 'easy'],
+          [12, 'long_run'],
+        ],
+        colITotal: 47,
+      },
+      {
+        weekLabel: '9/7',
+        days: [
+          [4, 'easy'],
+          [6, 'fartlek'],
+          [6, 'easy'],
+          [4, 'easy'],
+          [5, 'easy'],
+          [3, 'easy'],
+          [10, 'long_run'],
+        ],
+        colITotal: 38,
+      },
+      {
+        weekLabel: '9/14',
+        days: [
+          [3, 'easy'],
+          [4, 'fartlek'],
+          [4, 'easy'],
+          [3, 'easy'],
+          [2, 'easy'],
+          [13, 'race'],
+          [0, 'day_off'],
+        ],
+        colITotal: 29,
+      },
+    ]
+  ),
+  'Helvetia Half': buildSheetTabFromRawRows(
+    ROB_SHEET_ID,
+    'Helvetia Half',
+    'Rob training plan — Helvetia Half Marathon Block',
+    2026,
+    [
+      {
+        weekLabel: '4/27',
+        days: [
+          [0, 'day_off'],
+          [5, 'fartlek'],
+          [5, 'easy'],
+          [0, 'day_off'],
+          [5, 'hills_easy'],
+          [4, 'easy'],
+          [9, 'long_run'],
+        ],
+        colITotal: 28,
+      },
+      {
+        weekLabel: '5/4',
+        days: [
+          [4, 'easy'],
+          [6, 'fartlek'],
+          [6, 'easy'],
+          [4, 'easy'],
+          [6, 'hills_easy'],
+          [4, 'easy'],
+          [10, 'long_run'],
+        ],
+        colITotal: 40,
+      },
+      {
+        weekLabel: '5/11',
+        days: [
+          [0, 'day_off'],
+          [7, 'fartlek'],
+          [6, 'easy'],
+          [4, 'easy'],
+          [7, 'threshold_work'],
+          [4, 'easy'],
+          [11, 'long_run'],
+        ],
+        colITotal: 39,
+      },
+      {
+        weekLabel: '5/18',
+        days: [
+          [4, 'easy'],
+          [7, 'fartlek'],
+          [7, 'easy'],
+          [4, 'easy'],
+          [7, 'hills_easy'],
+          [4, 'easy'],
+          [12, 'long_run'],
+        ],
+        colITotal: 45,
+      },
+      {
+        weekLabel: '5/25',
+        days: [
+          [4, 'easy'],
+          [5, 'fartlek'],
+          [5, 'easy'],
+          [4, 'easy'],
+          [4, 'easy'],
+          [3, 'easy'],
+          [9, 'long_run'],
+        ],
+        colITotal: 34,
+      },
+      {
+        weekLabel: '6/1',
+        days: [
+          [3, 'easy'],
+          [4, 'fartlek'],
+          [4, 'easy'],
+          [3, 'easy'],
+          [2, 'easy'],
+          [13, 'race'],
+          [0, 'day_off'],
+        ],
+        colITotal: 29,
+      },
+    ]
+  ),
+  '4/19 10k plan': buildSheetTabFromRawRows(
+    ROB_SHEET_ID,
+    '4/19 10k plan',
+    'Rob training plan — 4/19 10k Race Block',
+    2026,
+    [
+      {
+        weekLabel: '3/16',
+        days: [
+          [0, 'day_off'],
+          [5, 'fartlek'],
+          [5, 'easy'],
+          [0, 'day_off'],
+          [5, 'threshold_work'],
+          [3, 'easy'],
+          [7, 'long_run'],
+        ],
+        colITotal: 25,
+      },
+      {
+        weekLabel: '3/23',
+        days: [
+          [3, 'easy'],
+          [5, 'fartlek'],
+          [5, 'easy'],
+          [3, 'easy'],
+          [6, 'threshold_work'],
+          [3, 'easy'],
+          [8, 'long_run'],
+        ],
+        colITotal: 33,
+      },
+      {
+        weekLabel: '3/30',
+        days: [
+          [0, 'day_off'],
+          [6, 'fartlek'],
+          [6, 'easy'],
+          [4, 'easy'],
+          [6, 'threshold_work'],
+          [4, 'easy'],
+          [9, 'long_run'],
+        ],
+        colITotal: 35,
+      },
+      {
+        weekLabel: '4/6',
+        days: [
+          [4, 'easy'],
+          [6, 'fartlek'],
+          [5, 'easy'],
+          [4, 'easy'],
+          [5, 'easy'],
+          [3, 'easy'],
+          [8, 'long_run'],
+        ],
+        colITotal: 35,
+      },
+      {
+        weekLabel: '4/13',
+        days: [
+          [3, 'easy'],
+          [4, 'fartlek'],
+          [4, 'easy'],
+          [3, 'easy'],
+          [2, 'easy'],
+          [0, 'day_off'],
+          [6, 'race'],
+        ],
+        colITotal: 22,
+      },
+    ]
+  ),
+};
+
 /**
  * Parses an HTML table exported from Google Sheets (/gviz/tq?tqx=out:html or /export?format=html)
  * where cells have inline or class-based background-color styles.
@@ -808,17 +1115,129 @@ export function parseGoogleSheetHtml(
 }
 
 /**
- * Fetches a Google Sheet tab by URL/ID (using the local Vite proxy when available,
- * with automatic support for the Elise reference spreadsheet).
+ * Dynamically parses sheet tab names from Google Sheet HTML
+ * (<li class="sheet-button" ...><a ...>TabName</a></li>, <ul id="sheet-menu">, etc.).
+ */
+export function extractGoogleSheetTabNames(html: string): string[] {
+  if (!html || typeof html !== 'string') return [];
+  const tabs: string[] = [];
+
+  const cleanTabName = (raw: string) => {
+    return raw
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .trim();
+  };
+
+  // 1. Google Sheets standard sheet-button items: <li class="sheet-button"...><a...>TabName</a></li>
+  const sheetButtonRegex = /<li[^>]*class=["'][^"']*sheet-button[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = sheetButtonRegex.exec(html)) !== null) {
+    const inner = match[1];
+    const aMatch = inner.match(/<a[^>]*>([\s\S]*?)<\/a>/i);
+    const candidate = cleanTabName(aMatch ? aMatch[1] : inner);
+    if (candidate && !tabs.includes(candidate)) {
+      tabs.push(candidate);
+    }
+  }
+
+  // 2. Google Sheets ul#sheet-menu
+  if (tabs.length === 0) {
+    const menuMatch = html.match(/<ul[^>]*id=["']sheet-menu["'][^>]*>([\s\S]*?)<\/ul>/i);
+    if (menuMatch) {
+      const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+      let liMatch: RegExpExecArray | null;
+      while ((liMatch = liRegex.exec(menuMatch[1])) !== null) {
+        const candidate = cleanTabName(liMatch[1]);
+        if (candidate && !tabs.includes(candidate)) {
+          tabs.push(candidate);
+        }
+      }
+    }
+  }
+
+  // 3. docs-sheet-tab-name or docs-sheet-tab classes
+  if (tabs.length === 0) {
+    const docTabRegex = /<[^>]*class=["'][^"']*(?:docs-sheet-tab-name|sheet-tab)[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/gi;
+    let dtMatch: RegExpExecArray | null;
+    while ((dtMatch = docTabRegex.exec(html)) !== null) {
+      const candidate = cleanTabName(dtMatch[1]);
+      if (candidate && !tabs.includes(candidate)) {
+        tabs.push(candidate);
+      }
+    }
+  }
+
+  // 4. href="#gid=\d+" tab anchor links
+  if (tabs.length === 0) {
+    const gidLinkRegex = /<a[^>]*href=["']#gid=\d+["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let glMatch: RegExpExecArray | null;
+    while ((glMatch = gidLinkRegex.exec(html)) !== null) {
+      const candidate = cleanTabName(glMatch[1]);
+      if (candidate && !tabs.includes(candidate)) {
+        tabs.push(candidate);
+      }
+    }
+  }
+
+  return tabs;
+}
+
+/**
+ * Fetches a Google Sheet tab by URL/ID or athlete profile,
+ * supporting Rob Reynoso's reference tabs, Elise's reference tabs,
+ * and dynamic tab extraction for external sheets.
  */
 export async function fetchAndParseGoogleSheet(
   urlOrId: string,
   tabName: string = 'Indy',
-  year: number = 2026
+  year: number = 2026,
+  athleteNameOrId?: string
 ): Promise<{
   activeTab: ParsedSheetTab;
   availableTabs: string[];
 }> {
+  const isRob =
+    Boolean(athleteNameOrId && /rob|reynoso/i.test(athleteNameOrId)) ||
+    /rob|reynoso/i.test(urlOrId) ||
+    urlOrId.includes('1MfGkFzAJAP9PURy5DsQiB9u3mm3Dh5BStKPh8qGwrv0') ||
+    urlOrId.includes('1RobReynoso5kTrainingPlanSheet2026') ||
+    urlOrId.includes(ROB_SHEET_ID) ||
+    urlOrId === '1MfGkFzAJAP9PURy5DsQiB9u3mm3Dh5BStKPh8qGwrv0' ||
+    urlOrId === '1RobReynoso5kTrainingPlanSheet2026' ||
+    urlOrId === ROB_SHEET_ID;
+
+  const isElise =
+    Boolean(athleteNameOrId && /elise/i.test(athleteNameOrId)) ||
+    /elise/i.test(urlOrId) ||
+    urlOrId === ELISE_SHEET_ID;
+
+  // 1. Rob Reynoso Reference Tabs (dedicated isolation - never falls back to Elise)
+  if (isRob) {
+    const effectiveTab =
+      tabName && ROB_REFERENCE_TABS[tabName] ? tabName : '11/14 5k';
+    return {
+      activeTab: ROB_REFERENCE_TABS[effectiveTab],
+      availableTabs: ['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k'],
+    };
+  }
+
+  // 2. Elise Whisler Reference Tabs (dedicated isolation - never falls back to Rob)
+  if (isElise) {
+    const effectiveTab =
+      tabName && ELISE_REFERENCE_TABS[tabName] ? tabName : 'Indy';
+    return {
+      activeTab: ELISE_REFERENCE_TABS[effectiveTab],
+      availableTabs: ['CIM', 'Boston', 'Indy'],
+    };
+  }
+
+  // 3. External / Other Google Sheets
   const extracted = extractGoogleSheetId(urlOrId);
   if (!extracted) {
     throw new Error('Please enter a valid Google Sheets URL or Spreadsheet ID.');
@@ -829,38 +1248,39 @@ export async function fetchAndParseGoogleSheet(
   // Attempt live fetch via local Vite proxy (/api/gsheets) if publicly accessible
   if (typeof window !== 'undefined') {
     try {
+      const requestedTab = tabName || 'Sheet1';
       const proxyUrl = `/api/gsheets/d/${spreadsheetId}/gviz/tq?tqx=out:html&sheet=${encodeURIComponent(
-        tabName
+        requestedTab
       )}`;
       const res = await fetch(proxyUrl);
       if (res.ok) {
         const html = await res.text();
-        const parsed = parseGoogleSheetHtml(html, spreadsheetId, tabName, year);
+        const parsed = parseGoogleSheetHtml(html, spreadsheetId, requestedTab, year);
         if (parsed && parsed.weeks.length > 0) {
+          let dynamicTabs = extractGoogleSheetTabNames(html);
+          if (dynamicTabs.length === 0) {
+            try {
+              const menuRes = await fetch(`/api/gsheets/d/${spreadsheetId}/htmlview`);
+              if (menuRes.ok) {
+                const menuHtml = await menuRes.text();
+                dynamicTabs = extractGoogleSheetTabNames(menuHtml);
+              }
+            } catch {
+              // ignore
+            }
+          }
           return {
             activeTab: parsed,
-            availableTabs:
-              spreadsheetId === ELISE_SHEET_ID
-                ? Object.keys(ELISE_REFERENCE_TABS)
-                : [tabName],
+            availableTabs: dynamicTabs.length > 0 ? dynamicTabs : [requestedTab],
           };
         }
       }
     } catch {
-      // Fallback to reference snapshot if sheet requires Google login session
+      // live fetch failed
     }
   }
 
-  // Reference workbook match for Elise's training plan (13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg)
-  if (spreadsheetId === ELISE_SHEET_ID || ELISE_REFERENCE_TABS[tabName]) {
-    const selected =
-      ELISE_REFERENCE_TABS[tabName] || ELISE_REFERENCE_TABS['Indy'];
-    return {
-      activeTab: selected,
-      availableTabs: Object.keys(ELISE_REFERENCE_TABS),
-    };
-  }
-
+  // NEVER fall back to Elise's sheet or tabs for Rob or another athlete
   throw new Error(
     'Could not read sheet cells. Make sure the Google Sheet sharing setting is set to "Anyone with the link can view".'
   );

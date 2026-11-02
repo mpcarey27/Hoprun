@@ -28,6 +28,9 @@ import {
 import {
   SHEET_COLOR_LEGEND,
   ELISE_REFERENCE_TABS,
+  ROB_REFERENCE_TABS,
+  DEFAULT_ROB_SHEET_URL,
+  DEFAULT_ELISE_SHEET_URL,
   fetchAndParseGoogleSheet,
   parseGoogleSheetHtml,
   convertSheetTabToPlanAndWorkouts,
@@ -38,8 +41,70 @@ import type {
   DoubleRunSplitMode,
 } from '../utils/googleSheetsParser';
 
-const DEFAULT_ELISE_SHEET_URL =
-  'https://docs.google.com/spreadsheets/d/13D1uqvpJUqH3DaE8-5fRWfkLAbrCKBZSTNoUrEzF0wg/edit?usp=sharing';
+const isRobAthlete = (athlete?: UserProfile | null) => {
+  if (!athlete) return false;
+  return (
+    /rob|reynoso/i.test(athlete.name || '') ||
+    /rob|reynoso/i.test(athlete.id || '') ||
+    /rob|reynoso/i.test(athlete.email || '')
+  );
+};
+
+const isEliseAthlete = (athlete?: UserProfile | null) => {
+  if (!athlete) return false;
+  return (
+    /elise/i.test(athlete.name || '') ||
+    /elise/i.test(athlete.id || '') ||
+    /elise/i.test(athlete.email || '')
+  );
+};
+
+function getInitialAthleteSheetState(athlete: UserProfile) {
+  if (isRobAthlete(athlete)) {
+    const url = athlete.googleSheetUrl || DEFAULT_ROB_SHEET_URL;
+    const tab =
+      athlete.googleSheetTab && ROB_REFERENCE_TABS[athlete.googleSheetTab]
+        ? athlete.googleSheetTab
+        : '11/14 5k';
+    const tabs =
+      athlete.googleSheetTabs && athlete.googleSheetTabs.length > 0
+        ? athlete.googleSheetTabs
+        : ['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k'];
+    return {
+      url,
+      tab,
+      tabs,
+      parsed: ROB_REFERENCE_TABS[tab] || ROB_REFERENCE_TABS['11/14 5k'],
+    };
+  }
+  if (isEliseAthlete(athlete)) {
+    const url = athlete.googleSheetUrl || DEFAULT_ELISE_SHEET_URL;
+    const tab =
+      athlete.googleSheetTab && ELISE_REFERENCE_TABS[athlete.googleSheetTab]
+        ? athlete.googleSheetTab
+        : 'Indy';
+    const tabs =
+      athlete.googleSheetTabs && athlete.googleSheetTabs.length > 0
+        ? athlete.googleSheetTabs
+        : ['CIM', 'Boston', 'Indy'];
+    return {
+      url,
+      tab,
+      tabs,
+      parsed: ELISE_REFERENCE_TABS[tab] || ELISE_REFERENCE_TABS['Indy'],
+    };
+  }
+  // Other athlete: load their saved URL and tabs, or clean state (do NOT default to Elise)
+  const url = athlete.googleSheetUrl || '';
+  const tab = athlete.googleSheetTab || '';
+  const tabs = athlete.googleSheetTabs || [];
+  return {
+    url,
+    tab,
+    tabs,
+    parsed: null,
+  };
+}
 
 interface Props {
   isOpen: boolean;
@@ -105,50 +170,118 @@ export const AdminPlanModal: React.FC<Props> = ({
 
   // Mode Switcher: 'sheets' (Coach Google Sheets Integration) vs 'manual' (Manual Builder)
   const [builderMode, setBuilderMode] = useState<'sheets' | 'manual'>('sheets');
-  const [sheetUrl, setSheetUrl] = useState<string>(
-    () => targetAthlete?.googleSheetUrl || ''
-  );
-  const [sheetTabName, setSheetTabName] = useState<string>(
-    () => targetAthlete?.googleSheetTab || 'Indy'
-  );
-  const [availableSheetTabs, setAvailableSheetTabs] = useState<string[]>([
-    'CIM',
-    'Boston',
-    'Indy',
-  ]);
-  const [parsedSheetTab, setParsedSheetTab] = useState<ParsedSheetTab | null>(() =>
-    targetAthlete?.googleSheetUrl ? ELISE_REFERENCE_TABS[targetAthlete.googleSheetTab || 'Indy'] || ELISE_REFERENCE_TABS['Indy'] : null
-  );
+  const initialSheetState = getInitialAthleteSheetState(targetAthlete);
+  const [sheetUrl, setSheetUrl] = useState<string>(() => initialSheetState.url);
+  const [sheetTabName, setSheetTabName] = useState<string>(() => initialSheetState.tab);
+  const [availableSheetTabs, setAvailableSheetTabs] = useState<string[]>(() => initialSheetState.tabs);
+  const [parsedSheetTab, setParsedSheetTab] = useState<ParsedSheetTab | null>(() => initialSheetState.parsed);
   const [doubleRunMode, setDoubleRunMode] = useState<DoubleRunSplitMode>('combined');
   const [isSyncingSheet, setIsSyncingSheet] = useState<boolean>(false);
   const [sheetError, setSheetError] = useState<string>('');
   const sheetFileInputRef = useRef<HTMLInputElement>(null);
 
-  // When Coach selects a different athlete, load that athlete's corresponding Google Sheet link
+  // When Coach selects a different athlete, load that athlete's corresponding Google Sheet link & race tabs
   const handleSelectAthlete = async (athlete: UserProfile) => {
     setTargetAthleteId(athlete.id);
     setSheetError('');
     setAssignDirectSuccess('');
+
+    if (isRobAthlete(athlete)) {
+      const savedUrl = athlete.googleSheetUrl || DEFAULT_ROB_SHEET_URL;
+      const savedTab =
+        athlete.googleSheetTab && ROB_REFERENCE_TABS[athlete.googleSheetTab]
+          ? athlete.googleSheetTab
+          : '11/14 5k';
+      const savedTabs =
+        athlete.googleSheetTabs && athlete.googleSheetTabs.length > 0
+          ? athlete.googleSheetTabs
+          : ['4/19 10k plan', 'Helvetia Half', 'Portland Half', '11/14 5k'];
+      setSheetUrl(savedUrl);
+      setSheetTabName(savedTab);
+      setAvailableSheetTabs(savedTabs);
+      setParsedSheetTab(ROB_REFERENCE_TABS[savedTab] || ROB_REFERENCE_TABS['11/14 5k']);
+      return;
+    }
+
+    if (isEliseAthlete(athlete)) {
+      const savedUrl = athlete.googleSheetUrl || DEFAULT_ELISE_SHEET_URL;
+      const savedTab =
+        athlete.googleSheetTab && ELISE_REFERENCE_TABS[athlete.googleSheetTab]
+          ? athlete.googleSheetTab
+          : 'Indy';
+      const savedTabs =
+        athlete.googleSheetTabs && athlete.googleSheetTabs.length > 0
+          ? athlete.googleSheetTabs
+          : ['CIM', 'Boston', 'Indy'];
+      setSheetUrl(savedUrl);
+      setSheetTabName(savedTab);
+      setAvailableSheetTabs(savedTabs);
+      setParsedSheetTab(ELISE_REFERENCE_TABS[savedTab] || ELISE_REFERENCE_TABS['Indy']);
+      return;
+    }
+
+    // Other athlete: load saved URL and tabs, or clean state (do NOT default to Elise)
     const savedUrl = athlete.googleSheetUrl || '';
-    const savedTab = athlete.googleSheetTab || 'Indy';
+    const savedTab = athlete.googleSheetTab || '';
+    const savedTabs = athlete.googleSheetTabs || [];
     setSheetUrl(savedUrl);
     setSheetTabName(savedTab);
+    setAvailableSheetTabs(savedTabs);
 
     if (savedUrl) {
       setIsSyncingSheet(true);
       try {
-        const result = await fetchAndParseGoogleSheet(savedUrl, savedTab, 2026);
+        const result = await fetchAndParseGoogleSheet(
+          savedUrl,
+          savedTab || undefined,
+          2026,
+          athlete.id || athlete.name
+        );
         setParsedSheetTab(result.activeTab);
         setAvailableSheetTabs(result.availableTabs);
         setSheetTabName(result.activeTab.tabName);
-      } catch {
-        setParsedSheetTab(ELISE_REFERENCE_TABS[savedTab] || ELISE_REFERENCE_TABS['Indy']);
+      } catch (err: any) {
+        setParsedSheetTab(null);
+        setSheetError(err.message || 'Could not parse Google Sheet for this athlete.');
       } finally {
         setIsSyncingSheet(false);
       }
     } else {
       setParsedSheetTab(null);
     }
+  };
+
+  const handleTabPillClick = async (tab: string) => {
+    setSheetTabName(tab);
+    setSheetError('');
+    if (isRobAthlete(targetAthlete)) {
+      const active = ROB_REFERENCE_TABS[tab] || ROB_REFERENCE_TABS['11/14 5k'];
+      setParsedSheetTab(active);
+      const updatedRoster = updateAthleteGoogleSheetLink(
+        targetAthlete.id,
+        sheetUrl || DEFAULT_ROB_SHEET_URL,
+        tab,
+        availableSheetTabs
+      );
+      setRosterUsers(updatedRoster);
+      onRosterUpdated?.(updatedRoster);
+      return;
+    }
+    if (isEliseAthlete(targetAthlete)) {
+      const active = ELISE_REFERENCE_TABS[tab] || ELISE_REFERENCE_TABS['Indy'];
+      setParsedSheetTab(active);
+      const updatedRoster = updateAthleteGoogleSheetLink(
+        targetAthlete.id,
+        sheetUrl || DEFAULT_ELISE_SHEET_URL,
+        tab,
+        availableSheetTabs
+      );
+      setRosterUsers(updatedRoster);
+      onRosterUpdated?.(updatedRoster);
+      return;
+    }
+    // Other athlete
+    await handleSyncGoogleSheet(tab);
   };
 
   // Sync initialAthleteId when opened from Coach Roster bar for a specific filtered athlete
@@ -379,16 +512,22 @@ export const AdminPlanModal: React.FC<Props> = ({
     setSheetError('');
     setIsSyncingSheet(true);
     try {
-      const result = await fetchAndParseGoogleSheet(urlToSync, tabToFetch, 2026);
+      const result = await fetchAndParseGoogleSheet(
+        urlToSync,
+        tabToFetch,
+        2026,
+        targetAthlete.id || targetAthlete.name
+      );
       setParsedSheetTab(result.activeTab);
       setAvailableSheetTabs(result.availableTabs);
       setSheetTabName(result.activeTab.tabName);
 
-      // Save the Google Sheet URL & active tab directly onto the selected athlete's profile
+      // Save the Google Sheet URL, active tab, & available tabs directly onto the selected athlete's profile
       const updatedRoster = updateAthleteGoogleSheetLink(
         targetAthlete.id,
         urlToSync,
-        result.activeTab.tabName
+        result.activeTab.tabName,
+        result.availableTabs
       );
       setRosterUsers(updatedRoster);
       onRosterUpdated?.(updatedRoster);
@@ -434,7 +573,8 @@ export const AdminPlanModal: React.FC<Props> = ({
       const updatedRoster = updateAthleteGoogleSheetLink(
         targetAthlete.id,
         pseudoUrl,
-        parsed.tabName
+        parsed.tabName,
+        [parsed.tabName]
       );
       setRosterUsers(updatedRoster);
       onRosterUpdated?.(updatedRoster);
@@ -453,11 +593,13 @@ export const AdminPlanModal: React.FC<Props> = ({
 
   const handleUnlinkAthleteSheet = () => {
     if (!isCoach) return;
-    const updatedRoster = updateAthleteGoogleSheetLink(targetAthlete.id, '', '');
+    const updatedRoster = updateAthleteGoogleSheetLink(targetAthlete.id, '', '', []);
     setRosterUsers(updatedRoster);
     onRosterUpdated?.(updatedRoster);
     setSheetUrl('');
     setParsedSheetTab(null);
+    setAvailableSheetTabs([]);
+    setSheetTabName('');
     setAssignDirectSuccess(`Removed Google Sheet link for ${targetAthlete.name}.`);
     setTimeout(() => setAssignDirectSuccess(''), 3000);
   };
@@ -668,10 +810,14 @@ export const AdminPlanModal: React.FC<Props> = ({
                         type="button"
                         className="btn-duration-pill font-mono text-xxs"
                         onClick={() => {
-                          setSheetUrl(DEFAULT_ELISE_SHEET_URL);
-                          handleSyncGoogleSheet('Indy', DEFAULT_ELISE_SHEET_URL);
+                          const sampleUrl = isRobAthlete(targetAthlete)
+                            ? DEFAULT_ROB_SHEET_URL
+                            : DEFAULT_ELISE_SHEET_URL;
+                          const sampleTab = isRobAthlete(targetAthlete) ? '11/14 5k' : 'Indy';
+                          setSheetUrl(sampleUrl);
+                          handleSyncGoogleSheet(sampleTab, sampleUrl);
                         }}
-                        title="Populate with Elise's sample color-coded marathon Google Sheet link"
+                        title={`Populate with ${targetAthlete.name}'s sample color-coded Google Sheet link`}
                       >
                         Load Sample Sheet Link
                       </button>
@@ -739,10 +885,7 @@ export const AdminPlanModal: React.FC<Props> = ({
                           className={`btn-duration-pill font-mono ${
                             sheetTabName === tab ? 'active' : ''
                           }`}
-                          onClick={() => {
-                            setSheetTabName(tab);
-                            handleSyncGoogleSheet(tab);
-                          }}
+                          onClick={() => handleTabPillClick(tab)}
                         >
                           {tab}
                         </button>
