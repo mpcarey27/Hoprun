@@ -409,6 +409,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           : [];
 
         if (rawWorkouts.length > 0) {
+          // Fetch current roster from D1 so any newly added athlete is dynamically matched
+          let rosterAthletes: Array<{ id: string; name: string; email: string }> = [];
+          try {
+            const { results } = await env.DB.prepare('SELECT id, name, email FROM athlete_roster').all();
+            rosterAthletes = results || [];
+          } catch {
+            // ignore
+          }
+
           const stmt = env.DB.prepare(
             `INSERT OR REPLACE INTO workouts (
               id, user_id, athlete_id, athlete_name, workout_date, run_order, distance,
@@ -421,11 +430,34 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             let athleteId = w.athleteId;
             let athleteName = w.athleteName || '';
 
-            // Clean fallback so workouts are never orphaned or lumped together under user_coach_1
-            if (!athleteId || athleteId === 'user_coach_1') {
+            // If athleteId is already a valid specific ID, verify or fill in athleteName from roster
+            if (athleteId && athleteId !== 'user_coach_1') {
+              if (!athleteName) {
+                const matched = rosterAthletes.find((u) => u.id === athleteId);
+                if (matched) athleteName = matched.name;
+                else if (athleteId === 'user_michael_carey') athleteName = 'Michael Carey';
+              }
+            } else {
+              // athleteId is missing or generic 'user_coach_1' -> resolve dynamically against athlete_roster
               const comms = w.comments || '';
-              const lowerName = athleteName.toLowerCase();
-              if (comms.includes('Forerunner 955') || lowerName.includes('robert') || lowerName.includes('reynoso')) {
+              const lowerName = athleteName.trim().toLowerCase();
+              const lowerEmail = (w.athleteEmail || w.email || '').trim().toLowerCase();
+
+              // 1. Check if any registered athlete in the roster matches by userId, email, or name
+              const matchedRoster = rosterAthletes.find((u) => {
+                if (w.userId && u.id === w.userId) return true;
+                if (lowerEmail && u.email && u.email.toLowerCase() === lowerEmail) return true;
+                if (lowerName && u.name) {
+                  const uLower = u.name.trim().toLowerCase();
+                  if (uLower === lowerName || lowerName.includes(uLower) || uLower.includes(lowerName)) return true;
+                }
+                return false;
+              });
+
+              if (matchedRoster) {
+                athleteId = matchedRoster.id;
+                athleteName = matchedRoster.name;
+              } else if (comms.includes('Forerunner 955') || lowerName.includes('robert') || lowerName.includes('reynoso')) {
                 athleteId = 'user_1793563915467_10fr';
                 athleteName = athleteName || 'Robert Reynoso';
               } else if (comms.includes('265S') || comms.includes('Strava App') || lowerName.includes('elise') || lowerName.includes('whisler')) {

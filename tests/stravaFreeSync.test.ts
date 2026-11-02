@@ -13,7 +13,7 @@ import {
   decodeStravaOAuthState,
   reconcileStravaWorkouts,
 } from '../src/utils/stravaSync';
-import { syncWorkoutsFromCloud } from '../src/utils/storage';
+import { syncWorkoutsFromCloud, sanitizeLegacyWorkouts, addAthleteToRoster } from '../src/utils/storage';
 
 describe('Free Strava Sync & Archive Import (TDD)', () => {
   it('DEFAULT_MASTER_STRAVA_CLIENT_ID is configured to Coach verified application', () => {
@@ -372,5 +372,57 @@ describe('Free Strava Sync & Archive Import (TDD)', () => {
     expect(michaelRuns[0].distance).toBe(5.66);
     expect(eliseRuns[0].distance).toBe(12.02);
     expect(robertRuns[0].distance).toBe(3.94);
+  });
+
+  it('guarantees newly added athletes receive separate calendar workouts and dynamic ID resolution', () => {
+    // Add a brand new runner to the roster
+    const newAthlete = {
+      id: 'user_new_runner_999',
+      name: 'Taylor Swift',
+      email: 'taylor@example.com',
+      role: 'runner' as const,
+    };
+    addAthleteToRoster(newAthlete);
+
+    // Incoming runs with the new athlete's name but missing athleteId
+    const unassignedRuns = [
+      {
+        id: 'run_taylor_1',
+        workoutDate: '2026-11-02',
+        runOrder: 1,
+        distance: 7.2,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 21.6,
+        comments: 'Morning track workout',
+        completed: true,
+        athleteName: 'Taylor Swift',
+      },
+      {
+        id: 'run_michael_1',
+        workoutDate: '2026-11-02',
+        runOrder: 1,
+        distance: 10,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 30,
+        comments: 'Easy miles',
+        completed: true,
+        athleteName: 'Michael Carey',
+      },
+    ];
+
+    const sanitized = sanitizeLegacyWorkouts(unassignedRuns, [newAthlete]);
+    expect(sanitized.length).toBe(2);
+
+    const taylorRun = sanitized.find((w: any) => w.id === 'run_taylor_1');
+    expect(taylorRun?.athleteId).toBe('user_new_runner_999');
+    expect(taylorRun?.athleteName).toBe('Taylor Swift');
+
+    const coachRun = sanitized.find((w: any) => w.id === 'run_michael_1');
+    expect(coachRun?.athleteId).toBe('user_michael_carey');
+    expect(coachRun?.athleteName).toBe('Michael Carey');
   });
 });

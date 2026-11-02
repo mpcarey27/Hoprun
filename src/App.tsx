@@ -23,6 +23,7 @@ import {
   saveStoredUser,
   clearStoredUser,
   loadStoredRoster,
+  addAthleteToRoster,
   syncRosterFromCloud,
   syncWorkoutsFromCloud,
   COACH_EMAIL,
@@ -251,7 +252,22 @@ export const App: React.FC = () => {
             matchedAthlete = currentUser;
           }
           if (!matchedAthlete) {
-            matchedAthlete = currentUser || COACH_PROFILE;
+            if (stravaAthleteName && !stravaAthleteName.toLowerCase().includes('michael carey')) {
+              const newEmail =
+                decodedState?.athleteEmail ||
+                `${stravaAthleteName.toLowerCase().replace(/\s+/g, '.')}@athlete.hoprun.app`;
+              const autoNewAthlete: UserProfile = {
+                id: decodedState?.athleteId || `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                name: stravaAthleteName,
+                email: newEmail,
+                role: 'runner',
+              };
+              const updatedRoster = addAthleteToRoster(autoNewAthlete);
+              setRoster(updatedRoster);
+              matchedAthlete = autoNewAthlete;
+            } else {
+              matchedAthlete = currentUser || COACH_PROFILE;
+            }
           }
 
           if (!currentUser && !loadStoredUser()) {

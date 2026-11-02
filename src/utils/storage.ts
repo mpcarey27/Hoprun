@@ -334,14 +334,31 @@ export function findAuthUserByEmail(email: string): RegisteredUser | undefined {
   return list.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
 }
 
-export function sanitizeLegacyWorkouts(workouts: WorkoutRun[]): WorkoutRun[] {
+export function sanitizeLegacyWorkouts(
+  workouts: WorkoutRun[],
+  rosterOverride?: UserProfile[]
+): WorkoutRun[] {
   if (!Array.isArray(workouts) || workouts.length === 0) return [];
   let modified = false;
+  const currentRoster = rosterOverride || loadStoredRoster();
+
   const sanitized = workouts.map((w) => {
     if (!w.athleteId || w.athleteId === 'user_coach_1' || !w.athleteName) {
       modified = true;
       const comms = w.comments || '';
-      const lowerName = (w.athleteName || '').toLowerCase();
+      const lowerName = (w.athleteName || '').trim().toLowerCase();
+
+      // Dynamically check any athlete on the roster first
+      if (lowerName) {
+        const matched = currentRoster.find((u) => {
+          const uLower = u.name.trim().toLowerCase();
+          return uLower === lowerName || lowerName.includes(uLower) || uLower.includes(lowerName);
+        });
+        if (matched) {
+          return { ...w, athleteId: matched.id, athleteName: matched.name };
+        }
+      }
+
       if (comms.includes('Forerunner 955') || lowerName.includes('robert') || lowerName.includes('reynoso')) {
         return { ...w, athleteId: 'user_1793563915467_10fr', athleteName: 'Robert Reynoso' };
       }
