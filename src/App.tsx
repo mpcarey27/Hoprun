@@ -201,11 +201,6 @@ export const App: React.FC = () => {
         // Immediately clean ?code=...&scope=...&state=... from URL
         window.history.replaceState({}, document.title, window.location.pathname);
 
-        if (!currentUser && !loadStoredUser()) {
-          setCurrentUser(COACH_PROFILE);
-          saveStoredUser(COACH_PROFILE);
-        }
-
         const freshSettings = loadStoredSettings();
         const effectiveClientId =
           decodedState?.clientId ||
@@ -224,13 +219,49 @@ export const App: React.FC = () => {
             effectiveClientSecret,
             stravaCode,
             {
-              athleteEmail: currentUser?.email,
-              athleteName: currentUser?.name,
+              athleteEmail: decodedState?.athleteEmail || currentUser?.email,
+              athleteName: decodedState?.athleteName || currentUser?.name,
             }
           );
-          const athleteName = tokenData.athlete
+
+          const stravaAthleteName = tokenData.athlete
             ? `${tokenData.athlete.firstname || ''} ${tokenData.athlete.lastname || ''}`.trim()
-            : currentUser?.name || 'Strava Athlete';
+            : '';
+
+          // Resolve which athlete this Strava account belongs to
+          const currentRoster = loadStoredRoster();
+          let matchedAthlete: UserProfile | undefined = undefined;
+
+          if (decodedState?.athleteId) {
+            matchedAthlete = currentRoster.find((u) => u.id === decodedState.athleteId);
+          }
+          if (!matchedAthlete && decodedState?.athleteEmail) {
+            matchedAthlete = currentRoster.find(
+              (u) => u.email?.toLowerCase() === decodedState.athleteEmail!.toLowerCase()
+            );
+          }
+          if (!matchedAthlete && stravaAthleteName) {
+            const lowerStrava = stravaAthleteName.toLowerCase();
+            matchedAthlete = currentRoster.find((u) => {
+              const uLower = u.name.trim().toLowerCase();
+              return uLower === lowerStrava || lowerStrava.includes(uLower) || uLower.includes(lowerStrava);
+            });
+          }
+          if (!matchedAthlete && currentUser && currentUser.role === 'runner') {
+            matchedAthlete = currentUser;
+          }
+          if (!matchedAthlete) {
+            matchedAthlete = currentUser || COACH_PROFILE;
+          }
+
+          if (!currentUser && !loadStoredUser()) {
+            const userToSet = matchedAthlete.role === 'runner' ? matchedAthlete : COACH_PROFILE;
+            setCurrentUser(userToSet);
+            saveStoredUser(userToSet);
+          }
+
+          const targetAthleteId = matchedAthlete.id;
+          const targetAthleteName = matchedAthlete.name || stravaAthleteName || 'Strava Athlete';
 
           const effectiveStartDate =
             settings.stravaSyncStartDate || freshSettings.stravaSyncStartDate || '2026-01-01';
@@ -242,7 +273,7 @@ export const App: React.FC = () => {
               clientId: effectiveClientId,
               clientSecret: effectiveClientSecret,
               refreshToken: tokenData.refresh_token,
-              athleteEmail: currentUser?.email,
+              athleteEmail: matchedAthlete.email || currentUser?.email,
               onTokenRefreshed: (refreshed) => {
                 handleUpdateSettings({
                   stravaAccessToken: refreshed.access_token,
@@ -261,8 +292,8 @@ export const App: React.FC = () => {
             normalizeStravaActivity(
               act,
               unit,
-              currentUser?.id || COACH_PROFILE.id,
-              currentUser?.name || athleteName,
+              targetAthleteId,
+              targetAthleteName,
               defaultShoe?.id,
               defaultShoe?.name
             )
@@ -272,6 +303,9 @@ export const App: React.FC = () => {
             handleBatchImportWorkouts(normalizedWorkouts);
           }
 
+          // Select this athlete's tab so their calendar is immediately displayed
+          setSelectedAthleteFilter(targetAthleteId);
+
           handleUpdateSettings({
             stravaClientId: effectiveClientId,
             stravaClientSecret: effectiveClientSecret || undefined,
@@ -279,14 +313,14 @@ export const App: React.FC = () => {
             stravaAccessToken: tokenData.access_token,
             stravaRefreshToken: tokenData.refresh_token,
             stravaExpiresAt: tokenData.expires_at,
-            stravaAthleteName: athleteName,
+            stravaAthleteName: targetAthleteName,
             stravaAutoSync: true,
             stravaLastSyncTime: new Date().toISOString(),
           });
 
           setStravaOAuthStatus({
             type: 'success',
-            message: `✓ Strava Connected! Synced ${normalizedWorkouts.length} runs from ${athleteName}.`,
+            message: `✓ Strava Connected! Synced ${normalizedWorkouts.length} runs from ${targetAthleteName}.`,
           });
           setIsStravaModalOpen(true);
         } catch (err: any) {
@@ -528,8 +562,10 @@ export const App: React.FC = () => {
     };
   }, [currentUser?.id, currentUser?.email, settings.stravaConnected]);
 
-  // Coach Athlete Roster Filter ('all' or specific athlete id)
-  const [selectedAthleteFilter, setSelectedAthleteFilter] = useState<string>('all');
+  // Coach Athlete Roster Filter (defaults to Coach Michael Carey)
+  const [selectedAthleteFilter, setSelectedAthleteFilter] = useState<string>(
+    () => loadStoredUser()?.id || COACH_PROFILE.id
+  );
 
   // Compute visible workouts based on role and athlete filter
   const visibleWorkouts = useMemo(() => {
@@ -556,13 +592,17 @@ export const App: React.FC = () => {
         );
       });
     }
-    // Coach Admin (Michael Carey) can view all athletes or focus on an individual athlete
-    if (selectedAthleteFilter === 'all') {
-      return workouts;
-    }
+
+    // Coach Admin (Michael Carey) views individual athlete calendars.
+    // Synced Strava runs strictly display under that athlete's tab and never appear lumped together.
+    const targetAthId =
+      selectedAthleteFilter && selectedAthleteFilter !== 'all'
+        ? selectedAthleteFilter
+        : currentUser.id || COACH_PROFILE.id;
+
     if (
-      selectedAthleteFilter === COACH_PROFILE.id ||
-      selectedAthleteFilter === COACH_ATHLETE_PROFILE.id
+      targetAthId === COACH_PROFILE.id ||
+      targetAthId === COACH_ATHLETE_PROFILE.id
     ) {
       return workouts.filter(
         (w) =>
@@ -573,7 +613,7 @@ export const App: React.FC = () => {
       );
     }
     return workouts.filter(
-      (w) => w.athleteId === selectedAthleteFilter || w.athleteName === selectedAthleteFilter
+      (w) => w.athleteId === targetAthId || w.athleteName === targetAthId
     );
   }, [workouts, currentUser, selectedAthleteFilter]);
 
@@ -1063,22 +1103,26 @@ export const App: React.FC = () => {
 
             {/* Roster Filter Pills (Smooth horizontal scroll on mobile) */}
             <div className="coach-roster-pills flex items-center gap-2">
-              <button
-                type="button"
-                className={`btn-filter-pill ${selectedAthleteFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setSelectedAthleteFilter('all')}
-              >
-                All ({workouts.length})
-              </button>
               {roster.map((user) => {
-                const count = workouts.filter(
-                  (w) => w.athleteId === user.id || w.athleteName === user.name
-                ).length;
+                const isSelected =
+                  selectedAthleteFilter === user.id ||
+                  (selectedAthleteFilter === 'all' && user.id === COACH_PROFILE.id);
+                const count = workouts.filter((w) => {
+                  if (user.id === COACH_PROFILE.id || user.id === COACH_ATHLETE_PROFILE.id) {
+                    return (
+                      w.athleteId === COACH_PROFILE.id ||
+                      w.athleteId === COACH_ATHLETE_PROFILE.id ||
+                      w.athleteName === COACH_PROFILE.name ||
+                      w.athleteName === COACH_ATHLETE_PROFILE.name
+                    );
+                  }
+                  return w.athleteId === user.id || w.athleteName === user.name;
+                }).length;
                 return (
                   <button
                     key={user.id}
                     type="button"
-                    className={`btn-filter-pill ${selectedAthleteFilter === user.id ? 'active' : ''}`}
+                    className={`btn-filter-pill ${isSelected ? 'active' : ''}`}
                     onClick={() => setSelectedAthleteFilter(user.id)}
                     title={
                       user.googleSheetUrl
@@ -1269,6 +1313,9 @@ export const App: React.FC = () => {
           setStravaOAuthStatus(null);
         }}
         currentUser={currentUser}
+        activeAthlete={
+          roster.find((u) => u.id === selectedAthleteFilter) || currentUser
+        }
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
         onImportRuns={handleBatchImportWorkouts}

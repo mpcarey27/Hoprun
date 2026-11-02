@@ -19,6 +19,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   currentUser: UserProfile;
+  activeAthlete?: UserProfile;
   settings: AppSettings;
   onUpdateSettings: (newSettings: Partial<AppSettings>) => void;
   onImportRuns?: (runs: WorkoutRun[]) => void;
@@ -37,11 +38,13 @@ export const StravaConnectModal: React.FC<Props> = ({
   isOpen,
   onClose,
   currentUser,
+  activeAthlete,
   settings,
   onUpdateSettings,
   onImportRuns,
   oauthStatus,
 }) => {
+  const effectiveAthlete = activeAthlete || currentUser;
   const isConnected = Boolean(
     settings.stravaConnected && (settings.stravaAccessToken || settings.stravaClientId)
   );
@@ -156,6 +159,9 @@ export const StravaConnectModal: React.FC<Props> = ({
       clientId: effectiveId,
       clientSecret: effectiveSecret || undefined,
       origin: currentOrigin,
+      athleteId: effectiveAthlete.id,
+      athleteName: effectiveAthlete.name,
+      athleteEmail: effectiveAthlete.email,
     });
 
     const authUrl = buildStravaAuthUrl(effectiveId, selectedRedirectUri, state);
@@ -193,8 +199,8 @@ export const StravaConnectModal: React.FC<Props> = ({
         normalizeStravaActivity(
           act,
           unit,
-          currentUser.id,
-          currentUser.name,
+          effectiveAthlete.id,
+          effectiveAthlete.name,
           defaultShoe?.id,
           defaultShoe?.name
         )
@@ -207,7 +213,7 @@ export const StravaConnectModal: React.FC<Props> = ({
       onUpdateSettings({
         stravaConnected: true,
         stravaAccessToken: cleanToken,
-        stravaAthleteName: currentUser.name || 'Strava Athlete',
+        stravaAthleteName: effectiveAthlete.name || 'Strava Athlete',
         stravaAutoSync: true,
         stravaLastSyncTime: new Date().toISOString(),
         stravaSyncStartDate: effectiveStartDate,
@@ -287,8 +293,8 @@ export const StravaConnectModal: React.FC<Props> = ({
         normalizeStravaActivity(
           act,
           unit,
-          currentUser.id,
-          currentUser.name || athleteName,
+          effectiveAthlete.id,
+          effectiveAthlete.name || athleteName,
           defaultShoe?.id,
           defaultShoe?.name
         )
@@ -341,8 +347,8 @@ export const StravaConnectModal: React.FC<Props> = ({
       const importedRuns = await parseDroppedActivityFiles(
         fileArray,
         unit,
-        currentUser.id,
-        currentUser.name,
+        effectiveAthlete.id,
+        effectiveAthlete.name,
         defaultShoe?.id,
         defaultShoe?.name,
         (processed, total) => {
@@ -422,8 +428,8 @@ export const StravaConnectModal: React.FC<Props> = ({
         normalizeStravaActivity(
           act,
           unit,
-          currentUser.id,
-          currentUser.name,
+          effectiveAthlete.id,
+          effectiveAthlete.name,
           defaultShoe?.id,
           defaultShoe?.name
         )
@@ -516,6 +522,18 @@ export const StravaConnectModal: React.FC<Props> = ({
         </div>
 
         <div className="modal-body space-y-4">
+          {currentUser.role === 'coach' && effectiveAthlete && (
+            <div className="p-2.5 rounded-lg bg-surface-elevated border border-subtle flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">👤</span>
+                <span className="text-xs text-primary font-mono">
+                  Syncing Strava for: <strong className="text-accent">{effectiveAthlete.name}</strong>
+                </span>
+              </div>
+              <span className="text-xxs font-mono text-muted">Athlete Tab</span>
+            </div>
+          )}
+
           {oauthStatus && (
             <div
               className={`inweek-ribbon ${

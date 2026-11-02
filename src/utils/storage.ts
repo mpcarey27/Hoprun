@@ -334,6 +334,40 @@ export function findAuthUserByEmail(email: string): RegisteredUser | undefined {
   return list.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
 }
 
+export function sanitizeLegacyWorkouts(workouts: WorkoutRun[]): WorkoutRun[] {
+  if (!Array.isArray(workouts) || workouts.length === 0) return [];
+  let modified = false;
+  const sanitized = workouts.map((w) => {
+    if (!w.athleteId || w.athleteId === 'user_coach_1' || !w.athleteName) {
+      modified = true;
+      const comms = w.comments || '';
+      const lowerName = (w.athleteName || '').toLowerCase();
+      if (comms.includes('Forerunner 955') || lowerName.includes('robert') || lowerName.includes('reynoso')) {
+        return { ...w, athleteId: 'user_1793563915467_10fr', athleteName: 'Robert Reynoso' };
+      }
+      if (
+        comms.includes('265S') ||
+        comms.includes('Strava App') ||
+        lowerName.includes('elise') ||
+        lowerName.includes('whisler')
+      ) {
+        return { ...w, athleteId: 'user_1793482686680_2wma', athleteName: 'Elise Whisler' };
+      }
+      return { ...w, athleteId: 'user_michael_carey', athleteName: w.athleteName || 'Michael Carey' };
+    }
+    return w;
+  });
+
+  if (modified && typeof localStorage !== 'undefined' && typeof localStorage?.setItem === 'function') {
+    try {
+      localStorage.setItem(STORAGE_KEYS.WORKOUTS, JSON.stringify(sanitized));
+    } catch {
+      // ignore
+    }
+  }
+  return sanitized;
+}
+
 export function loadStoredWorkouts(): WorkoutRun[] {
   try {
     const raw =
@@ -341,7 +375,7 @@ export function loadStoredWorkouts(): WorkoutRun[] {
         ? localStorage.getItem(STORAGE_KEYS.WORKOUTS)
         : null;
     if (raw) {
-      return JSON.parse(raw);
+      return sanitizeLegacyWorkouts(JSON.parse(raw));
     }
   } catch (e) {
     console.error('Error loading workouts from localStorage:', e);
@@ -688,7 +722,7 @@ export async function syncWorkoutsFromCloud(
       return local;
     }
 
-    const merged = reconcileStravaWorkouts(local, remoteWorkouts);
+    const merged = sanitizeLegacyWorkouts(reconcileStravaWorkouts(local, remoteWorkouts));
     if (typeof localStorage !== 'undefined' && typeof localStorage?.setItem === 'function') {
       try {
         localStorage.setItem(STORAGE_KEYS.WORKOUTS, JSON.stringify(merged));

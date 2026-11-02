@@ -58,10 +58,13 @@ export interface StravaOAuthStatePayload {
   clientId?: string;
   clientSecret?: string;
   origin?: string;
+  athleteId?: string;
+  athleteName?: string;
+  athleteEmail?: string;
 }
 
 /**
- * Encodes OAuth state payload as base64url so Strava credentials and origin
+ * Encodes OAuth state payload as base64url so Strava credentials, origin, and athlete
  * survive cross-domain redirects (www.hoprun.app <-> hoprun.app <-> localhost).
  */
 export function encodeStravaOAuthState(payload: StravaOAuthStatePayload): string {
@@ -97,6 +100,9 @@ export function decodeStravaOAuthState(
         clientId: typeof parsed.clientId === 'string' ? parsed.clientId : undefined,
         clientSecret: typeof parsed.clientSecret === 'string' ? parsed.clientSecret : undefined,
         origin: typeof parsed.origin === 'string' ? parsed.origin : undefined,
+        athleteId: typeof parsed.athleteId === 'string' ? parsed.athleteId : undefined,
+        athleteName: typeof parsed.athleteName === 'string' ? parsed.athleteName : undefined,
+        athleteEmail: typeof parsed.athleteEmail === 'string' ? parsed.athleteEmail : undefined,
       };
     }
     return null;
@@ -656,14 +662,20 @@ export function buildStravaAuthUrl(
 const MICHAEL_ATHLETE_IDS = new Set(['user_michael_carey', 'user_michael_athlete']);
 
 function isSameRunner(a: WorkoutRun, b: WorkoutRun): boolean {
-  if (!a.athleteId || !b.athleteId) return true;
-  if (a.athleteId === b.athleteId) return true;
-  if (MICHAEL_ATHLETE_IDS.has(a.athleteId) && MICHAEL_ATHLETE_IDS.has(b.athleteId)) return true;
+  if (a.athleteId && b.athleteId) {
+    if (a.athleteId === b.athleteId) return true;
+    if (MICHAEL_ATHLETE_IDS.has(a.athleteId) && MICHAEL_ATHLETE_IDS.has(b.athleteId)) return true;
+    return false;
+  }
   if (a.athleteName && b.athleteName) {
     const nameA = a.athleteName.trim().toLowerCase();
     const nameB = b.athleteName.trim().toLowerCase();
     if (nameA === nameB) return true;
     if (nameA.includes('michael carey') && nameB.includes('michael carey')) return true;
+    return false;
+  }
+  if (!a.athleteId && !b.athleteId && !a.athleteName && !b.athleteName) {
+    return true;
   }
   return false;
 }
@@ -834,8 +846,16 @@ export function reconcileStravaWorkouts(
         feeling: prev.feeling ?? incoming.feeling,
         athleteComment: prev.athleteComment ?? incoming.athleteComment,
         editReason: prev.editReason ?? incoming.editReason,
-        athleteId: prev.athleteId || incoming.athleteId,
-        athleteName: prev.athleteName || incoming.athleteName,
+        athleteId:
+          incoming.athleteId && incoming.athleteId !== 'user_coach_1'
+            ? incoming.athleteId
+            : prev.athleteId && prev.athleteId !== 'user_coach_1'
+            ? prev.athleteId
+            : incoming.athleteId || prev.athleteId,
+        athleteName:
+          incoming.athleteName && incoming.athleteName !== ''
+            ? incoming.athleteName
+            : prev.athleteName || incoming.athleteName,
       };
     } else {
       result.push(incoming);

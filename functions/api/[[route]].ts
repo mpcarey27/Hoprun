@@ -293,6 +293,29 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         }
       }
 
+      // One-time self-healing data migration: separate any legacy unassigned/user_coach_1 runs to proper athlete IDs
+      try {
+        await env.DB.prepare(
+          `UPDATE workouts
+           SET athlete_id = 'user_1793563915467_10fr', athlete_name = 'Robert Reynoso', user_id = 'user_1793563915467_10fr'
+           WHERE (athlete_id = 'user_coach_1' OR athlete_id IS NULL OR athlete_id = '')
+             AND (comments LIKE '%Garmin Forerunner 955%' OR (updated_at LIKE '%2026-11-01 21:36%' AND comments LIKE '%Garmin Connect%'))`
+        ).run();
+        await env.DB.prepare(
+          `UPDATE workouts
+           SET athlete_id = 'user_1793482686680_2wma', athlete_name = 'Elise Whisler', user_id = 'user_1793482686680_2wma'
+           WHERE (athlete_id = 'user_coach_1' OR athlete_id IS NULL OR athlete_id = '')
+             AND (comments LIKE '%Garmin Forerunner 265S%' OR comments LIKE '%Strava App%' OR (updated_at LIKE '%2026-11-01 19:%' AND (comments LIKE '%Garmin Forerunner 265)%' OR comments LIKE '%Garmin Connect%')))`
+        ).run();
+        await env.DB.prepare(
+          `UPDATE workouts
+           SET athlete_id = 'user_michael_carey', athlete_name = 'Michael Carey', user_id = 'user_michael_carey'
+           WHERE athlete_id = 'user_coach_1' OR athlete_id IS NULL OR athlete_id = ''`
+        ).run();
+      } catch {
+        // Migration completed or ignore
+      }
+
       if (method === 'GET') {
         const coachView = url.searchParams.get('coachView') === 'true' || url.searchParams.get('coachView') === '1';
         const athleteIdParam = url.searchParams.get('athleteId');
@@ -322,17 +345,22 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         }
 
         const workouts = rows.map((row: any) => {
+          const cleanAthId = row.athlete_id && row.athlete_id !== 'user_coach_1' ? row.athlete_id : null;
+          const cleanAthName = row.athlete_name && row.athlete_name !== '' ? row.athlete_name : null;
+
           if (row.data_json) {
             try {
               const parsed = JSON.parse(row.data_json);
               if (parsed && typeof parsed === 'object') {
+                const effectiveAthId = cleanAthId || (parsed.athleteId && parsed.athleteId !== 'user_coach_1' ? parsed.athleteId : row.user_id);
+                const effectiveAthName = cleanAthName || parsed.athleteName || '';
                 return {
                   ...parsed,
                   id: parsed.id || row.id,
                   workoutDate: parsed.workoutDate || row.workout_date,
-                  athleteId: parsed.athleteId || row.athlete_id || row.user_id,
-                  athleteName: parsed.athleteName || row.athlete_name || '',
-                  userId: parsed.userId || row.user_id || row.athlete_id,
+                  athleteId: effectiveAthId,
+                  athleteName: effectiveAthName,
+                  userId: cleanAthId || parsed.userId || row.user_id,
                   distance: typeof parsed.distance === 'number' ? parsed.distance : row.distance,
                   distanceUnit: parsed.distanceUnit || row.distance_unit || 'mi',
                   runType: parsed.runType || row.run_type || 'easy',
@@ -346,9 +374,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           }
           return {
             id: row.id,
-            userId: row.user_id,
-            athleteId: row.athlete_id || row.user_id,
-            athleteName: row.athlete_name || '',
+            userId: cleanAthId || row.user_id,
+            athleteId: cleanAthId || row.user_id,
+            athleteName: cleanAthName || '',
             workoutDate: row.workout_date,
             runOrder: row.run_order,
             distance: row.distance,
@@ -390,9 +418,26 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           );
 
           for (const w of rawWorkouts) {
-            const athleteId = w.athleteId || w.userId || 'user_coach_1';
-            const athleteName = w.athleteName || '';
-            const userId = w.userId || athleteId;
+            let athleteId = w.athleteId;
+            let athleteName = w.athleteName || '';
+
+            // Clean fallback so workouts are never orphaned or lumped together under user_coach_1
+            if (!athleteId || athleteId === 'user_coach_1') {
+              const comms = w.comments || '';
+              const lowerName = athleteName.toLowerCase();
+              if (comms.includes('Forerunner 955') || lowerName.includes('robert') || lowerName.includes('reynoso')) {
+                athleteId = 'user_1793563915467_10fr';
+                athleteName = athleteName || 'Robert Reynoso';
+              } else if (comms.includes('265S') || comms.includes('Strava App') || lowerName.includes('elise') || lowerName.includes('whisler')) {
+                athleteId = 'user_1793482686680_2wma';
+                athleteName = athleteName || 'Elise Whisler';
+              } else {
+                athleteId = w.userId && w.userId !== 'user_coach_1' ? w.userId : 'user_michael_carey';
+                athleteName = athleteName || 'Michael Carey';
+              }
+            }
+
+            const userId = athleteId;
             const workoutDate = w.workoutDate || new Date().toISOString().slice(0, 10);
             const runOrder = typeof w.runOrder === 'number' ? w.runOrder : 1;
             const distance = typeof w.distance === 'number' ? w.distance : Number(w.distance) || 0;
@@ -405,7 +450,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
             const title = w.title || '';
             const source = w.source || 'manual';
             const externalActivityId = w.externalActivityId || '';
-            const dataJson = JSON.stringify(w);
+            const dataJson = JSON.stringify({ ...w, athleteId, athleteName, userId });
             const updatedAt = w.updatedAt || new Date().toISOString();
 
             await stmt.bind(

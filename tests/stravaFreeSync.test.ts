@@ -9,6 +9,9 @@ import {
   parseDateToEpochSeconds,
   fetchAllStravaActivitiesSince,
   fetchStravaActivitiesPage,
+  encodeStravaOAuthState,
+  decodeStravaOAuthState,
+  reconcileStravaWorkouts,
 } from '../src/utils/stravaSync';
 import { syncWorkoutsFromCloud } from '../src/utils/storage';
 
@@ -284,5 +287,90 @@ describe('Free Strava Sync & Archive Import (TDD)', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it('encodeStravaOAuthState and decodeStravaOAuthState preserve athlete metadata across redirects', () => {
+    const payload = {
+      clientId: '291001',
+      origin: 'https://hoprun.app',
+      athleteId: 'user_1793482686680_2wma',
+      athleteName: 'Elise Whisler',
+      athleteEmail: 'elise.whisler@gmail.com',
+    };
+    const encoded = encodeStravaOAuthState(payload);
+    expect(encoded).toBeTruthy();
+
+    const decoded = decodeStravaOAuthState(encoded);
+    expect(decoded?.athleteId).toBe('user_1793482686680_2wma');
+    expect(decoded?.athleteName).toBe('Elise Whisler');
+    expect(decoded?.athleteEmail).toBe('elise.whisler@gmail.com');
+  });
+
+  it('reconcileStravaWorkouts keeps runs for different athletes separate on the same calendar day', () => {
+    const existingWorkouts: any[] = [
+      {
+        id: 'strava_m1',
+        workoutDate: '2026-10-31',
+        runOrder: 1,
+        distance: 5.66,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 17,
+        comments: 'Synced via Strava (Garmin Forerunner 265)',
+        completed: true,
+        source: 'strava',
+        athleteId: 'user_michael_carey',
+        athleteName: 'Michael Carey',
+      },
+    ];
+
+    const incomingWorkouts: any[] = [
+      {
+        id: 'strava_e1',
+        workoutDate: '2026-10-31',
+        runOrder: 1,
+        distance: 12.02,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 36.1,
+        comments: 'Synced via Strava (Strava App)',
+        completed: true,
+        source: 'strava',
+        athleteId: 'user_1793482686680_2wma',
+        athleteName: 'Elise Whisler',
+      },
+      {
+        id: 'strava_r1',
+        workoutDate: '2026-10-31',
+        runOrder: 1,
+        distance: 3.94,
+        distanceUnit: 'mi',
+        runType: 'easy',
+        multiplier: 3,
+        load: 11.8,
+        comments: 'Synced via Strava (Garmin Forerunner 955)',
+        completed: true,
+        source: 'strava',
+        athleteId: 'user_1793563915467_10fr',
+        athleteName: 'Robert Reynoso',
+      },
+    ];
+
+    const result = reconcileStravaWorkouts(existingWorkouts, incomingWorkouts);
+
+    expect(result.length).toBe(3);
+    const michaelRuns = result.filter((w: any) => w.athleteId === 'user_michael_carey');
+    const eliseRuns = result.filter((w: any) => w.athleteId === 'user_1793482686680_2wma');
+    const robertRuns = result.filter((w: any) => w.athleteId === 'user_1793563915467_10fr');
+
+    expect(michaelRuns.length).toBe(1);
+    expect(eliseRuns.length).toBe(1);
+    expect(robertRuns.length).toBe(1);
+
+    expect(michaelRuns[0].distance).toBe(5.66);
+    expect(eliseRuns[0].distance).toBe(12.02);
+    expect(robertRuns[0].distance).toBe(3.94);
   });
 });
